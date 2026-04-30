@@ -26,7 +26,7 @@
 This repository implements a full Power Platform ALM pipeline using GitHub Actions reusable workflows. It handles:
 
 - **Single-solution repos** — one solution in `src/solutions/`, auto-detected
-- **Multi-solution repos** — N solutions with configurable deploy order and dependency management
+- **Multi-solution repos** — N solutions with configurable deploy order (sequential deployment is a PP platform constraint)
 - **Selective deployment** — deploy all, one, or any subset of solutions per run
 - **Sequential deploys** — `max-parallel: 1` prevents Dataverse async operation conflicts
 - **Approval gates** — one gate per environment covers all N solutions (no repeated approvals)
@@ -34,11 +34,13 @@ This repository implements a full Power Platform ALM pipeline using GitHub Actio
 
 ### Sample Solutions in This Repo
 
-| Solution | Type | Depends On |
+| Solution | Description | Deploy Position |
 |---|---|---|
-| `CoreSolution` | Base — product table, security roles, env vars | — |
-| `ExtensionA` | Order Management — new_order entity | CoreSolution (new_Product lookup) |
-| `ExtensionB` | Invoice Management — new_invoice entity | CoreSolution (new_Product lookup) |
+| `CoreSolution` | Base — product table, security roles, env vars | 1st |
+| `ExtensionA` | Order Management — new_order entity | 2nd |
+| `ExtensionB` | Invoice Management — new_invoice entity | 3rd |
+
+> **Sequential deployment is a Power Platform platform constraint.** Dataverse cannot process parallel solution imports to the same environment — all solutions deploy one after the other regardless of inter-solution relationships. The order in `solutions-config.json` controls which deploys first within that mandatory sequence.
 
 ---
 
@@ -104,16 +106,18 @@ flowchart LR
     K & L & M --> N[Upload Artifact\nsolution-NAME-RUN]
 ```
 
-### Solution Dependency Order
+### Sequential Deploy Order (Platform Constraint)
 
 ```mermaid
 graph LR
-    Core["CoreSolution\nnew_Product table\nsecurity roles\nenv variables"]
-    ExtA["ExtensionA\nOrder Management\n↑ new_Product lookup"]
-    ExtB["ExtensionB\nInvoice Management\n↑ new_Product lookup"]
-    Core --> ExtA
-    Core --> ExtB
+    Core["① CoreSolution\nproduct table\nsecurity roles\nenv variables"]
+    ExtA["② ExtensionA\nOrder Management"]
+    ExtB["③ ExtensionB\nInvoice Management"]
+    Core -- "sequential\n(platform constraint)" --> ExtA
+    ExtA -- "sequential\n(platform constraint)" --> ExtB
 ```
+
+> Power Platform does not support parallel solution imports to the same environment. The arrows above represent **deploy sequence**, not code dependencies.
 
 ### Export Flow (export-solution.yml)
 
@@ -137,7 +141,7 @@ flowchart TD
 ```
 GHA-Dynamics/
 ├── .github/
-│   ├── solutions-config.json          # Deploy order + dependency docs
+│   ├── solutions-config.json          # Deploy order (sequential = PP platform constraint)
 │   └── workflows/
 │       ├── release-pipeline.yml       # Main: Dev → Intg → UAT → Perf → Prod
 │       ├── export-solution.yml        # Export from sandbox, raise PR
@@ -449,21 +453,24 @@ Controls the deploy order for multi-solution repos. Without this file, solutions
 ```json
 {
   "_comment": [
-    "Controls deployment order.",
-    "CoreSolution must deploy first — ExtensionA and ExtensionB both depend on it."
+    "Controls the deployment order for this multi-solution repo.",
+    "Power Platform does not support parallel solution imports to the same environment.",
+    "All solutions deploy sequentially (max-parallel:1) regardless of dependencies.",
+    "Use this file to control WHICH solution deploys first within that sequence.",
+    "Any solution in src/solutions/ NOT listed here is appended alphabetically."
   ],
   "solutions": [
     {
       "name": "CoreSolution",
-      "description": "Base solution — deploy first."
+      "description": "Base solution — deploy first. Contains shared tables, security roles, and environment variables."
     },
     {
       "name": "ExtensionA",
-      "description": "Order Management — depends on CoreSolution."
+      "description": "Order Management — deploy second."
     },
     {
       "name": "ExtensionB",
-      "description": "Invoice Management — depends on CoreSolution."
+      "description": "Invoice Management — deploy third."
     }
   ]
 }
@@ -576,7 +583,7 @@ python3 scripts/simulate-pipeline.py --solutions all --target-envs DEV --run-num
 ### Key Design Decisions
 
 **Why `max-parallel: 1` on deploy jobs?**
-Dataverse processes solution imports asynchronously. Parallel imports to the same environment cause async operation conflicts. Sequential import ensures each solution is fully processed before the next starts.
+This is a Power Platform platform constraint, not an inter-solution dependency. Dataverse cannot process parallel solution imports to the same environment — attempting to do so causes async operation conflicts. All solutions in a multi-solution repo must deploy one at a time, in sequence. The `solutions-config.json` file controls which deploys first within that mandatory sequence.
 
 **Why a separate gate job instead of `environment:` on the deploy job?**
 GitHub Actions does not allow `environment:` and `uses:` (reusable workflow call) on the same job. The gate job is a lightweight regular job (`runs-on: ubuntu-latest`) that carries the `environment:` declaration. One approval on the gate covers all N solutions in the subsequent matrix.
