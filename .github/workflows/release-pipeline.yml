@@ -34,8 +34,8 @@
 #   Dataverse cannot process parallel solution imports without async conflicts.
 #
 # MANDATORY (non-mock runs):
-#   enable_solution_checker  must be true
-#   enable_jfrog_upload      must be true
+#   enable_jfrog_upload  must be true
+# Solution Checker always runs — there is no toggle.
 # =============================================================================
 
 name: Release Pipeline
@@ -102,12 +102,6 @@ on:
         description: 'Import configuration migration data after each solution import'
         required: false
         default: false
-        type: boolean
-
-      enable_solution_checker:
-        description: 'Run Solution Checker after build. Mandatory for non-mock runs.'
-        required: false
-        default: true
         type: boolean
 
       enable_jfrog_upload:
@@ -179,7 +173,6 @@ jobs:
       data_schema_file:         ${{ vars.PP_DATA_SCHEMA_FILE || '' }}
       source_environment_url:   ${{ vars.PP_SDBX_URL || '' }}
       mock_deploy:              ${{ inputs.mock_deploy == true }}
-      enable_solution_checker:  ${{ inputs.enable_solution_checker != false }}
       enable_jfrog_upload:      ${{ inputs.enable_jfrog_upload != false }}
       jfrog_url:                ${{ vars.JFROG_URL || '' }}
       jfrog_repo:               ${{ vars.JFROG_REPO || 'powerplatform-solutions' }}

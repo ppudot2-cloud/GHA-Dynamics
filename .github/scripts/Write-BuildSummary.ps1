@@ -32,31 +32,26 @@
 .PARAMETER JFrogRepo
     JFrog repository name.
 
-.PARAMETER EnableSolutionChecker
-    Whether Solution Checker was enabled.
 #>
 param(
     [Parameter(Mandatory)][string] $SolutionName,
     [Parameter(Mandatory)][string] $SolutionVersion,
     [Parameter(Mandatory)][string] $ArtifactName,
     [Parameter(Mandatory)][string] $RunNumber,
-    [bool]   $MockDeploy            = $false,
-    [string] $CheckerGeo            = 'UnitedStates',
-    [string] $DataSchemaFile        = '',
-    [bool]   $EnableJFrogUpload     = $false,
-    [string] $JFrogUrl              = '',
-    [string] $JFrogRepo             = '',
-    [bool]   $EnableSolutionChecker = $true
+    [bool]   $MockDeploy        = $false,
+    [string] $CheckerGeo        = 'UnitedStates',
+    [string] $DataSchemaFile    = '',
+    [bool]   $EnableJFrogUpload = $false,
+    [string] $JFrogUrl          = '',
+    [string] $JFrogRepo         = ''
 )
 
 $mode = if ($MockDeploy) { 'mock_deploy' } else { 'live' }
 
-$checkerRow = if (-not $EnableSolutionChecker) {
-    "| Solution Checker | — | ⏭️ Disabled |"
-} elseif ($MockDeploy) {
+$checkerRow = if ($MockDeploy) {
     "| Solution Checker | mock_deploy | 🧪 Simulated (ZIP + XML validation) |"
 } else {
-    "| Solution Checker | live | ✅ Real (geo: ``$CheckerGeo``) |"
+    "| Solution Checker | live (always on) | ✅ Real (geo: ``$CheckerGeo``) |"
 }
 
 $dataRow = if (-not $DataSchemaFile) {

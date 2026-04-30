@@ -23,8 +23,8 @@
 #   JFrog upload      → simulated in _reusable-jfrog.yml
 #
 # MANDATORY INPUTS (enforced at runtime unless mock_deploy=true):
-#   enable_solution_checker  must be true
-#   enable_jfrog_upload      must be true
+#   enable_jfrog_upload  must be true
+# Solution Checker always runs in non-mock mode — there is no toggle.
 # =============================================================================
 
 name: _reusable-build
@@ -80,12 +80,6 @@ on:
           config export, and JFrog upload run as simulations. No PP credentials required.
         required: false
         default: false
-        type: boolean
-
-      enable_solution_checker:
-        description: "Run Solution Checker after pack. MANDATORY unless mock_deploy=true."
-        required: false
-        default: true
         type: boolean
 
       enable_jfrog_upload:
@@ -148,32 +142,27 @@ jobs:
           fetch-depth: 0
 
       # ── 2. Validate mandatory inputs ───────────────────────────────────────
-      # Solution Checker and JFrog upload are mandatory in non-mock builds.
+      # JFrog upload is mandatory in non-mock builds.
+      # Solution Checker always runs — no toggle needed.
       - name: Validate mandatory inputs
         shell: pwsh
         run: |
-          $mock    = [System.Convert]::ToBoolean('${{ inputs.mock_deploy }}')
-          $checker = [System.Convert]::ToBoolean('${{ inputs.enable_solution_checker }}')
-          $jfrog   = [System.Convert]::ToBoolean('${{ inputs.enable_jfrog_upload }}')
-          $errors  = @()
+          $mock   = [System.Convert]::ToBoolean('${{ inputs.mock_deploy }}')
+          $jfrog  = [System.Convert]::ToBoolean('${{ inputs.enable_jfrog_upload }}')
+          $errors = @()
 
           if (-not $mock) {
-            if (-not $checker) {
-              $errors += "enable_solution_checker must be true for non-mock builds. Set it to true or enable mock_deploy."
-            }
             if (-not $jfrog) {
-              $errors += "enable_jfrog_upload must be true for non-mock builds. Set it to true or enable mock_deploy."
+              $errors += "enable_jfrog_upload must be true for non-mock builds. Set enable_jfrog_upload=true or enable mock_deploy."
             }
             if ($jfrog -and -not '${{ inputs.jfrog_url }}') {
               $errors += "jfrog_url is required when enable_jfrog_upload=true."
             }
           }
 
-          foreach ($err in $errors) {
-            Write-Host "::error::$err"
-          }
+          foreach ($err in $errors) { Write-Host "::error::$err" }
           if ($errors.Count -gt 0) { exit 1 }
-          Write-Host "✅ Input validation passed (mock=$mock checker=$checker jfrog=$jfrog)"
+          Write-Host "✅ Input validation passed (mock=$mock jfrog=$jfrog)"
 
       # ── 3. Install PAC CLI (skipped in mock mode) ──────────────────────────
       - name: Install PAC CLI
@@ -265,9 +254,10 @@ jobs:
             -PackageType    'Managed'
 
       # ── 9a. Solution Checker — REAL ────────────────────────────────────────
+      # Always runs in non-mock builds — there is no toggle.
       - name: Run Solution Checker
         id: solution-checker-real
-        if: inputs.enable_solution_checker == true && inputs.mock_deploy != true
+        if: inputs.mock_deploy != true
         uses: microsoft/powerplatform-actions/check-solution@v1
         with:
           app-id:                    ${{ secrets.APP_ID }}
@@ -343,4 +333,3 @@ jobs:
             -EnableJFrogUpload      ([System.Convert]::ToBoolean('${{ inputs.enable_jfrog_upload }}')) `
             -JFrogUrl               '${{ inputs.jfrog_url }}' `
             -JFrogRepo              '${{ inputs.jfrog_repo }}' `
-            -EnableSolutionChecker  ([System.Convert]::ToBoolean('${{ inputs.enable_solution_checker }}'))
