@@ -43,13 +43,18 @@ on:
         required: false
         default: ""
         type: string
+      mock-deploy:
+        description: "Dry-run — skip Solution Checker and export-data (no PP credentials required)"
+        required: false
+        default: false
+        type: boolean
     secrets:
       APP_ID:
-        required: true
+        required: false
       CLIENT_SECRET:
-        required: true
+        required: false
       TENANT_ID:
-        required: true
+        required: false
     outputs:
       solution-version:
         description: "Final stamped solution version (e.g. 1.0.NNNN.0)"
@@ -141,8 +146,9 @@ jobs:
           solution-type:    "Managed"
           process-canvas-apps: true
 
-      # ── 7. Solution Checker — MANDATORY, always runs, always fails on error ──
+      # ── 7. Solution Checker — MANDATORY when not mock-deploy, skipped otherwise ──
       - name: Run Solution Checker
+        if: inputs.mock-deploy != true
         uses: microsoft/powerplatform-actions/check-solution@v1
         with:
           app-id:         ${{ secrets.APP_ID }}
@@ -153,9 +159,9 @@ jobs:
           fail-on-analysis-error: true
           checker-logs-artifact-name: "SolutionChecker-${{ inputs.solution-name }}-${{ github.run_number }}"
 
-      # ── 8. Export config data (if schema provided) ─────────────────────────
+      # ── 8. Export config data (if schema provided and not mock-deploy) ────────
       - name: Export configuration data
-        if: inputs.data-schema-file != ''
+        if: inputs.data-schema-file != '' && inputs.mock-deploy != true
         uses: microsoft/powerplatform-actions/export-data@v1
         with:
           environment-url: ${{ inputs.source-environment-url }}
@@ -187,7 +193,7 @@ jobs:
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "| Item | Status |" >> "$GITHUB_STEP_SUMMARY"
           echo "| --- | --- |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Solution Checker | ✅ Mandatory — Always On |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Solution Checker | ${{ inputs.mock-deploy == true && '⏭️ Skipped (mock-deploy)' || '✅ Mandatory — Always On' }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| Version | \`${{ steps.stamp-version.outputs.version }}\` |" >> "$GITHUB_STEP_SUMMARY"
           echo "| Artifact | \`${{ steps.set-artifact-name.outputs.artifact-name }}\` |" >> "$GITHUB_STEP_SUMMARY"
           echo "| Run # | ${{ github.run_number }} |" >> "$GITHUB_STEP_SUMMARY"

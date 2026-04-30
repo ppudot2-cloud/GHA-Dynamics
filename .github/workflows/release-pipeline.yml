@@ -226,6 +226,7 @@ jobs:
       build-version-strategy: run_number
       data-schema-file:       ${{ vars.PP_DATA_SCHEMA_FILE || '' }}
       source-environment-url: ${{ vars.PP_SDBX_URL || '' }}
+      mock-deploy:            ${{ inputs.mock-deploy == true }}
     secrets: inherit
 
   # ============================================================================
