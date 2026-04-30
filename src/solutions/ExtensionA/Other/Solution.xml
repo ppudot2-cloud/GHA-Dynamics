@@ -9,7 +9,7 @@
       <Description description="Order management extension. Depends on CoreSolution (new_Product table)." languagecode="1033" />
     </Descriptions>
     <Version>1.0.0.0</Version>
-    <Managed>0</Managed>
+
     <Publisher>
       <UniqueName>pub_contoso</UniqueName>
       <LocalizedNames>
