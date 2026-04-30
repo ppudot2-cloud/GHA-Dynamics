@@ -248,7 +248,6 @@ jobs:
       matrix: ${{ fromJSON(needs.setup.outputs.matrix) }}
       max-parallel: 1
       fail-fast: false
-    environment: Dev
     uses: ./.github/workflows/_reusable-deploy.yml
     with:
       environment-name:                   Dev
