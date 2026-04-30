@@ -32,7 +32,8 @@
 # DEPLOY ORDERING:
 #   Default: alphabetical. Custom order: create .github/solutions-config.json.
 #
-# NOTE: Solution Checker is ALWAYS enforced at build — it cannot be disabled.
+# NOTE: In mock-deploy mode all build steps run as simulations (no PP credentials needed).
+#       Only the actual solution import steps in deploy are skipped.
 # =============================================================================
 
 name: Release Pipeline
@@ -91,6 +92,11 @@ on:
         type: boolean
       import-config-data:
         description: 'Import configuration migration data after each solution import'
+        required: false
+        default: false
+        type: boolean
+      enable-jfrog-upload:
+        description: 'Upload built solution ZIPs to JFrog Artifactory (requires JFROG_API_KEY secret and JFROG_URL variable)'
         required: false
         default: false
         type: boolean
@@ -227,6 +233,9 @@ jobs:
       data-schema-file:       ${{ vars.PP_DATA_SCHEMA_FILE || '' }}
       source-environment-url: ${{ vars.PP_SDBX_URL || '' }}
       mock-deploy:            ${{ inputs.mock-deploy == true }}
+      enable-jfrog-upload:    ${{ inputs.enable-jfrog-upload == true }}
+      jfrog-url:              ${{ vars.JFROG_URL || '' }}
+      jfrog-repo:             ${{ vars.JFROG_REPO || 'powerplatform-solutions' }}
     secrets: inherit
 
   # ============================================================================

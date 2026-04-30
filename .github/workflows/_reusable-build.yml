@@ -189,8 +189,9 @@ jobs:
           solution-type:    "Managed"
           process-canvas-apps: true
 
-      # ── 7. Solution Checker — MANDATORY when not mock-deploy, skipped otherwise ──
+      # ── 7a. Solution Checker — REAL (requires PP credentials, skipped in mock) ──
       - name: Run Solution Checker
+        id: solution-checker-real
         if: inputs.mock-deploy != true
         uses: microsoft/powerplatform-actions/check-solution@v1
         with:
@@ -202,8 +203,88 @@ jobs:
           fail-on-analysis-error: true
           checker-logs-artifact-name: "SolutionChecker-${{ inputs.solution-name }}-${{ github.run_number }}"
 
-      # ── 8. Export config data (if schema provided and not mock-deploy) ────────
+      # ── 7b. Solution Checker — SIMULATION (mock-deploy only) ─────────────────
+      # Validates ZIP structure and XML integrity locally — no PP credentials used.
+      # Fails the build if the packed ZIPs are missing or structurally invalid.
+      - name: "🧪 Solution Checker — Simulation (mock-deploy)"
+        id: solution-checker-sim
+        if: inputs.mock-deploy == true
+        shell: bash
+        run: |
+          echo "## 🧪 Solution Checker — Simulation" >> "$GITHUB_STEP_SUMMARY"
+          echo "_mock-deploy=true — validating ZIP structure locally, no PP credentials used_" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+
+          FAIL=0
+          for ZIPTYPE in unmanaged managed; do
+            ZIP="out/${{ inputs.solution-name }}_${ZIPTYPE}.zip"
+            echo "### Checking \`$ZIPTYPE\` ZIP" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+
+            # ── Existence + size ─────────────────────────────────────────────
+            if [ ! -f "$ZIP" ]; then
+              echo "::error::$ZIP not found — pack step may have failed."
+              echo "| ❌ | ZIP exists | File not found |" >> "$GITHUB_STEP_SUMMARY"
+              FAIL=1
+              continue
+            fi
+            SIZE=$(du -sh "$ZIP" | cut -f1)
+            echo "| ✅ | ZIP exists | \`$ZIP\` ($SIZE) |" >> "$GITHUB_STEP_SUMMARY"
+
+            # ── Solution.xml readable ────────────────────────────────────────
+            SOL_XML=$(unzip -p "$ZIP" "Other/Solution.xml" 2>/dev/null || echo "")
+            if [ -z "$SOL_XML" ]; then
+              echo "::error::Could not extract Other/Solution.xml from $ZIP"
+              echo "| ❌ | Other/Solution.xml | Not found in ZIP |" >> "$GITHUB_STEP_SUMMARY"
+              FAIL=1
+            else
+              UNIQUE=$(echo "$SOL_XML" | grep -oP '(?<=<UniqueName>)[^<]+' || echo "unknown")
+              VERSION=$(echo "$SOL_XML" | grep -oP '(?<=<Version>)[^<]+' || echo "unknown")
+              echo "| ✅ | Other/Solution.xml | UniqueName=\`$UNIQUE\` Version=\`$VERSION\` |" >> "$GITHUB_STEP_SUMMARY"
+            fi
+
+            # ── Customizations.xml readable ──────────────────────────────────
+            CUST_XML=$(unzip -p "$ZIP" "Other/Customizations.xml" 2>/dev/null || echo "")
+            if [ -z "$CUST_XML" ]; then
+              echo "::error::Could not extract Other/Customizations.xml from $ZIP"
+              echo "| ❌ | Other/Customizations.xml | Not found in ZIP |" >> "$GITHUB_STEP_SUMMARY"
+              FAIL=1
+            else
+              echo "| ✅ | Other/Customizations.xml | Present and readable |" >> "$GITHUB_STEP_SUMMARY"
+            fi
+
+            # ── [Content_Types].xml present ──────────────────────────────────
+            CT_CHECK=$(unzip -l "$ZIP" 2>/dev/null | grep -c "\[Content_Types\]" || echo "0")
+            if [ "$CT_CHECK" -eq 0 ]; then
+              echo "::warning::$ZIP is missing [Content_Types].xml — PAC CLI may reject this in non-mock runs."
+              echo "| ⚠️  | \[Content_Types\].xml | Missing — warning only |" >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "| ✅ | \[Content_Types\].xml | Present |" >> "$GITHUB_STEP_SUMMARY"
+            fi
+
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+          done
+
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Rule Category | Simulated Result |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| --- | --- |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| AppSource Package Compliance | 🧪 Simulated — would run against geo: \`${{ inputs.checker-geo }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Managed Solution Accessibility | 🧪 Simulated |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Usage Telemetry | 🧪 Simulated |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Performance | 🧪 Simulated |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Design | 🧪 Simulated |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Supportability | 🧪 Simulated |" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "::notice::Solution Checker SIMULATED. Re-run without mock-deploy=true for a full live analysis against the Power Platform environment."
+
+          if [ "$FAIL" -ne 0 ]; then
+            echo "::error::Simulated Solution Checker failed — one or more ZIPs have structural issues."
+            exit 1
+          fi
+
+      # ── 8a. Export config data — REAL (requires PP credentials) ──────────────
       - name: Export configuration data
+        id: export-data-real
         if: inputs.data-schema-file != '' && inputs.mock-deploy != true
         uses: microsoft/powerplatform-actions/export-data@v1
         with:
@@ -214,6 +295,66 @@ jobs:
           schema-file:     ${{ inputs.data-schema-file }}
           data-file:       "out/config-data.zip"
           overwrite:       true
+
+      # ── 8b. Export config data — SIMULATION (mock-deploy only) ───────────────
+      # Reads the schema XML, lists entities that would be exported, and creates
+      # a placeholder config-data.zip so the artifact upload step finds the file.
+      - name: "🧪 Export configuration data — Simulation (mock-deploy)"
+        id: export-data-sim
+        if: inputs.data-schema-file != '' && inputs.mock-deploy == true
+        shell: bash
+        run: |
+          SCHEMA="${{ inputs.data-schema-file }}"
+
+          echo "## 🧪 Export Configuration Data — Simulation" >> "$GITHUB_STEP_SUMMARY"
+          echo "_mock-deploy=true — parsing schema locally, no Dataverse connection used_" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Schema file:** \`$SCHEMA\`  " >> "$GITHUB_STEP_SUMMARY"
+          echo "**Source env:**  \`${{ inputs.source-environment-url || '(none provided)' }}\`  " >> "$GITHUB_STEP_SUMMARY"
+          echo "**Output:**      \`out/config-data.zip\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+
+          if [ ! -f "$SCHEMA" ]; then
+            echo "::warning::Schema file not found at '$SCHEMA' — skipping config-data simulation."
+            echo "⚠️  Schema file not found — no config-data.zip produced." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "| Entity / Table | Simulated Status |" >> "$GITHUB_STEP_SUMMARY"
+            echo "| --- | --- |" >> "$GITHUB_STEP_SUMMARY"
+
+            # Extract entity names from schema XML
+            python3 << 'PYEOF'
+          import xml.etree.ElementTree as ET, sys, os
+
+          schema = os.environ.get("SCHEMA") or "$SCHEMA"
+          try:
+              tree = ET.parse(schema)
+              root = tree.getroot()
+              # Support both <entity name="..."> and <entities><entity name="...">
+              entities = root.findall(".//entity") or root.findall("entity")
+              if entities:
+                  for ent in entities:
+                      name = ent.get("name") or ent.get("displayname") or ent.text or "unknown"
+                      print(f"| \`{name}\` | 🧪 Would export records |")
+              else:
+                  print("| (no entities found in schema) | — |")
+          except Exception as e:
+              print(f"| ⚠️  Schema parse warning: {e} | — |")
+          PYEOF
+
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+
+            # Create a placeholder config-data.zip so artifact upload finds the file
+            mkdir -p out
+            echo "MOCK CONFIG DATA EXPORT — generated by mock-deploy simulation" > /tmp/mock-config-data.txt
+            echo "Schema: $SCHEMA" >> /tmp/mock-config-data.txt
+            echo "Run:    ${{ github.run_number }}" >> /tmp/mock-config-data.txt
+            echo "Date:   $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> /tmp/mock-config-data.txt
+            zip -j out/config-data.zip /tmp/mock-config-data.txt
+            echo "✅ Placeholder \`out/config-data.zip\` created for artifact upload." >> "$GITHUB_STEP_SUMMARY"
+            echo "::notice::Config data export SIMULATED. Re-run without mock-deploy=true to export live data from Dataverse."
+          fi
+        env:
+          SCHEMA: ${{ inputs.data-schema-file }}
 
       # ── 9. Upload build artifacts ──────────────────────────────────────────
       - name: Upload solution artifacts
@@ -227,16 +368,136 @@ jobs:
           retention-days: 30
           if-no-files-found: warn
 
-      # ── 10. Build summary ──────────────────────────────────────────────────
+      # ── 10a. Upload to JFrog Artifactory — REAL ───────────────────────────
+      # Uploads both managed and unmanaged ZIPs to Artifactory under:
+      #   <repo>/powerplatform/<SolutionName>/<Version>/<filename>
+      - name: Upload to JFrog Artifactory
+        id: jfrog-upload-real
+        if: inputs.enable-jfrog-upload == true && inputs.mock-deploy != true
+        shell: bash
+        env:
+          JFROG_URL:     ${{ inputs.jfrog-url }}
+          JFROG_REPO:    ${{ inputs.jfrog-repo }}
+          JFROG_API_KEY: ${{ secrets.JFROG_API_KEY }}
+          SOLUTION:      ${{ inputs.solution-name }}
+          VERSION:       ${{ steps.stamp-version.outputs.version }}
+        run: |
+          if [ -z "$JFROG_URL" ]; then
+            echo "::error::enable-jfrog-upload=true but jfrog-url input is empty. Set the JFROG_URL repository variable."
+            exit 1
+          fi
+          if [ -z "$JFROG_API_KEY" ]; then
+            echo "::error::enable-jfrog-upload=true but JFROG_API_KEY secret is not set."
+            exit 1
+          fi
+
+          echo "## 📦 JFrog Artifactory Upload" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| File | Target Path | Status |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| --- | --- | --- |" >> "$GITHUB_STEP_SUMMARY"
+
+          UPLOAD_FAIL=0
+          for ZIP in "out/${SOLUTION}_unmanaged.zip" "out/${SOLUTION}_managed.zip"; do
+            [ -f "$ZIP" ] || { echo "::warning::$ZIP not found — skipping."; continue; }
+            FILENAME=$(basename "$ZIP")
+            SIZE=$(du -sh "$ZIP" | cut -f1)
+            TARGET_PATH="${JFROG_REPO}/powerplatform/${SOLUTION}/${VERSION}/${FILENAME}"
+            FULL_URL="${JFROG_URL}/${TARGET_PATH}"
+
+            echo "📦 Uploading $FILENAME ($SIZE) → $FULL_URL"
+            HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+              -H "X-JFrog-Art-Api: ${JFROG_API_KEY}" \
+              -T "$ZIP" \
+              "$FULL_URL")
+
+            if [ "$HTTP_STATUS" -ge 200 ] && [ "$HTTP_STATUS" -lt 300 ]; then
+              echo "| \`$FILENAME\` ($SIZE) | \`$TARGET_PATH\` | ✅ HTTP $HTTP_STATUS |" >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "| \`$FILENAME\` ($SIZE) | \`$TARGET_PATH\` | ❌ HTTP $HTTP_STATUS |" >> "$GITHUB_STEP_SUMMARY"
+              echo "::error::JFrog upload failed for $FILENAME (HTTP $HTTP_STATUS). Check JFROG_URL, JFROG_API_KEY, and repo permissions."
+              UPLOAD_FAIL=1
+            fi
+          done
+
+          if [ "$UPLOAD_FAIL" -ne 0 ]; then exit 1; fi
+
+      # ── 10b. Upload to JFrog Artifactory — SIMULATION (mock-deploy) ──────────
+      # Prints exactly what would be uploaded and to which path, without
+      # making any network calls. Validates that the ZIPs exist first.
+      - name: "🧪 JFrog Artifactory upload — Simulation (mock-deploy)"
+        id: jfrog-upload-sim
+        if: inputs.enable-jfrog-upload == true && inputs.mock-deploy == true
+        shell: bash
+        env:
+          JFROG_URL:  ${{ inputs.jfrog-url }}
+          JFROG_REPO: ${{ inputs.jfrog-repo }}
+          SOLUTION:   ${{ inputs.solution-name }}
+          VERSION:    ${{ steps.stamp-version.outputs.version }}
+        run: |
+          EFFECTIVE_URL="${JFROG_URL:-https://your-company.jfrog.io/artifactory}"
+
+          echo "## 📦 JFrog Artifactory Upload — Simulation" >> "$GITHUB_STEP_SUMMARY"
+          echo "_mock-deploy=true — no network calls made_" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Artifactory URL:** \`$EFFECTIVE_URL\`  " >> "$GITHUB_STEP_SUMMARY"
+          echo "**Repository:**      \`$JFROG_REPO\`  " >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| File | Target Path | Size | Status |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| --- | --- | --- | --- |" >> "$GITHUB_STEP_SUMMARY"
+
+          for ZIP in "out/${SOLUTION}_unmanaged.zip" "out/${SOLUTION}_managed.zip"; do
+            FILENAME=$(basename "$ZIP")
+            TARGET_PATH="${JFROG_REPO}/powerplatform/${SOLUTION}/${VERSION}/${FILENAME}"
+            if [ -f "$ZIP" ]; then
+              SIZE=$(du -sh "$ZIP" | cut -f1)
+              echo "| \`$FILENAME\` | \`${EFFECTIVE_URL}/${TARGET_PATH}\` | $SIZE | 🧪 Simulated |" >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "| \`$FILENAME\` | \`${EFFECTIVE_URL}/${TARGET_PATH}\` | — | ⚠️ ZIP not found |" >> "$GITHUB_STEP_SUMMARY"
+              echo "::warning::$ZIP not found — it should have been created by the pack step."
+            fi
+          done
+
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "::notice::JFrog upload SIMULATED — no actual upload performed. Re-run without mock-deploy=true to push to Artifactory."
+
+      # ── 11. Build summary ──────────────────────────────────────────────────
       - name: Build summary
         if: always()
         shell: bash
         run: |
+          MOCK="${{ inputs.mock-deploy }}"
+          JFROG_ON="${{ inputs.enable-jfrog-upload }}"
+
           echo "## 🏗️ Build Results — ${{ inputs.solution-name }}" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Item | Status |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| --- | --- |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Solution Checker | ${{ inputs.mock-deploy == true && '⏭️ Skipped (mock-deploy)' || '✅ Mandatory — Always On' }} |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Version | \`${{ steps.stamp-version.outputs.version }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Step | Mode | Status |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| --- | --- | --- |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Version stamp | Always | \`${{ steps.stamp-version.outputs.version }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Pack Unmanaged | Always | ✅ Real (PAC CLI) |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Pack Managed | Always | ✅ Real (PAC CLI) |" >> "$GITHUB_STEP_SUMMARY"
+
+          if [[ "$MOCK" == "true" ]]; then
+            echo "| Solution Checker | mock-deploy | 🧪 Simulated (ZIP + XML validation) |" >> "$GITHUB_STEP_SUMMARY"
+            echo "| Export config data | mock-deploy | 🧪 Simulated (schema parse + placeholder ZIP) |" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "| Solution Checker | live | ✅ Real (geo: ${{ inputs.checker-geo }}) |" >> "$GITHUB_STEP_SUMMARY"
+            if [[ -n "${{ inputs.data-schema-file }}" ]]; then
+              echo "| Export config data | live | ✅ Real (schema: \`${{ inputs.data-schema-file }}\`) |" >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "| Export config data | — | ⏭️ No schema file provided |" >> "$GITHUB_STEP_SUMMARY"
+            fi
+          fi
+
+          if [[ "$JFROG_ON" == "true" ]]; then
+            if [[ "$MOCK" == "true" ]]; then
+              echo "| JFrog upload | mock-deploy | 🧪 Simulated (no network call) |" >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "| JFrog upload | live | ✅ Real → \`${{ inputs.jfrog-url }}/${{ inputs.jfrog-repo }}\` |" >> "$GITHUB_STEP_SUMMARY"
+            fi
+          else
+            echo "| JFrog upload | — | ⏭️ Disabled (enable-jfrog-upload=false) |" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "| Artifact | \`${{ steps.set-artifact-name.outputs.artifact-name }}\` |" >> "$GITHUB_STEP_SUMMARY"
           echo "| Run # | ${{ github.run_number }} |" >> "$GITHUB_STEP_SUMMARY"
