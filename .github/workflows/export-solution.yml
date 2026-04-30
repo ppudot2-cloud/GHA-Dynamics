@@ -19,6 +19,16 @@
 #   Each selected solution is exported sequentially on the SAME feature branch
 #   (max-parallel: 1). A single Pull Request is created after all exports
 #   complete, bundling all changes into one review.
+#
+# MOCK-DEPLOY MODE (mock-deploy=true):
+#   All steps run as simulations — no PP credentials or live Dataverse required.
+#   who-am-i            → simulated (logs mock connection)
+#   publish-before-export → simulated (logs what would publish)
+#   export-solution     → simulated (packs existing source → ZIP using PAC CLI)
+#   unpack-solution     → simulated (unpacks to out/unpack-verify/, diffs vs source)
+#   export-config-data  → simulated (parses schema, creates placeholder ZIP)
+#   commit/push         → simulated (git diff --stat shows what would change, no push)
+#   create-pr           → simulated (prints PR title + body, no gh pr create)
 # =============================================================================
 
 name: Export Solution from Sandbox
@@ -61,6 +71,11 @@ on:
         description: 'Unpack Canvas App .msapp to YAML source'
         required: false
         default: true
+        type: boolean
+      mock-deploy:
+        description: 'Dry-run — simulate the full export flow using existing source files. No PP credentials or live Dataverse required.'
+        required: false
+        default: false
         type: boolean
 
 jobs:
@@ -218,8 +233,9 @@ jobs:
         with:
           add-tools-to-path: true
 
-      # ── 4. Validate sandbox connection ──────────────────────────────────
+      # ── 4a. Validate sandbox connection — REAL ──────────────────────────────
       - name: Validate sandbox connection (who-am-i)
+        if: inputs.mock-deploy != true
         uses: microsoft/powerplatform-actions/who-am-i@v1
         with:
           environment-url: ${{ vars.PP_SDBX_URL }}
@@ -227,9 +243,23 @@ jobs:
           client-secret:   ${{ secrets.PP_CLIENT_SECRET }}
           tenant-id:       ${{ secrets.PP_TENANT_ID }}
 
-      # ── 5. Publish customizations in sandbox (optional) ─────────────────
+      # ── 4b. Validate sandbox connection — SIMULATION ─────────────────────
+      - name: "🧪 Validate sandbox connection — Simulation (mock-deploy)"
+        if: inputs.mock-deploy == true
+        shell: bash
+        run: |
+          SDBX="${{ vars.PP_SDBX_URL }}"
+          echo "## 🧪 Export Simulation — ${{ matrix.solution }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "_mock-deploy=true — no PP credentials or live Dataverse used_" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Check | Result |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| --- | --- |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Sandbox connection | 🧪 Simulated — would connect to \`${SDBX:-PP_SDBX_URL not set}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "::notice::Sandbox connection SIMULATED — no actual authentication performed."
+
+      # ── 5a. Publish customizations in sandbox — REAL (optional) ─────────
       - name: Publish customizations in sandbox
-        if: inputs.publish-before-export == true
+        if: inputs.publish-before-export == true && inputs.mock-deploy != true
         uses: microsoft/powerplatform-actions/publish-solution@v1
         with:
           environment-url:     ${{ vars.PP_SDBX_URL }}
@@ -239,8 +269,17 @@ jobs:
           run-asynchronously:  true
           max-async-wait-time: 10
 
-      # ── 6. Export solution (unmanaged) ───────────────────────────────────
+      # ── 5b. Publish customizations — SIMULATION ──────────────────────────
+      - name: "🧪 Publish customizations — Simulation (mock-deploy)"
+        if: inputs.publish-before-export == true && inputs.mock-deploy == true
+        shell: bash
+        run: |
+          echo "| Publish customizations | 🧪 Simulated — publish-customizations would run on \`${{ vars.PP_SDBX_URL || 'PP_SDBX_URL not set' }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "::notice::Publish customizations SIMULATED — no actual Dataverse call performed."
+
+      # ── 6a. Export solution (unmanaged) — REAL ───────────────────────────
       - name: Export solution — ${{ matrix.solution }}
+        if: inputs.mock-deploy != true
         uses: microsoft/powerplatform-actions/export-solution@v1
         with:
           environment-url:      ${{ vars.PP_SDBX_URL }}
@@ -254,8 +293,37 @@ jobs:
           max-async-wait-time:  60
           overwrite:            true
 
-      # ── 7. Unpack solution to source files ───────────────────────────────
+      # ── 6b. Export solution — SIMULATION ─────────────────────────────────
+      # Packs the existing source files using PAC CLI to produce a real ZIP.
+      # This proves the current source is structurally valid and produces the
+      # same artifact that downstream unpack/verify steps operate on.
+      - name: "🧪 Export solution — Simulation (pack existing source)"
+        if: inputs.mock-deploy == true
+        uses: microsoft/powerplatform-actions/pack-solution@v1
+        with:
+          solution-folder:  "${{ env.SOLUTION_FOLDER }}"
+          solution-file:    "out/${{ matrix.solution }}.zip"
+          solution-type:    "Unmanaged"
+          process-canvas-apps: ${{ inputs.process-canvas-apps }}
+
+      - name: "🧪 Log simulated export"
+        if: inputs.mock-deploy == true
+        shell: bash
+        run: |
+          ZIP="out/${{ matrix.solution }}.zip"
+          if [ -f "$ZIP" ]; then
+            SIZE=$(du -sh "$ZIP" | cut -f1)
+            FILE_COUNT=$(unzip -l "$ZIP" 2>/dev/null | tail -1 | awk '{print $2}')
+            echo "| Export solution | 🧪 Simulated — packed existing source → \`$ZIP\` ($SIZE, $FILE_COUNT files) |" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "| Export solution | ❌ Pack failed — ZIP not produced |" >> "$GITHUB_STEP_SUMMARY"
+            echo "::error::Simulated export (pack) failed — $ZIP was not created."
+            exit 1
+          fi
+
+      # ── 7a. Unpack solution to source files — REAL ───────────────────────
       - name: Unpack solution — ${{ matrix.solution }}
+        if: inputs.mock-deploy != true
         uses: microsoft/powerplatform-actions/unpack-solution@v1
         with:
           solution-file:       out/${{ matrix.solution }}.zip
@@ -264,8 +332,63 @@ jobs:
           overwrite-files:     true
           process-canvas-apps: ${{ inputs.process-canvas-apps }}
 
+      # ── 7b. Unpack solution — SIMULATION (round-trip integrity check) ─────
+      # Unpacks the simulated ZIP to a SEPARATE verification folder so source
+      # files in src/solutions/ are NOT overwritten. Compares key manifests
+      # between original source and the round-trip output.
+      - name: "🧪 Unpack solution — Simulation (round-trip integrity check)"
+        if: inputs.mock-deploy == true
+        shell: bash
+        run: |
+          VERIFY_DIR="out/unpack-verify/${{ matrix.solution }}"
+          mkdir -p "$VERIFY_DIR"
+
+          echo "::group::Unpacking simulated ZIP for round-trip check"
+          pac solution unpack \
+            --zipfile "out/${{ matrix.solution }}.zip" \
+            --folder  "$VERIFY_DIR" \
+            --packagetype Unmanaged \
+            --allowDelete || true
+          echo "::endgroup::"
+
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Round-trip Integrity Check" >> "$GITHUB_STEP_SUMMARY"
+          echo "| File | Result |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| --- | --- |" >> "$GITHUB_STEP_SUMMARY"
+
+          FAIL=0
+          for REL_PATH in "Other/Solution.xml" "Other/Customizations.xml"; do
+            SRC="${{ env.SOLUTION_FOLDER }}/$REL_PATH"
+            VER="$VERIFY_DIR/$REL_PATH"
+
+            if [ ! -f "$SRC" ]; then
+              echo "| \`$REL_PATH\` | ⚠️  Source file missing |" >> "$GITHUB_STEP_SUMMARY"
+              continue
+            fi
+            if [ ! -f "$VER" ]; then
+              echo "| \`$REL_PATH\` | ⚠️  Not produced by unpack |" >> "$GITHUB_STEP_SUMMARY"
+              continue
+            fi
+
+            DIFF=$(diff --strip-trailing-cr <(grep -v "^$" "$SRC") <(grep -v "^$" "$VER") 2>/dev/null | wc -l)
+            if [ "$DIFF" -eq 0 ]; then
+              echo "| \`$REL_PATH\` | ✅ Identical (round-trip clean) |" >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "| \`$REL_PATH\` | ℹ️  $DIFF line(s) differ — PAC CLI may normalise formatting |" >> "$GITHUB_STEP_SUMMARY"
+            fi
+          done
+
+          # Show file counts
+          SRC_COUNT=$(find "${{ env.SOLUTION_FOLDER }}" -type f | wc -l)
+          VER_COUNT=$(find "$VERIFY_DIR" -type f | wc -l)
+          echo "| Source file count | $SRC_COUNT |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Round-trip file count | $VER_COUNT |" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "::notice::Unpack SIMULATED to \`$VERIFY_DIR\` — source files in \`${{ env.SOLUTION_FOLDER }}\` were NOT modified."
+
       # ── 8. Reset build number in Solution.xml ────────────────────────────
       # Keep major.minor; reset build to 0 so CI stamps it at build time.
+      # Runs in both real and mock-deploy mode (local file operation).
       - name: Reset build number in Solution.xml
         shell: bash
         run: |
@@ -276,17 +399,17 @@ jobs:
             MINOR=$(echo "$CURRENT" | cut -d. -f2)
             NEW_VERSION="${MAJOR}.${MINOR}.0.0"
             sed -i "s|<Version>[^<]*</Version>|<Version>${NEW_VERSION}</Version>|" "$SOLUTION_XML"
-            echo "ℹ️  Version reset: ${CURRENT} → ${NEW_VERSION}"
+            echo "ℹ️  Version reset: ${CURRENT} → ${NEW_VERSION} (in $SOLUTION_XML)"
+            echo "| Version reset | \`${CURRENT}\` → \`${NEW_VERSION}\` |" >> "$GITHUB_STEP_SUMMARY"
           fi
 
-      # ── 9. Export configuration data (optional) ──────────────────────────
+      # ── 9. Export configuration data ─────────────────────────────────────
       # Looks for config/<SolutionName>/data-schema.xml
       # Falls back to config/data-schema.xml for single-solution repos
-      - name: Export configuration data — ${{ matrix.solution }}
+      - name: Resolve config data schema — ${{ matrix.solution }}
         if: inputs.export-config-data == true
         shell: bash
         run: |
-          # Resolve schema file: solution-specific, then repo-level fallback
           SCHEMA=""
           if [ -f "${{ env.DATA_SCHEMA_FILE }}" ]; then
             SCHEMA="${{ env.DATA_SCHEMA_FILE }}"
@@ -297,13 +420,12 @@ jobs:
 
           if [ -z "$SCHEMA" ]; then
             echo "::notice::No data-schema.xml found for ${{ matrix.solution }}. Skipping config data export."
-            exit 0
           fi
-
           echo "RESOLVED_SCHEMA=${SCHEMA}" >> "$GITHUB_ENV"
 
-      - name: Run config data export
-        if: inputs.export-config-data == true && env.RESOLVED_SCHEMA != ''
+      # ── 9a. Run config data export — REAL ────────────────────────────────
+      - name: Export configuration data — ${{ matrix.solution }}
+        if: inputs.export-config-data == true && env.RESOLVED_SCHEMA != '' && inputs.mock-deploy != true
         uses: microsoft/powerplatform-actions/export-data@v1
         with:
           environment-url: ${{ vars.PP_SDBX_URL }}
@@ -315,9 +437,52 @@ jobs:
           overwrite:       true
         continue-on-error: true
 
-      # ── 10. Commit and push ───────────────────────────────────────────────
+      # ── 9b. Export configuration data — SIMULATION ───────────────────────
+      # Parses the schema XML to list entities that would be exported.
+      # Creates a placeholder config-data.zip to simulate the output file.
+      - name: "🧪 Export configuration data — Simulation (mock-deploy)"
+        if: inputs.export-config-data == true && env.RESOLVED_SCHEMA != '' && inputs.mock-deploy == true
+        shell: bash
+        env:
+          SCHEMA: ${{ env.RESOLVED_SCHEMA }}
+        run: |
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "### 🧪 Config Data Export — Simulation" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Schema:** \`$SCHEMA\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Entity / Table | Simulated Status |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| --- | --- |" >> "$GITHUB_STEP_SUMMARY"
+
+          python3 << 'PYEOF'
+          import xml.etree.ElementTree as ET, os
+          schema = os.environ.get("SCHEMA", "")
+          try:
+              tree = ET.parse(schema)
+              root = tree.getroot()
+              entities = root.findall(".//entity") or root.findall("entity")
+              if entities:
+                  for ent in entities:
+                      name = ent.get("name") or ent.get("displayname") or ent.text or "unknown"
+                      print(f"| \`{name}\` | 🧪 Would export records |")
+              else:
+                  print("| (no entities found in schema) | — |")
+          except Exception as e:
+              print(f"| ⚠️  Schema parse warning: {e} | — |")
+          PYEOF
+
+          mkdir -p "config/${{ matrix.solution }}"
+          echo "MOCK CONFIG DATA EXPORT — simulation" > /tmp/mock-config-data.txt
+          echo "Schema: $SCHEMA" >> /tmp/mock-config-data.txt
+          echo "Run: ${{ github.run_number }}" >> /tmp/mock-config-data.txt
+          zip -j "config/${{ matrix.solution }}/config-data.zip" /tmp/mock-config-data.txt
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "✅ Placeholder \`config/${{ matrix.solution }}/config-data.zip\` created." >> "$GITHUB_STEP_SUMMARY"
+          echo "::notice::Config data export SIMULATED — no Dataverse connection used."
+
+      # ── 10a. Commit and push — REAL ───────────────────────────────────────
       - name: Commit and push — ${{ matrix.solution }}
         id: commit
+        if: inputs.mock-deploy != true
         shell: bash
         run: |
           git add --all
@@ -332,15 +497,54 @@ jobs:
             echo "✅ Committed and pushed ${{ matrix.solution }} to \`${{ env.BRANCH_NAME }}\`" >> "$GITHUB_STEP_SUMMARY"
           fi
 
+      # ── 10b. Commit dry-run — SIMULATION ─────────────────────────────────
+      # Stages all changes and shows what would be committed, without pushing.
+      - name: "🧪 Commit dry-run — Simulation (mock-deploy)"
+        id: commit-sim
+        if: inputs.mock-deploy == true
+        shell: bash
+        run: |
+          git add --all
+
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "### 🧪 Commit Dry-Run" >> "$GITHUB_STEP_SUMMARY"
+          echo "_Changes that would be committed to \`${{ env.BRANCH_NAME }}\`:_" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+
+          if git diff --cached --quiet; then
+            echo "nothing-to-commit=true"  >> "$GITHUB_OUTPUT"
+            echo "**No changes detected** — source already matches the existing commit." >> "$GITHUB_STEP_SUMMARY"
+            echo "::notice::No changes detected for ${{ matrix.solution }} — nothing would be committed."
+          else
+            echo "nothing-to-commit=false" >> "$GITHUB_OUTPUT"
+            echo "\`\`\`" >> "$GITHUB_STEP_SUMMARY"
+            git diff --cached --stat >> "$GITHUB_STEP_SUMMARY"
+            echo "\`\`\`" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            CHANGED=$(git diff --cached --stat | tail -1)
+            echo "**Would commit:** \`${{ inputs.commit-message }}: ${{ matrix.solution }} [run #${{ github.run_number }}]\`" >> "$GITHUB_STEP_SUMMARY"
+            echo "**Would push to:** \`${{ env.BRANCH_NAME }}\`" >> "$GITHUB_STEP_SUMMARY"
+            echo "::notice::Commit SIMULATED — $CHANGED would be committed to ${{ env.BRANCH_NAME }} in a real run."
+          fi
+
       # ── 11. Per-solution export summary ──────────────────────────────────
       - name: Export summary — ${{ matrix.solution }}
         if: always()
         shell: bash
         run: |
-          echo "### 📤 ${{ matrix.solution }}" >> "$GITHUB_STEP_SUMMARY"
+          MOCK="${{ inputs.mock-deploy }}"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "---" >> "$GITHUB_STEP_SUMMARY"
+          echo "### 📤 Export Summary — ${{ matrix.solution }}" >> "$GITHUB_STEP_SUMMARY"
           echo "| Field | Value |" >> "$GITHUB_STEP_SUMMARY"
           echo "| --- | --- |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Source env | \`${{ vars.PP_SDBX_URL }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          if [[ "$MOCK" == "true" ]]; then
+            echo "| Mode | 🧪 Simulation (mock-deploy=true) |" >> "$GITHUB_STEP_SUMMARY"
+            echo "| Source env | \`${{ vars.PP_SDBX_URL || 'PP_SDBX_URL not set' }}\` (not connected) |" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "| Mode | ✅ Live |" >> "$GITHUB_STEP_SUMMARY"
+            echo "| Source env | \`${{ vars.PP_SDBX_URL }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          fi
           echo "| Branch | \`${{ env.BRANCH_NAME }}\` |" >> "$GITHUB_STEP_SUMMARY"
           echo "| Config data | ${{ inputs.export-config-data == 'true' && '✅' || '⏭️' }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| Canvas apps | ${{ inputs.process-canvas-apps == 'true' && '✅' || '⏭️' }} |" >> "$GITHUB_STEP_SUMMARY"
@@ -348,6 +552,7 @@ jobs:
   # ============================================================================
   # JOB 2 ─ Create PR (runs once after ALL exports complete)
   # Opens a single Pull Request covering all exported solutions.
+  # In mock-deploy mode: prints what the PR would look like without creating it.
   # ============================================================================
   create-pr:
     name: "🔀 Create Pull Request"
@@ -363,7 +568,9 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           fetch-depth: 0
 
+      # ── Create PR — REAL ───────────────────────────────────────────────────
       - name: Create Pull Request
+        if: inputs.mock-deploy != true
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -378,7 +585,6 @@ jobs:
             TITLE="🔄 Export: ${SOLUTION_COUNT} solutions (#${{ github.run_number }})"
           fi
 
-          # Build solution list for PR body
           SOL_ROWS=""
           IFS=',' read -ra SOLS <<< "$SOLUTION_LIST"
           for SOL in "${SOLS[@]}"; do
@@ -405,13 +611,58 @@ jobs:
             --base   "main" \
           || echo "::warning::PR may already exist for branch $BRANCH — check GitHub."
 
-      - name: PR creation summary
+      # ── Create PR — SIMULATION ─────────────────────────────────────────────
+      - name: "🧪 Create Pull Request — Simulation (mock-deploy)"
+        if: inputs.mock-deploy == true
+        shell: bash
+        run: |
+          SOLUTION_COUNT="${{ needs.setup.outputs.solution-count }}"
+          SOLUTION_LIST="${{ needs.setup.outputs.solution-list }}"
+          BRANCH="${{ needs.setup.outputs.branch-name }}"
+
+          if [ "$SOLUTION_COUNT" -eq "1" ]; then
+            TITLE="🔄 Export: ${SOLUTION_LIST} (#${{ github.run_number }})"
+          else
+            TITLE="🔄 Export: ${SOLUTION_COUNT} solutions (#${{ github.run_number }})"
+          fi
+
+          echo "## 🧪 Pull Request — Simulation" >> "$GITHUB_STEP_SUMMARY"
+          echo "_mock-deploy=true — no PR was created. This is what would be raised:_" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Field | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| --- | --- |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| PR Title | \`$TITLE\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Head branch | \`$BRANCH\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Base branch | \`main\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Solutions | $SOLUTION_COUNT |" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**PR body would be:**" >> "$GITHUB_STEP_SUMMARY"
+          echo "\`\`\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "## Automated sandbox export" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Solutions exported:" >> "$GITHUB_STEP_SUMMARY"
+          IFS=',' read -ra SOLS <<< "$SOLUTION_LIST"
+          for SOL in "${SOLS[@]}"; do
+            echo "  - $(echo $SOL | xargs)" >> "$GITHUB_STEP_SUMMARY"
+          done
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Source environment: ${{ vars.PP_SDBX_URL || 'PP_SDBX_URL not set' }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Run: #${{ github.run_number }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Actor: @${{ github.actor }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "\`\`\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "::notice::PR creation SIMULATED — no gh pr create was called. Re-run without mock-deploy=true to create the real PR."
+
+      - name: PR summary
         if: always()
         shell: bash
         run: |
+          MOCK="${{ inputs.mock-deploy }}"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "## 🔀 Pull Request" >> "$GITHUB_STEP_SUMMARY"
           echo "| Field | Value |" >> "$GITHUB_STEP_SUMMARY"
           echo "| --- | --- |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Mode | $([[ "$MOCK" == "true" ]] && echo "🧪 Simulated" || echo "✅ Live") |" >> "$GITHUB_STEP_SUMMARY"
           echo "| Branch | \`${{ needs.setup.outputs.branch-name }}\` |" >> "$GITHUB_STEP_SUMMARY"
           echo "| Solutions | ${{ needs.setup.outputs.solution-count }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| Target | \`main\` |" >> "$GITHUB_STEP_SUMMARY"
