@@ -123,16 +123,20 @@ on:
       managed_zip:
         description: "Relative path to the managed ZIP inside the artifact"
         value: ${{ jobs.build.outputs.managed_zip }}
+      checker_artifact_name:
+        description: "GitHub Actions artifact name for the Solution Checker report"
+        value: ${{ jobs.build.outputs.checker_artifact_name }}
 
 jobs:
   build:
     name: "Build | ${{ inputs.solution_name }}"
     runs-on: ubuntu-latest
     outputs:
-      solution_version: ${{ steps.stamp-version.outputs.version }}
-      artifact_name:    ${{ steps.set-names.outputs.artifact_name }}
-      unmanaged_zip:    ${{ steps.set-names.outputs.unmanaged_zip }}
-      managed_zip:      ${{ steps.set-names.outputs.managed_zip }}
+      solution_version:      ${{ steps.stamp-version.outputs.version }}
+      artifact_name:         ${{ steps.set-names.outputs.artifact_name }}
+      unmanaged_zip:         ${{ steps.set-names.outputs.unmanaged_zip }}
+      managed_zip:           ${{ steps.set-names.outputs.managed_zip }}
+      checker_artifact_name: ${{ steps.set-names.outputs.checker_artifact_name }}
 
     steps:
       # ── 1. Checkout ────────────────────────────────────────────────────────
@@ -191,20 +195,23 @@ jobs:
           $outDir  = "out/$sol"
           $unman   = "$outDir/${sol}-${ver}_unmanaged.zip"
           $man     = "$outDir/${sol}-${ver}_managed.zip"
-          $artName = "solution-${sol}-${{ github.run_number }}"
+          $artName     = "solution-${sol}-${{ github.run_number }}"
+          $checkerName = "SolutionChecker-${sol}-${{ github.run_number }}"
 
           New-Item -ItemType Directory -Path $outDir -Force | Out-Null
           New-Item -ItemType Directory -Path "$outDir/solution-checker" -Force | Out-Null
           New-Item -ItemType Directory -Path "$outDir/config" -Force | Out-Null
 
-          "artifact_name=$artName" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-          "unmanaged_zip=$unman"   | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-          "managed_zip=$man"       | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-          "out_dir=$outDir"        | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "artifact_name=$artName"              | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "unmanaged_zip=$unman"                | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "managed_zip=$man"                    | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "out_dir=$outDir"                     | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "checker_artifact_name=$checkerName"  | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
-          Write-Host "Artifact : $artName"
-          Write-Host "Unmanaged: $unman"
-          Write-Host "Managed  : $man"
+          Write-Host "Artifact        : $artName"
+          Write-Host "Checker artifact: $checkerName"
+          Write-Host "Unmanaged       : $unman"
+          Write-Host "Managed         : $man"
 
       # ── 6. Strip <Managed> tag from Solution.xml ──────────────────────────
       - name: Strip Managed tag
@@ -267,7 +274,59 @@ jobs:
           geo:                       ${{ inputs.checker_geo }}
           fail-on-analysis-error:    true
           error-level:               ${{ inputs.checker_error_level }}
-          checker-logs-artifact-name: "SolutionChecker-${{ inputs.solution_name }}-${{ github.run_number }}"
+          checker-logs-artifact-name: "${{ steps.set-names.outputs.checker_artifact_name }}"
+
+      # ── 9a-post. Copy checker report into solution output folder ────────────
+      # The check-solution action writes SARIF/JSON results to a temp working
+      # directory before uploading them. We glob for any .sarif/.json files the
+      # action left behind and copy them into out/{solution}/solution-checker/
+      # so they are included in the main build artifact and uploaded to JFrog.
+      - name: Copy checker report to output folder
+        if: inputs.mock_deploy != true && steps.solution-checker-real.outcome != 'skipped'
+        shell: pwsh
+        run: |
+          $destDir = "out/${{ inputs.solution_name }}/solution-checker"
+          New-Item -ItemType Directory -Path $destDir -Force | Out-Null
+
+          # The action writes results under the runner temp or working directory.
+          # Search common locations for SARIF / JSON checker output files.
+          $searchRoots = @(
+            $env:RUNNER_TEMP,
+            "${{ github.workspace }}",
+            "."
+          )
+          $found = @()
+          foreach ($root in $searchRoots) {
+            if ($root -and (Test-Path $root)) {
+              $files = Get-ChildItem -Path $root -Recurse -Include "*.sarif","*.sarif.json" `
+                         -ErrorAction SilentlyContinue |
+                       Where-Object { $_.FullName -notlike "*$destDir*" }
+              $found += $files
+            }
+          }
+
+          if ($found.Count -gt 0) {
+            foreach ($f in $found) {
+              Copy-Item -Path $f.FullName -Destination $destDir -Force
+              Write-Host "✅ Copied checker report: $($f.Name) → $destDir/"
+            }
+            "| ✅ Checker report | $($found.Count) file(s) copied to ``$destDir/`` |" |
+              Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+          } else {
+            # No SARIF found — write a placeholder so the folder is non-empty
+            # and the artifact upload doesn't skip it.
+            $placeholder = "$destDir/checker-summary.txt"
+            @"
+          Solution Checker completed — no SARIF output file located on runner.
+          Review the '${{ steps.set-names.outputs.checker_artifact_name }}' artifact
+          uploaded by the check-solution action for the full report.
+          Run  : ${{ github.run_number }}
+          Run attempt: ${{ github.run_attempt }}
+          "@ | Set-Content -Path $placeholder -Encoding UTF8
+            Write-Host "::notice::No SARIF file found — placeholder written to $placeholder"
+            "| ⚠️ Checker report | No SARIF located on runner — see artifact ``${{ steps.set-names.outputs.checker_artifact_name }}`` |" |
+              Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+          }
 
       # ── 9b. Solution Checker — SIMULATION (mock_deploy) ───────────────────
       - name: "🧪 Solution Checker — Simulation (mock_deploy)"
