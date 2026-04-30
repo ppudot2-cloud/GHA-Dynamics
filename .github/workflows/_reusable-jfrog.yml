@@ -111,14 +111,15 @@ jobs:
             exit 1
           }
 
+          $mock     = '${{ inputs.mock_deploy }}' -eq 'true'
           $jfrogUrl = '${{ inputs.jfrog_url }}'
-          if (-not $jfrogUrl) {
-            Write-Error "::error::jfrog_url is required."
+          if (-not $mock -and -not $jfrogUrl) {
+            Write-Error "::error::jfrog_url is required for non-mock JFrog operations."
             exit 1
           }
 
           $apiKey = '${{ secrets.JFROG_API_KEY }}'
-          if (-not $apiKey -and '${{ inputs.mock_deploy }}' -ne 'true') {
+          if (-not $apiKey -and -not $mock) {
             Write-Error "::error::JFROG_API_KEY secret is not set. Required for non-mock JFrog operations."
             exit 1
           }

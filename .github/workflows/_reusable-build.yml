@@ -376,7 +376,50 @@ jobs:
           retention-days: 30
           if-no-files-found: warn
 
-      # ── 12. Build summary ──────────────────────────────────────────────────
+      # ── 12a. Upload to JFrog Artifactory — REAL ───────────────────────────
+      # Uploads all ZIPs in the solution output folder to Artifactory.
+      # Path: {repo}/{repo_name}/{solution_name}/{run_number}/{run_attempt}/
+      # Mandatory in non-mock builds (validated in step 2).
+      - name: Upload artifacts to JFrog Artifactory
+        id: jfrog-upload-real
+        if: inputs.enable_jfrog_upload == true && inputs.mock_deploy != true
+        shell: pwsh
+        env:
+          JFROG_API_KEY: ${{ secrets.JFROG_API_KEY }}
+        run: |
+          & .github/scripts/Invoke-JFrogAction.ps1 `
+            -Action       'upload' `
+            -JFrogUrl     '${{ inputs.jfrog_url }}' `
+            -JFrogRepo    '${{ inputs.jfrog_repo }}' `
+            -ApiKey       $env:JFROG_API_KEY `
+            -SolutionName '${{ inputs.solution_name }}' `
+            -RepoName     '${{ github.event.repository.name }}' `
+            -RunNumber    '${{ github.run_number }}' `
+            -RunAttempt   '${{ github.run_attempt }}' `
+            -LocalPath    'out/${{ inputs.solution_name }}' `
+            -MockDeploy   $false
+
+      # ── 12b. JFrog upload — SIMULATION (mock_deploy) ──────────────────────
+      - name: "🧪 JFrog Artifactory upload — Simulation (mock_deploy)"
+        id: jfrog-upload-sim
+        if: inputs.enable_jfrog_upload == true && inputs.mock_deploy == true
+        shell: pwsh
+        env:
+          JFROG_API_KEY: placeholder
+        run: |
+          & .github/scripts/Invoke-JFrogAction.ps1 `
+            -Action       'upload' `
+            -JFrogUrl     '${{ inputs.jfrog_url || 'https://your-company.jfrog.io/artifactory' }}' `
+            -JFrogRepo    '${{ inputs.jfrog_repo }}' `
+            -ApiKey       'mock-key' `
+            -SolutionName '${{ inputs.solution_name }}' `
+            -RepoName     '${{ github.event.repository.name }}' `
+            -RunNumber    '${{ github.run_number }}' `
+            -RunAttempt   '${{ github.run_attempt }}' `
+            -LocalPath    'out/${{ inputs.solution_name }}' `
+            -MockDeploy   $true
+
+      # ── 14. Build summary ──────────────────────────────────────────────────
       - name: Build summary
         if: always()
         shell: pwsh

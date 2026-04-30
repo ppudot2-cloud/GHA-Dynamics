@@ -17,8 +17,8 @@
 # PIPELINE FLOW:
 #   setup
 #     └─► build (PARALLEL per solution)
-#           └─► jfrog-upload (PARALLEL per solution) ← uploads ZIPs to Artifactory
-#                 └─► deploy-dev (SEQUENTIAL, max-parallel:1)
+#           │    └─► JFrog upload runs as step 12a inside build (no separate job)
+#           └─► deploy-dev (SEQUENTIAL, max-parallel:1)
 #                       └─► gate-intg
 #                             └─► deploy-intg (SEQUENTIAL)
 #                                   └─► gate-uat → deploy-uat
@@ -179,40 +179,15 @@ jobs:
     secrets: inherit
 
   # ============================================================================
-  # JOB 1b ─ JFrog Upload (PARALLEL per solution, after build)
-  # Uploads managed + unmanaged ZIPs to Artifactory.
-  # Path: {jfrog_repo}/{repo_name}/{solution}/{run_number}/{run_attempt}/
-  # Skipped when enable_jfrog_upload=false or mock_deploy=true.
-  # ============================================================================
-  jfrog-upload:
-    name: "📦 JFrog Upload | ${{ matrix.solution }}"
-    needs: [setup, build]
-    if: >
-      needs.build.result == 'success' &&
-      inputs.enable_jfrog_upload != false
-    strategy:
-      matrix: ${{ fromJSON(needs.setup.outputs.matrix) }}
-      fail-fast: false
-    uses: ./.github/workflows/_reusable-jfrog.yml
-    with:
-      action:              upload
-      solution_name:       ${{ matrix.solution }}
-      jfrog_url:           ${{ vars.JFROG_URL || '' }}
-      jfrog_repo:          ${{ vars.JFROG_REPO || 'powerplatform-solutions' }}
-      artifact_local_path: out/${{ matrix.solution }}
-      mock_deploy:         ${{ inputs.mock_deploy == true }}
-    secrets: inherit
-
-  # ============================================================================
   # JOB 2 ─ Deploy to Dev (Unmanaged) — SEQUENTIAL
+  # JFrog upload is performed inside _reusable-build.yml (step 12a/12b).
   # max-parallel: 1  ← Power Platform platform constraint, not solution dependency
   # ============================================================================
   deploy-dev:
     name: "🚀 Dev [Unmanaged] | ${{ matrix.solution }}"
-    needs: [setup, build, jfrog-upload]
+    needs: [setup, build]
     if: >
-      (needs.build.result == 'success') &&
-      (needs.jfrog-upload.result == 'success' || needs.jfrog-upload.result == 'skipped') &&
+      needs.build.result == 'success' &&
       (inputs.target_environments == 'all'          ||
        inputs.target_environments == 'dev'          ||
        inputs.target_environments == 'dev-intg'     ||
@@ -491,7 +466,6 @@ jobs:
     needs:
       - setup
       - build
-      - jfrog-upload
       - deploy-dev
       - gate-intg
       - deploy-intg
@@ -511,20 +485,19 @@ jobs:
         shell: pwsh
         run: |
           & .github/scripts/Write-PipelineSummary.ps1 `
-            -SolutionList      '${{ needs.setup.outputs.solution_list }}' `
-            -SolutionCount     '${{ needs.setup.outputs.solution_count }}' `
-            -RunNumber         '${{ github.run_number }}' `
-            -RefName           '${{ github.ref_name }}' `
-            -CommitSha         '${{ github.sha }}' `
-            -SetupResult       '${{ needs.setup.result }}' `
-            -BuildResult       '${{ needs.build.result }}' `
-            -JFrogUploadResult '${{ needs.jfrog-upload.result }}' `
-            -DeployDevResult   '${{ needs.deploy-dev.result }}' `
-            -GateIntgResult    '${{ needs.gate-intg.result }}' `
-            -DeployIntgResult  '${{ needs.deploy-intg.result }}' `
-            -GateUatResult     '${{ needs.gate-uat.result }}' `
-            -DeployUatResult   '${{ needs.deploy-uat.result }}' `
-            -GatePerfResult    '${{ needs.gate-perf.result }}' `
-            -DeployPerfResult  '${{ needs.deploy-perf.result }}' `
-            -GateProdResult    '${{ needs.gate-prod.result }}' `
-            -DeployProdResult  '${{ needs.deploy-prod.result }}'
+            -SolutionList     '${{ needs.setup.outputs.solution_list }}' `
+            -SolutionCount    '${{ needs.setup.outputs.solution_count }}' `
+            -RunNumber        '${{ github.run_number }}' `
+            -RefName          '${{ github.ref_name }}' `
+            -CommitSha        '${{ github.sha }}' `
+            -SetupResult      '${{ needs.setup.result }}' `
+            -BuildResult      '${{ needs.build.result }}' `
+            -DeployDevResult  '${{ needs.deploy-dev.result }}' `
+            -GateIntgResult   '${{ needs.gate-intg.result }}' `
+            -DeployIntgResult '${{ needs.deploy-intg.result }}' `
+            -GateUatResult    '${{ needs.gate-uat.result }}' `
+            -DeployUatResult  '${{ needs.deploy-uat.result }}' `
+            -GatePerfResult   '${{ needs.gate-perf.result }}' `
+            -DeployPerfResult '${{ needs.deploy-perf.result }}' `
+            -GateProdResult   '${{ needs.gate-prod.result }}' `
+            -DeployProdResult '${{ needs.deploy-prod.result }}'

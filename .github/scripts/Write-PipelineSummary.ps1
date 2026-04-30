@@ -23,9 +23,6 @@
 .PARAMETER BuildResult
     GitHub job outcome for build.
 
-.PARAMETER JFrogUploadResult
-    GitHub job outcome for jfrog-upload.
-
 .PARAMETER DeployDevResult
     GitHub job outcome for deploy-dev.
 
@@ -40,7 +37,6 @@ param(
     [string] $CommitSha          = '',
     [string] $SetupResult        = 'skipped',
     [string] $BuildResult        = 'skipped',
-    [string] $JFrogUploadResult  = 'skipped',
     [string] $DeployDevResult    = 'skipped',
     [string] $GateIntgResult     = 'skipped',
     [string] $DeployIntgResult   = 'skipped',
@@ -70,8 +66,7 @@ function Get-Icon([string]$outcome) {
 | Stage | Environment | Result |
 | --- | --- | --- |
 | 🔍 Resolve | — | $(Get-Icon $SetupResult) |
-| 🏗️ Build (×$SolutionCount) | — | $(Get-Icon $BuildResult) |
-| 📦 JFrog Upload | Artifactory | $(Get-Icon $JFrogUploadResult) |
+| 🏗️ Build + JFrog Upload (×$SolutionCount) | — | $(Get-Icon $BuildResult) |
 | 🚀 Deploy | Dev | $(Get-Icon $DeployDevResult) |
 | 🔐 Gate | Intg | $(Get-Icon $GateIntgResult) |
 | 🚀 Deploy | Intg | $(Get-Icon $DeployIntgResult) |
