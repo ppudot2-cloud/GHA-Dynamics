@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ImportExportXml version="9.1.0.26671" SolutionPackageVersion="9.1" languagecode="1033" generatedBy="CrmLive">
+  <SolutionManifest>
+    <UniqueName>CoreSolution</UniqueName>
+    <LocalizedNames>
+      <LocalizedName description="Core Solution" languagecode="1033" />
+    </LocalizedNames>
+    <Descriptions>
+      <Description description="Core solution containing shared tables, security roles, and base components." languagecode="1033" />
+    </Descriptions>
+    <Version>1.0.0.0</Version>
+    <Managed>0</Managed>
+    <Publisher>
+      <UniqueName>pub_contoso</UniqueName>
+      <LocalizedNames>
+        <LocalizedName description="Contoso Publisher" languagecode="1033" />
+      </LocalizedNames>
+      <CustomizationPrefix>new</CustomizationPrefix>
+      <CustomizationOptionValuePrefix>10000</CustomizationOptionValuePrefix>
+    </Publisher>
+    <RootComponents>
+      <RootComponent type="1" schemaName="new_Product" behavior="0" />
+      <RootComponent type="20" schemaName="new_CoreAdmin" behavior="0" />
+      <RootComponent type="61" schemaName="new_ProcessProductApproval" behavior="0" />
+      <RootComponent type="380" schemaName="new_ServiceEndpointUrl" behavior="0" />
+      <RootComponent type="380" schemaName="new_FeatureToggleEnabled" behavior="0" />
+    </RootComponents>
+    <MissingDependencies />
+  </SolutionManifest>
+</ImportExportXml>
