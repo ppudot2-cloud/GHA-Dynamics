@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Role id="00000000-0000-0000-0000-000000000001"
+      name="Core Admin"
+      description="Full access to Core Solution entities and workflows."
+      ismanaged="0">
+  <RolePrivileges>
+    <RolePrivilege name="prvCreateAccount" level="Global" />
+    <RolePrivilege name="prvReadAccount" level="Global" />
+    <RolePrivilege name="prvWriteAccount" level="Global" />
+    <RolePrivilege name="prvCreatenew_Product" level="Global" />
+    <RolePrivilege name="prvReadnew_Product" level="Global" />
+    <RolePrivilege name="prvWritenew_Product" level="Global" />
+    <RolePrivilege name="prvDeletenew_Product" level="Global" />
+  </RolePrivileges>
+</Role>

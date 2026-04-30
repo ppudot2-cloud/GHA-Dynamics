@@ -172,13 +172,15 @@ jobs:
           fi
 
       # ── 6. Pack Unmanaged solution ─────────────────────────────────────────
+      # NOTE: process-canvas-apps is omitted — the flag is deprecated in
+      # PAC CLI 1.40+ and passing it causes a null reference when the CLI
+      # attempts canvas app scanning on solutions that have no canvas apps.
       - name: Pack Unmanaged solution
         uses: microsoft/powerplatform-actions/pack-solution@v1
         with:
           solution-folder:  "${{ inputs.solution-folder }}"
           solution-file:    "out/${{ inputs.solution-name }}_unmanaged.zip"
           solution-type:    "Unmanaged"
-          process-canvas-apps: true
 
       # ── 7. Pack Managed solution ───────────────────────────────────────────
       - name: Pack Managed solution
@@ -187,7 +189,6 @@ jobs:
           solution-folder:  "${{ inputs.solution-folder }}"
           solution-file:    "out/${{ inputs.solution-name }}_managed.zip"
           solution-type:    "Managed"
-          process-canvas-apps: true
 
       # ── 7a. Solution Checker — REAL (requires PP credentials, skipped in mock) ──
       - name: Run Solution Checker

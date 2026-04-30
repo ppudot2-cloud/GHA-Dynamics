@@ -297,6 +297,8 @@ jobs:
       # Packs the existing source files using PAC CLI to produce a real ZIP.
       # This proves the current source is structurally valid and produces the
       # same artifact that downstream unpack/verify steps operate on.
+      # NOTE: process-canvas-apps omitted — deprecated in PAC CLI 1.40+ and
+      # causes null reference on solutions without canvas apps.
       - name: "🧪 Export solution — Simulation (pack existing source)"
         if: inputs.mock-deploy == true
         uses: microsoft/powerplatform-actions/pack-solution@v1
@@ -304,7 +306,6 @@ jobs:
           solution-folder:  "${{ env.SOLUTION_FOLDER }}"
           solution-file:    "out/${{ matrix.solution }}.zip"
           solution-type:    "Unmanaged"
-          process-canvas-apps: ${{ inputs.process-canvas-apps }}
 
       - name: "🧪 Log simulated export"
         if: inputs.mock-deploy == true
