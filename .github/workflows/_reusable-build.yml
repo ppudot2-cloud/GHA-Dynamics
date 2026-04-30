@@ -148,8 +148,9 @@ jobs:
             echo "ℹ️  No <Managed> tag found — nothing to strip"
           fi
 
-      # ── 6. Pack Unmanaged solution ─────────────────────────────────────────
+      # ── 6. Pack Unmanaged solution (real) ─────────────────────────────────
       - name: Pack Unmanaged solution
+        if: inputs.mock-deploy != true
         uses: microsoft/powerplatform-actions/pack-solution@v1
         with:
           solution-folder:  "${{ inputs.solution-folder }}"
@@ -157,14 +158,33 @@ jobs:
           solution-type:    "Unmanaged"
           process-canvas-apps: true
 
-      # ── 7. Pack Managed solution ───────────────────────────────────────────
+      # ── 7. Pack Managed solution (real) ───────────────────────────────────
       - name: Pack Managed solution
+        if: inputs.mock-deploy != true
         uses: microsoft/powerplatform-actions/pack-solution@v1
         with:
           solution-folder:  "${{ inputs.solution-folder }}"
           solution-file:    "out/${{ inputs.solution-name }}_managed.zip"
           solution-type:    "Managed"
           process-canvas-apps: true
+
+      # ── 6/7 (mock). Create placeholder ZIPs for dry-run ───────────────────
+      # Real pack is skipped in mock-deploy mode — sample XML files are not
+      # genuine PAC unpack output and would cause PAC CLI null-ref errors.
+      # Placeholder ZIPs satisfy upload-artifact without touching Dataverse.
+      - name: Create mock artifacts (mock-deploy only)
+        if: inputs.mock-deploy == true
+        shell: bash
+        run: |
+          mkdir -p out
+          echo "MOCK ARTIFACT | solution: ${{ inputs.solution-name }} | run: ${{ github.run_number }}" \
+            > out/mock-readme.txt
+          zip out/${{ inputs.solution-name }}_unmanaged.zip out/mock-readme.txt
+          zip out/${{ inputs.solution-name }}_managed.zip   out/mock-readme.txt
+          rm out/mock-readme.txt
+          echo "✅ Created placeholder ZIPs for mock-deploy dry-run"
+          echo "   → out/${{ inputs.solution-name }}_unmanaged.zip"
+          echo "   → out/${{ inputs.solution-name }}_managed.zip"
 
       # ── 7. Solution Checker — MANDATORY when not mock-deploy, skipped otherwise ──
       - name: Run Solution Checker
