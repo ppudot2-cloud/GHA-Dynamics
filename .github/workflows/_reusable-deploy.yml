@@ -189,7 +189,7 @@ jobs:
       # ── 5. Check blocking in-progress operations (toggle) ─────────────────
       - name: Check for blocking async operations
         id: blocking-check
-        if: inputs.enable-blocking-check == true
+        if: inputs.enable-blocking-check == true && inputs.mock-deploy != true
         shell: bash
         env:
           ENV_URL:       ${{ inputs.environment-url }}
@@ -246,7 +246,7 @@ jobs:
       # ── 6. Compare solution version vs previous environment (toggle) ───────
       - name: Compare solution version vs previous environment
         id: version-compare
-        if: inputs.enable-version-compare == true && inputs.previous-environment-url != ''
+        if: inputs.enable-version-compare == true && inputs.previous-environment-url != '' && inputs.mock-deploy != true
         shell: bash
         env:
           PREV_ENV_URL:  ${{ inputs.previous-environment-url }}
@@ -304,7 +304,7 @@ jobs:
       # ── 7. Backup environment (toggle — rollback point) ────────────────────
       - name: Backup environment
         id: backup
-        if: inputs.enable-backup == true
+        if: inputs.enable-backup == true && inputs.mock-deploy != true
         uses: microsoft/powerplatform-actions/backup-environment@v1
         with:
           environment-url: ${{ inputs.environment-url }}
