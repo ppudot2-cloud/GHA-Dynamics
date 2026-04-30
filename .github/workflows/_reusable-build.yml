@@ -128,7 +128,27 @@ jobs:
           ARTIFACT="solution-${{ inputs.solution-name }}-${{ github.run_number }}"
           echo "artifact-name=${ARTIFACT}" >> "$GITHUB_OUTPUT"
 
-      # ── 5. Pack Unmanaged solution ─────────────────────────────────────────
+      # ── 5. Strip <Managed> tag from Solution.xml ──────────────────────────
+      # PAC CLI 1.40+ validates that the <Managed> flag in Solution.xml matches
+      # the requested --packageType. Exports from Dataverse always produce
+      # <Managed>0</Managed> (unmanaged source), which causes the managed pack
+      # to fail with "Solution package type did not match requested type."
+      # Removing the tag lets PAC CLI use --packageType alone to decide the
+      # output format — standard practice for dual unmanaged+managed builds.
+      - name: Strip <Managed> tag from Solution.xml
+        shell: bash
+        run: |
+          SOLUTION_XML="${{ inputs.solution-folder }}/Other/Solution.xml"
+          if grep -q "<Managed>" "$SOLUTION_XML"; then
+            sed -i 's|.*<Managed>.*</Managed>.*||g' "$SOLUTION_XML"
+            # Remove any blank lines left behind
+            sed -i '/^[[:space:]]*$/d' "$SOLUTION_XML"
+            echo "✅ Stripped <Managed> tag from $SOLUTION_XML"
+          else
+            echo "ℹ️  No <Managed> tag found — nothing to strip"
+          fi
+
+      # ── 6. Pack Unmanaged solution ─────────────────────────────────────────
       - name: Pack Unmanaged solution
         uses: microsoft/powerplatform-actions/pack-solution@v1
         with:
@@ -137,7 +157,7 @@ jobs:
           solution-type:    "Unmanaged"
           process-canvas-apps: true
 
-      # ── 6. Pack Managed solution ───────────────────────────────────────────
+      # ── 7. Pack Managed solution ───────────────────────────────────────────
       - name: Pack Managed solution
         uses: microsoft/powerplatform-actions/pack-solution@v1
         with:

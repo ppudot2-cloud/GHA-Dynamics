@@ -1,28 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <ImportExportXml>
-  <Entities>
-    <Entity Name="new_Invoice">
-      <EntityInfo>
-        <entity Name="new_Invoice" unmodified="1">
-          <LocalizedNames>
-            <LocalizedName description="Invoice" languagecode="1033" />
-          </LocalizedNames>
-        </entity>
-      </EntityInfo>
-    </Entity>
-  </Entities>
-  <Workflows>
-    <Workflow WorkflowId="00000000-0000-0000-0000-000000000020"
-              Name="Generate Invoice PDF"
-              Type="1"
-              Category="0"
-              Subprocess="0"
-              Scope="1" />
-  </Workflows>
-  <EnvironmentVariableDefinitions>
-    <EnvironmentVariableDefinition SchemaName="new_InvoiceStorageUrl"
-                                    Type="100000001"
-                                    DisplayName="Invoice Storage URL"
-                                    DefaultValue="" />
-  </EnvironmentVariableDefinitions>
+  <Entities />
+  <Roles />
+  <Workflows />
+  <FieldSecurityProfiles />
+  <Templates />
+  <EntityMaps />
+  <EntityRelationships />
+  <OrganizationSettings />
+  <optionsets />
+  <CustomControls />
+  <EnvironmentVariableDefinitions />
 </ImportExportXml>
