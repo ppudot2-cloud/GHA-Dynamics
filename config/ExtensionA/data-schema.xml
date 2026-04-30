@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Configuration Migration Tool schema for ExtensionA -->
+<!-- Exports reference data: order status lookup values -->
+<entities>
+  <entity name="new_order" displayname="Order" etc="10001" primaryidfield="new_orderid" primarynamefield="new_name" disableplugins="false">
+    <fields>
+      <field displayname="Order ID"    name="new_orderid"   type="guid"     primaryKey="true" />
+      <field displayname="Name"        name="new_name"      type="nvarchar" />
+      <field displayname="Status"      name="new_status"    type="picklist" />
+      <field displayname="Product"     name="new_productid" type="entityreference" lookupType="new_product" />
+    </fields>
+    <filter>
+      <!-- Only export template/seed orders, not live data -->
+      <condition attribute="new_name" operator="like" value="TEMPLATE%" />
+    </filter>
+  </entity>
+</entities>

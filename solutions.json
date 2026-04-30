@@ -1,0 +1,64 @@
+{
+  "_readme": [
+    "solutions.json — Power Platform solution registry for this repo.",
+    "",
+    "SINGLE-SOLUTION REPO  : Add exactly one entry. Set dependsOn to [].",
+    "MULTI-SOLUTION REPO   : Add all solutions. Use dependsOn to express",
+    "                        import order (e.g. ExtensionA depends on CoreSolution).",
+    "",
+    "Fields per solution:",
+    "  name              — unique solution name matching the PP environment",
+    "  folder            — relative path to unpacked solution source",
+    "  dependsOn         — solutions that must be deployed before this one",
+    "  checkerGeo        — Solution Checker geography (default: UnitedStates)",
+    "  dataSchemaFile    — Configuration Migration schema XML ('' if unused)",
+    "  deploymentSettings — per-environment deployment-settings.json paths",
+    "",
+    "Tip: For a single-solution repo, leave dependsOn as [] and set",
+    "     PP_SOLUTION_NAME repo variable to match the name here."
+  ],
+  "solutions": [
+    {
+      "name": "CoreSolution",
+      "folder": "src/solutions/CoreSolution",
+      "dependsOn": [],
+      "checkerGeo": "UnitedStates",
+      "dataSchemaFile": "config/CoreSolution/data-schema.xml",
+      "deploymentSettings": {
+        "dev":  "deployment-settings/dev/CoreSolution.json",
+        "intg": "deployment-settings/intg/CoreSolution.json",
+        "uat":  "deployment-settings/uat/CoreSolution.json",
+        "perf": "deployment-settings/perf/CoreSolution.json",
+        "prod": "deployment-settings/prod/CoreSolution.json"
+      }
+    },
+    {
+      "name": "ExtensionA",
+      "folder": "src/solutions/ExtensionA",
+      "dependsOn": ["CoreSolution"],
+      "checkerGeo": "UnitedStates",
+      "dataSchemaFile": "",
+      "deploymentSettings": {
+        "dev":  "deployment-settings/dev/ExtensionA.json",
+        "intg": "deployment-settings/intg/ExtensionA.json",
+        "uat":  "deployment-settings/uat/ExtensionA.json",
+        "perf": "deployment-settings/perf/ExtensionA.json",
+        "prod": "deployment-settings/prod/ExtensionA.json"
+      }
+    },
+    {
+      "name": "ExtensionB",
+      "folder": "src/solutions/ExtensionB",
+      "dependsOn": ["CoreSolution"],
+      "checkerGeo": "UnitedStates",
+      "dataSchemaFile": "",
+      "deploymentSettings": {
+        "dev":  "deployment-settings/dev/ExtensionB.json",
+        "intg": "deployment-settings/intg/ExtensionB.json",
+        "uat":  "deployment-settings/uat/ExtensionB.json",
+        "perf": "deployment-settings/perf/ExtensionB.json",
+        "prod": "deployment-settings/prod/ExtensionB.json"
+      }
+    }
+  ]
+}

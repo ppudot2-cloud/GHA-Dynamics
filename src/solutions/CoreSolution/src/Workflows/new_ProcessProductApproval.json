@@ -1,0 +1,47 @@
+{
+  "name": "Process Product Approval",
+  "properties": {
+    "connectionReferences": {
+      "shared_commondataserviceforapps": {
+        "runtimeSource": "embedded",
+        "connection": {
+          "connectionReferenceLogicalName": "new_SharedDataverse_00000"
+        },
+        "api": {
+          "name": "shared_commondataserviceforapps"
+        }
+      }
+    },
+    "definition": {
+      "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+      "contentVersion": "1.0.0.0",
+      "triggers": {
+        "When_a_record_is_created": {
+          "type": "OpenApiConnectionWebhook",
+          "inputs": {
+            "host": { "connectionName": "shared_commondataserviceforapps" },
+            "parameters": {
+              "subscriptionRequest/message": 1,
+              "subscriptionRequest/entityname": "new_product"
+            }
+          }
+        }
+      },
+      "actions": {
+        "Send_approval_email": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": { "connectionName": "shared_office365" },
+            "method": "post",
+            "path": "/v2/Mail",
+            "body": {
+              "To": "approvals@contoso.com",
+              "Subject": "New Product Approval Required",
+              "Body": "A new product has been created and requires approval."
+            }
+          }
+        }
+      }
+    }
+  }
+}

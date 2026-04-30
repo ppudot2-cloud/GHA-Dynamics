@@ -1,0 +1,15 @@
+{
+  "EnvironmentVariables": [
+    {
+      "SchemaName": "new_InvoiceStorageUrl",
+      "Value": "https://uat-storage.contoso.com/invoices"
+    }
+  ],
+  "ConnectionReferences": [
+    {
+      "LogicalName": "new_SharedDataverse_00000",
+      "ConnectionId": "#{UAT_DataverseConnectionId}#",
+      "ConnectorId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+    }
+  ]
+}

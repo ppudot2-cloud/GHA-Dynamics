@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ImportExportXml>
+  <Entities>
+    <Entity Name="new_Order">
+      <EntityInfo>
+        <entity Name="new_Order" unmodified="1">
+          <LocalizedNames>
+            <LocalizedName description="Order" languagecode="1033" />
+          </LocalizedNames>
+        </entity>
+      </EntityInfo>
+    </Entity>
+  </Entities>
+  <Workflows>
+    <Workflow WorkflowId="00000000-0000-0000-0000-000000000010"
+              Name="Process Order Fulfillment"
+              Type="1"
+              Category="0"
+              Subprocess="0"
+              Scope="1" />
+  </Workflows>
+  <EnvironmentVariableDefinitions>
+    <EnvironmentVariableDefinition SchemaName="new_OrderNotificationEmail"
+                                    Type="100000001"
+                                    DisplayName="Order Notification Email"
+                                    DefaultValue="" />
+  </EnvironmentVariableDefinitions>
+</ImportExportXml>

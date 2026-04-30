@@ -1,0 +1,729 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Power Platform CI/CD — Architecture &amp; Workflow Relationships v2</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f0f4fa; color: #1a1d2e; font-size: 13px; }
+
+  /* ── TABS ─────────────────────────────────────────────────────────────── */
+  .tab-bar { display: flex; gap: 4px; padding: 16px 20px 0; background: #fff; border-bottom: 2px solid #e2e6ef; position: sticky; top: 0; z-index: 50; }
+  .tab-btn { padding: 8px 20px; border: none; border-radius: 6px 6px 0 0; background: #eef0f6; color: #555; font-size: 12px; font-weight: 600; cursor: pointer; letter-spacing: .3px; transition: background .15s; }
+  .tab-btn.active { background: #2563eb; color: #fff; }
+  .tab-panel { display: none; padding: 20px; }
+  .tab-panel.active { display: block; }
+
+  /* ── PAGE HEADING ─────────────────────────────────────────────────────── */
+  .page-title { font-size: 16px; font-weight: 700; color: #1e293b; margin-bottom: 4px; }
+  .page-sub { font-size: 11px; color: #64748b; margin-bottom: 20px; }
+
+  /* ── WORKFLOW CARDS ───────────────────────────────────────────────────── */
+  .wf-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 18px; margin-bottom: 24px; }
+  .wf-card { background: #fff; border: 1.5px solid #e2e6ef; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,.06); }
+  .wf-card-head { padding: 12px 16px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid #e2e6ef; }
+  .wf-card-head .wf-title { font-size: 12px; font-weight: 700; color: #1e293b; }
+  .wf-card-head .wf-trigger { font-size: 9.5px; background: #f1f5f9; color: #475569; padding: 2px 7px; border-radius: 8px; margin-left: auto; }
+  .wf-card-body { padding: 12px 16px; font-size: 10.5px; color: #374151; line-height: 1.6; }
+  .wf-icon { font-size: 20px; }
+
+  /* ── JOB DAG ──────────────────────────────────────────────────────────── */
+  .dag { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+  .dag-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .dag-job { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border-radius: 8px; font-size: 10px; font-weight: 600; border: 1.5px solid transparent; white-space: nowrap; }
+  .dag-job.j-setup  { background: #cffafe; border-color: #22d3ee; color: #164e63; }
+  .dag-job.j-build  { background: #dcfce7; border-color: #4ade80; color: #14532d; }
+  .dag-job.j-gate   { background: #fef9c3; border-color: #eab308; color: #713f12; }
+  .dag-job.j-deploy { background: #f3e8ff; border-color: #c084fc; color: #4a044e; }
+  .dag-job.j-export { background: #e0f2fe; border-color: #38bdf8; color: #0c4a6e; }
+  .dag-job.j-pr     { background: #f0fdf4; border-color: #4ade80; color: #14532d; }
+  .dag-job.j-sum    { background: #f8fafc; border-color: #94a3b8; color: #334155; }
+  .dag-job.j-sec    { background: #fff1f2; border-color: #fb7185; color: #881337; }
+  .dag-arrow { color: #9ca3af; font-size: 13px; }
+  .dag-label { font-size: 9px; color: #6b7280; font-style: italic; }
+  .dag-parallel { display: flex; flex-direction: column; gap: 3px; padding: 4px 8px; background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px; }
+  .dag-parallel-head { font-size: 8.5px; color: #6b7280; font-weight: 600; text-transform: uppercase; margin-bottom: 2px; }
+
+  /* ── SECTION HEADERS ──────────────────────────────────────────────────── */
+  h2.sec { font-size: 14px; font-weight: 700; color: #1e293b; margin: 24px 0 12px; padding-bottom: 6px; border-bottom: 2px solid #e2e6ef; display: flex; align-items: center; gap: 8px; }
+  h3.sub { font-size: 12px; font-weight: 700; color: #334155; margin: 16px 0 8px; }
+
+  /* ── MATRIX TABLE ─────────────────────────────────────────────────────── */
+  .mtable { width: 100%; border-collapse: collapse; font-size: 10.5px; margin-bottom: 16px; }
+  .mtable th { background: #f1f5f9; padding: 7px 12px; text-align: left; font-weight: 700; color: #374151; border-bottom: 2px solid #e2e6ef; }
+  .mtable td { padding: 7px 12px; border-bottom: 1px solid #f0f2f8; color: #374151; vertical-align: top; line-height: 1.5; }
+  .mtable tr:hover td { background: #f8f9fc; }
+  .mtable code { font-size: 9.5px; background: #f1f5f9; padding: 1px 4px; border-radius: 3px; color: #1e40af; }
+  .mtable .yes { color: #15803d; font-weight: 700; }
+  .mtable .no  { color: #9ca3af; }
+  .mtable .cond { color: #b45309; font-weight: 600; }
+
+  /* ── CALLOUT BOXES ────────────────────────────────────────────────────── */
+  .callout { border-radius: 8px; padding: 12px 16px; font-size: 10.5px; line-height: 1.65; margin-bottom: 14px; }
+  .callout-blue  { background: #eff6ff; border-left: 4px solid #3b82f6; color: #1e3a8a; }
+  .callout-green { background: #f0fdf4; border-left: 4px solid #22c55e; color: #14532d; }
+  .callout-amber { background: #fffbeb; border-left: 4px solid #f59e0b; color: #78350f; }
+  .callout-red   { background: #fff1f2; border-left: 4px solid #f43f5e; color: #881337; }
+  .callout b { font-weight: 700; }
+  .callout code { font-size: 9.5px; background: rgba(0,0,0,.07); padding: 1px 4px; border-radius: 3px; }
+
+  /* ── SECURITY TOGGLE MATRIX ───────────────────────────────────────────── */
+  .scan-matrix { border: 1.5px solid #fda4af; border-radius: 10px; overflow: hidden; margin-bottom: 16px; }
+  .scan-matrix-head { background: #fff1f2; padding: 10px 14px; font-size: 11px; font-weight: 700; color: #881337; border-bottom: 1px solid #fda4af; }
+  .scan-row { display: grid; grid-template-columns: 160px 200px 1fr; gap: 0; font-size: 10.5px; border-bottom: 1px solid #fee2e2; }
+  .scan-row:last-child { border-bottom: none; }
+  .scan-row.head { background: #fff8f8; font-weight: 700; color: #374151; }
+  .scan-cell { padding: 7px 12px; border-right: 1px solid #fee2e2; }
+  .scan-cell:last-child { border-right: none; }
+  .run { color: #15803d; font-weight: 700; }
+  .skip { color: #9ca3af; }
+
+  /* ── STRUCTURE DIAGRAM ────────────────────────────────────────────────── */
+  .struct-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .struct-box { background: #fff; border: 1.5px solid #e2e6ef; border-radius: 10px; padding: 14px; font-size: 10.5px; }
+  .struct-box h4 { font-size: 11px; font-weight: 700; color: #1e293b; margin-bottom: 10px; padding-bottom: 6px; border-bottom: 1px solid #e2e6ef; }
+  .struct-box pre { font-size: 9.5px; font-family: 'SFMono-Regular', Consolas, monospace; color: #374151; line-height: 1.7; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+
+<div class="tab-bar">
+  <button class="tab-btn active" onclick="showTab('arch',this)">🏛️ Workflow Architecture</button>
+  <button class="tab-btn" onclick="showTab('matrix',this)">⚡ Multi-Solution Matrix</button>
+  <button class="tab-btn" onclick="showTab('security',this)">🔒 Security Scan Toggles</button>
+  <button class="tab-btn" onclick="showTab('settings',this)">📁 Settings &amp; Structure</button>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     TAB 1 — WORKFLOW ARCHITECTURE
+     ═══════════════════════════════════════════════════════════════════════ -->
+<div id="arch" class="tab-panel active">
+  <div class="page-title">Power Platform CI/CD — Workflow Architecture v2</div>
+  <div class="page-sub">Job DAG, reusable workflow relationships, and trigger model for multi-solution repos</div>
+
+  <div class="wf-grid">
+
+    <!-- export-solution.yml -->
+    <div class="wf-card">
+      <div class="wf-card-head" style="background:#e0f2fe;">
+        <span class="wf-icon">📤</span>
+        <span class="wf-title">export-solution.yml</span>
+        <span class="wf-trigger">workflow_dispatch</span>
+      </div>
+      <div class="wf-card-body">
+        <div>Exports one or more solutions from Sandbox, unpacks source, and creates a single PR.</div>
+        <div class="dag">
+          <div class="dag-row">
+            <div class="dag-job j-setup">🔍 setup<br><span style="font-size:8px;font-weight:400">discovers solutions<br>outputs: matrix, branch-name</span></div>
+            <div class="dag-arrow">→</div>
+          </div>
+          <div class="dag-row">
+            <div class="dag-parallel">
+              <div class="dag-parallel-head">matrix × N solutions · max-parallel: 1</div>
+              <div class="dag-job j-export">📤 export [{matrix.solution}]<br><span style="font-size:8px;font-weight:400">who-am-i → publish → export → unpack → export-data → git pull --rebase → commit+push</span></div>
+            </div>
+            <div class="dag-arrow">→</div>
+            <div class="dag-job j-pr">🔀 create-pr<br><span style="font-size:8px;font-weight:400">one PR for all solutions<br>needs: setup, export</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- deploy-dev.yml -->
+    <div class="wf-card">
+      <div class="wf-card-head" style="background:#f3e8ff;">
+        <span class="wf-icon">🚀</span>
+        <span class="wf-title">deploy-dev.yml</span>
+        <span class="wf-trigger">workflow_dispatch</span>
+      </div>
+      <div class="wf-card-body">
+        <div>Ad-hoc deploy to Dev only. One-click without the full release pipeline. Useful for hotfixes.</div>
+        <div class="dag">
+          <div class="dag-row">
+            <div class="dag-job j-setup">🔍 setup</div>
+            <div class="dag-arrow">→</div>
+          </div>
+          <div class="dag-row">
+            <div class="dag-parallel">
+              <div class="dag-parallel-head">build matrix × N · parallel · fail-fast: false</div>
+              <div class="dag-job j-build">🏗️ build [{matrix.solution}]<br><span style="font-size:8px;font-weight:400">→ _reusable-build.yml</span></div>
+            </div>
+            <div class="dag-arrow">→</div>
+            <div class="dag-parallel">
+              <div class="dag-parallel-head">deploy matrix × N · max-parallel: 1 · environment: Dev</div>
+              <div class="dag-job j-deploy">🚀 deploy/Dev [{matrix.solution}]<br><span style="font-size:8px;font-weight:400">→ _reusable-deploy.yml (unmanaged)</span></div>
+            </div>
+            <div class="dag-arrow">→</div>
+            <div class="dag-job j-sum">📋 summary</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- release-pipeline.yml -->
+    <div class="wf-card" style="grid-column: 1 / -1;">
+      <div class="wf-card-head" style="background:#dcfce7;">
+        <span class="wf-icon">🏭</span>
+        <span class="wf-title">release-pipeline.yml</span>
+        <span class="wf-trigger">push to main · workflow_dispatch</span>
+      </div>
+      <div class="wf-card-body">
+        <div>Full release pipeline: build all solutions in parallel, then promote through Dev → Intg → UAT → Perf → Prod with approval gates.</div>
+        <div class="dag" style="margin-top:12px;">
+
+          <div class="dag-row">
+            <div class="dag-job j-setup" style="padding:6px 12px;">🔍 setup<br><span style="font-size:8px;font-weight:400">outputs: matrix, solution-list, solution-count</span></div>
+            <div class="dag-arrow">→</div>
+          </div>
+
+          <div class="dag-row">
+            <div class="dag-parallel">
+              <div class="dag-parallel-head">parallel × N solutions · fail-fast: false</div>
+              <div class="dag-job j-build">🏗️ build [{matrix.solution}]<br><span style="font-size:8px;font-weight:400">stamp → pack → BlackDuck* → Checkmarx* → check-solution (MANDATORY) → upload-artifact</span></div>
+            </div>
+            <div class="dag-arrow">→</div>
+            <div class="dag-parallel">
+              <div class="dag-parallel-head">sequential × N · environment: Dev · max-parallel:1</div>
+              <div class="dag-job j-deploy">🚀 deploy/Dev [{matrix.solution}]<br><span style="font-size:8px;font-weight:400">→ _reusable-deploy.yml (unmanaged)</span></div>
+            </div>
+            <div class="dag-arrow">→</div>
+            <div class="dag-job j-gate" style="padding:6px 12px;">🔐 gate-intg<br><span style="font-size:8px;font-weight:400">environment: Intg<br>ONE approval → all N solutions</span></div>
+            <div class="dag-arrow">→</div>
+          </div>
+
+          <div class="dag-row" style="margin-left:20px;">
+            <div class="dag-parallel">
+              <div class="dag-parallel-head">sequential × N · max-parallel:1 (no environment here)</div>
+              <div class="dag-job j-deploy">🚀 deploy/Intg [{matrix.solution}]</div>
+            </div>
+            <div class="dag-arrow">→</div>
+            <div class="dag-job j-gate" style="padding:6px 12px;">🔐 gate-uat<br><span style="font-size:8px;font-weight:400">environment: UAT</span></div>
+            <div class="dag-arrow">→</div>
+            <div class="dag-parallel">
+              <div class="dag-parallel-head">sequential × N</div>
+              <div class="dag-job j-deploy">🚀 deploy/UAT [{matrix.solution}]</div>
+            </div>
+            <div class="dag-arrow">→</div>
+          </div>
+
+          <div class="dag-row" style="margin-left:20px;">
+            <div class="dag-job j-gate" style="padding:6px 12px;">🔐 gate-perf<br><span style="font-size:8px;font-weight:400">environment: Perf</span></div>
+            <div class="dag-arrow">→</div>
+            <div class="dag-parallel">
+              <div class="dag-parallel-head">sequential × N</div>
+              <div class="dag-job j-deploy">🚀 deploy/Perf [{matrix.solution}]</div>
+            </div>
+            <div class="dag-arrow">→</div>
+            <div class="dag-job j-gate" style="padding:6px 12px;">🔐 gate-prod<br><span style="font-size:8px;font-weight:400">environment: Prod + 5min wait</span></div>
+            <div class="dag-arrow">→</div>
+            <div class="dag-parallel">
+              <div class="dag-parallel-head">sequential × N</div>
+              <div class="dag-job j-deploy">🚀 deploy/Prod [{matrix.solution}]</div>
+            </div>
+            <div class="dag-arrow">→</div>
+            <div class="dag-job j-sum">📋 pipeline-summary</div>
+          </div>
+
+          <div class="dag-row" style="margin-top:6px;font-size:9px;color:#6b7280;">
+            <span>* BlackDuck and Checkmarx only run when <code style="background:#f1f5f9;padding:1px 3px;border-radius:2px;">lowcode-nocode == 'true'</code> + individual toggle enabled</span>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- Reusable workflows -->
+    <div class="wf-card">
+      <div class="wf-card-head" style="background:#f0fdf4;">
+        <span class="wf-icon">♻️</span>
+        <span class="wf-title">_reusable-build.yml</span>
+        <span class="wf-trigger">workflow_call</span>
+      </div>
+      <div class="wf-card-body">
+        <div>Called by: <code>release-pipeline.yml</code>, <code>deploy-dev.yml</code> via matrix strategy.</div>
+        <div class="dag" style="margin-top:8px;">
+          <div class="dag-row" style="flex-wrap:wrap;gap:5px;">
+            <div class="dag-job j-build" style="font-size:9px;">actions-install</div><div class="dag-arrow">→</div>
+            <div class="dag-job j-build" style="font-size:9px;">stamp version</div><div class="dag-arrow">→</div>
+            <div class="dag-job j-build" style="font-size:9px;">pack ×2</div><div class="dag-arrow">→</div>
+            <div class="dag-job j-sec" style="font-size:9px;">BlackDuck*</div><div class="dag-arrow">→</div>
+            <div class="dag-job j-sec" style="font-size:9px;">Checkmarx*</div><div class="dag-arrow">→</div>
+            <div class="dag-job j-build" style="font-size:9px;background:#fef9c3;border-color:#facc15;color:#713f12;">check-solution 🔴</div><div class="dag-arrow">→</div>
+            <div class="dag-job j-build" style="font-size:9px;">export-data?</div><div class="dag-arrow">→</div>
+            <div class="dag-job j-build" style="font-size:9px;background:#fef3c7;">JFrog upload</div><div class="dag-arrow">→</div>
+            <div class="dag-job j-build" style="font-size:9px;">upload-artifact</div>
+          </div>
+        </div>
+        <div style="margin-top:8px;font-size:9.5px;color:#6b7280;">🔴 = mandatory, no toggle. * = lowcode-nocode gated.</div>
+      </div>
+    </div>
+
+    <div class="wf-card">
+      <div class="wf-card-head" style="background:#f5f3ff;">
+        <span class="wf-icon">♻️</span>
+        <span class="wf-title">_reusable-deploy.yml</span>
+        <span class="wf-trigger">workflow_call</span>
+      </div>
+      <div class="wf-card-body">
+        <div>Called by all deploy stages (Dev, Intg, UAT, Perf, Prod) with <code>secrets: inherit</code>.</div>
+        <div class="dag" style="margin-top:8px;">
+          <div class="dag-row" style="flex-wrap:wrap;gap:5px;">
+            <div class="dag-job j-deploy" style="font-size:9px;">install + who-am-i</div><div class="dag-arrow">→</div>
+            <div class="dag-job j-deploy" style="font-size:9px;">backup?</div><div class="dag-arrow">→</div>
+            <div class="dag-job j-deploy" style="font-size:9px;">blocking-check?</div><div class="dag-arrow">→</div>
+            <div class="dag-job j-deploy" style="font-size:9px;">version-compare?</div><div class="dag-arrow">→</div>
+            <div class="dag-job j-setup" style="font-size:9px;">settings-file resolve</div><div class="dag-arrow">→</div>
+            <div class="dag-job j-deploy" style="font-size:9px;">mock-deploy?</div><div class="dag-arrow">→</div>
+            <div class="dag-job j-deploy" style="font-size:9px;">import-solution</div><div class="dag-arrow">→</div>
+            <div class="dag-job j-deploy" style="font-size:9px;">publish + activate</div><div class="dag-arrow">→</div>
+            <div class="dag-job j-deploy" style="font-size:9px;">import-data?</div>
+          </div>
+        </div>
+        <div style="margin-top:8px;font-size:9.5px;color:#6b7280;">? = toggleable. Settings file: resolves <code>{env}/{SolutionName}.json</code> → fallback <code>{env}/deployment-settings.json</code>.</div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="callout callout-blue">
+    <b>Key design decisions:</b>
+    <br>• <b>Gate jobs separate from deploy matrix</b> — a lightweight job with <code>environment: Intg</code> (no matrix) is placed BEFORE the deploy matrix job. This means <em>one approval covers all N solutions</em>. Without this pattern, GitHub would require N approvals for an N-solution matrix.
+    <br>• <b>Parallel build, sequential deploy</b> — build jobs fan out in parallel (no ordering needed); deploy jobs use <code>max-parallel: 1</code> to prevent Dataverse async operation conflicts when multiple solutions import simultaneously.
+    <br>• <b>Deterministic artifact naming</b> — artifact name <code>solution-{name}-{run_number}</code> is computed identically in build and deploy jobs. No matrix output collection needed — deploy simply reconstructs the name.
+    <br>• <b>Single PR for multi-solution export</b> — a separate <code>create-pr</code> job runs AFTER the entire export matrix completes, creating one PR that lists all exported solutions. Plus: <code>git pull --rebase</code> in each matrix instance prevents conflicts on the shared branch.
+  </div>
+
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     TAB 2 — MULTI-SOLUTION MATRIX
+     ═══════════════════════════════════════════════════════════════════════ -->
+<div id="matrix" class="tab-panel">
+  <div class="page-title">Multi-Solution Matrix — How It Works</div>
+  <div class="page-sub">Understanding solution discovery, matrix generation, and deployment ordering</div>
+
+  <h2 class="sec">⚡ Solution Selection via <code>solutions</code> Input</h2>
+
+  <table class="mtable">
+    <thead>
+      <tr>
+        <th>solutions input</th>
+        <th>Repo type</th>
+        <th>What happens</th>
+        <th>Resulting matrix</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>"all"</code> (default)</td>
+        <td>Multi-solution</td>
+        <td>Discovers all directories under <code>src/solutions/</code>. Applies <code>solutions-config.json</code> order if present.</td>
+        <td><code>{"solution":["CoreSolution","ExtA","ExtB","ExtC"]}</code></td>
+      </tr>
+      <tr>
+        <td><code>"all"</code></td>
+        <td>Single-solution</td>
+        <td>No <code>src/solutions/</code> dir → falls back to <code>vars.PP_SOLUTION_NAME</code></td>
+        <td><code>{"solution":["MySolution"]}</code></td>
+      </tr>
+      <tr>
+        <td><code>"CoreSolution"</code></td>
+        <td>Multi-solution</td>
+        <td>Validates name exists in <code>src/solutions/</code>. Deploys only that one.</td>
+        <td><code>{"solution":["CoreSolution"]}</code></td>
+      </tr>
+      <tr>
+        <td><code>"CoreSolution, ExtA"</code></td>
+        <td>Multi-solution</td>
+        <td>Validates both names. Applies config order (CoreSolution first).</td>
+        <td><code>{"solution":["CoreSolution","ExtA"]}</code></td>
+      </tr>
+      <tr>
+        <td><code>"ExtA, ExtC"</code></td>
+        <td>Multi-solution</td>
+        <td>Validates both names exist. Applies config order. Skips CoreSolution/ExtB.</td>
+        <td><code>{"solution":["ExtA","ExtC"]}</code></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2 class="sec">🔢 solutions-config.json — Dependency Ordering</h2>
+
+  <div class="callout callout-amber">
+    <b>When do you need this file?</b> Only when you have solutions with dependencies — e.g., ExtensionA imports types from CoreSolution and must deploy <em>after</em> it. Without this file, solutions deploy in alphabetical order, which may break if ExtensionA alphabetically precedes CoreSolution.
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
+    <div>
+      <h3 class="sub">How ordering works</h3>
+      <table class="mtable">
+        <thead><tr><th>Step</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td>1. Parse config</td><td>Read <code>solutions</code> array from <code>.github/solutions-config.json</code></td></tr>
+          <tr><td>2. Filter selected</td><td>Keep only entries that are in the user's requested solutions set</td></tr>
+          <tr><td>3. Append unlisted</td><td>Solutions in the requested set but NOT in config are appended alphabetically after listed ones</td></tr>
+          <tr><td>4. Output matrix</td><td>Final ordered array becomes the job matrix</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div>
+      <h3 class="sub">Example scenario</h3>
+      <div style="background:#f8fafc;border:1px solid #e2e6ef;border-radius:8px;padding:12px;font-family:monospace;font-size:9.5px;line-height:1.7;">
+        Config order: Core → ExtA → ExtB → ExtC<br><br>
+        User selects: "ExtA, ExtC, Core"<br><br>
+        Validation: all 3 exist ✓<br><br>
+        After config order applied:<br>
+        &nbsp;&nbsp;1. CoreSolution &nbsp;(in config, position 1)<br>
+        &nbsp;&nbsp;2. ExtensionA &nbsp;&nbsp;&nbsp;(in config, position 2)<br>
+        &nbsp;&nbsp;3. ExtensionC &nbsp;&nbsp;&nbsp;(in config, position 4)<br><br>
+        ExtensionB skipped (not selected)
+      </div>
+    </div>
+  </div>
+
+  <h2 class="sec">🔄 How Matrix + max-parallel:1 Prevents Conflicts</h2>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
+    <div class="callout callout-green">
+      <b>Why parallel build (no max-parallel)?</b><br>
+      Build jobs are independent — packing CoreSolution doesn't affect ExtensionA's pack. Running them in parallel halves build time for 2 solutions, cuts it by 75% for 4.
+    </div>
+    <div class="callout callout-amber">
+      <b>Why sequential deploy (max-parallel:1)?</b><br>
+      Dataverse async operations are per-environment. If two solutions import simultaneously, each triggers flows, plugin registrations, and metadata updates. These can conflict, causing unpredictable failures. Sequential deploys guarantee each solution fully settles before the next one starts.
+    </div>
+  </div>
+
+  <h2 class="sec">🔀 Export — Sequential with git pull --rebase</h2>
+
+  <div style="background:#fff;border:1.5px solid #e2e6ef;border-radius:10px;padding:14px;font-size:10.5px;line-height:1.7;margin-bottom:16px;">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+      <div>
+        <strong>Why max-parallel:1 for export?</strong>
+        <div style="color:#6b7280;margin-top:6px;">
+          All export matrix instances commit to the <em>same branch</em>. If they ran in parallel:<br>
+          • Instance A and Instance B both checkout the branch<br>
+          • Both commit their solution files<br>
+          • Instance A pushes successfully<br>
+          • Instance B's push <strong>fails</strong> — remote has diverged<br><br>
+          With <code>max-parallel:1</code>, instances run sequentially. Before each commit, the instance runs <code>git pull --rebase</code> to incorporate any commits already pushed by previous instances.
+        </div>
+      </div>
+      <div>
+        <strong>Sequential export timeline (3 solutions):</strong>
+        <div style="font-family:monospace;font-size:9.5px;background:#f8fafc;border:1px solid #e2e6ef;border-radius:6px;padding:10px;margin-top:6px;line-height:1.9;">
+          [CoreSolution export job]<br>
+          &nbsp;&nbsp;git checkout export/branch<br>
+          &nbsp;&nbsp;export + unpack<br>
+          &nbsp;&nbsp;git pull --rebase<br>
+          &nbsp;&nbsp;git commit + push ✓<br>
+          ↓<br>
+          [ExtensionA export job]<br>
+          &nbsp;&nbsp;git checkout export/branch<br>
+          &nbsp;&nbsp;export + unpack<br>
+          &nbsp;&nbsp;git pull --rebase &nbsp;&nbsp;&nbsp;&nbsp;← picks up CoreSolution commit<br>
+          &nbsp;&nbsp;git commit + push ✓<br>
+          ↓<br>
+          [create-pr job]<br>
+          &nbsp;&nbsp;gh pr create (one PR for all)
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <h2 class="sec">📊 Workflow Feature Matrix</h2>
+
+  <table class="mtable">
+    <thead>
+      <tr>
+        <th>Feature</th>
+        <th>export-solution.yml</th>
+        <th>deploy-dev.yml</th>
+        <th>release-pipeline.yml</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td>Multi-solution support</td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td></tr>
+      <tr><td>solutions-config.json ordering</td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td></tr>
+      <tr><td>Parallel build</td><td class="no">—</td><td class="yes">✓</td><td class="yes">✓</td></tr>
+      <tr><td>Sequential deploy (max-parallel:1)</td><td class="yes">✓ (export)</td><td class="yes">✓</td><td class="yes">✓</td></tr>
+      <tr><td>Gate jobs (separate approval)</td><td class="no">—</td><td class="no">— (Dev only)</td><td class="yes">✓ (Intg/UAT/Perf/Prod)</td></tr>
+      <tr><td>BlackDuck SCA + Checkmarx SAST</td><td class="no">—</td><td class="cond">In build step</td><td class="cond">In _reusable-build.yml</td></tr>
+      <tr><td>Solution Checker (mandatory)</td><td class="no">—</td><td class="yes">✓</td><td class="yes">✓</td></tr>
+      <tr><td>JFrog artifact upload</td><td class="no">—</td><td class="yes">✓</td><td class="yes">✓</td></tr>
+      <tr><td>deployment-settings fallback</td><td class="no">—</td><td class="yes">✓</td><td class="yes">✓</td></tr>
+      <tr><td>git pull --rebase</td><td class="yes">✓</td><td class="no">—</td><td class="no">—</td></tr>
+      <tr><td>Single PR for all solutions</td><td class="yes">✓</td><td class="no">—</td><td class="no">—</td></tr>
+    </tbody>
+  </table>
+
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     TAB 3 — SECURITY SCAN TOGGLES
+     ═══════════════════════════════════════════════════════════════════════ -->
+<div id="security" class="tab-panel">
+  <div class="page-title">Security Scan Toggle Logic</div>
+  <div class="page-sub">How lowcode-nocode master flag, individual toggles, and Solution Checker interact</div>
+
+  <h2 class="sec">🔒 Three-Level Scan Model</h2>
+
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:20px;">
+    <div style="background:#fff1f2;border:1.5px solid #fda4af;border-radius:10px;padding:14px;">
+      <div style="font-size:12px;font-weight:700;color:#881337;margin-bottom:8px;">🔵 BlackDuck SCA</div>
+      <div style="font-size:10.5px;color:#374151;line-height:1.65;">
+        <strong>What:</strong> Open-source composition analysis. Finds known CVEs in third-party components.<br><br>
+        <strong>When:</strong> <code>lowcode-nocode == 'true'</code> AND <code>enable-blackduck == 'true'</code><br><br>
+        <strong>Default:</strong> enable-blackduck = true (but disabled by lowcode-nocode master toggle)<br><br>
+        <strong>Action:</strong> <code>synopsys-sig/detect-action@v1.3.1</code>
+      </div>
+    </div>
+    <div style="background:#fff1f2;border:1.5px solid #fda4af;border-radius:10px;padding:14px;">
+      <div style="font-size:12px;font-weight:700;color:#881337;margin-bottom:8px;">🔴 Checkmarx SAST</div>
+      <div style="font-size:10.5px;color:#374151;line-height:1.65;">
+        <strong>What:</strong> Static application security testing. Finds vulnerabilities in custom code (plugins, PCF controls, scripts).<br><br>
+        <strong>When:</strong> <code>lowcode-nocode == 'true'</code> AND <code>enable-checkmarx == 'true'</code><br><br>
+        <strong>Default:</strong> enable-checkmarx = true (but disabled by master toggle)<br><br>
+        <strong>Action:</strong> <code>checkmarx/ast-github-action@main</code>
+      </div>
+    </div>
+    <div style="background:#fef9c3;border:1.5px solid #eab308;border-radius:10px;padding:14px;">
+      <div style="font-size:12px;font-weight:700;color:#713f12;margin-bottom:8px;">🔴 Solution Checker<br><span style="font-size:10px;color:#ef4444;">ALWAYS ON</span></div>
+      <div style="font-size:10.5px;color:#374151;line-height:1.65;">
+        <strong>What:</strong> Power Apps Solution Checker. Validates platform-specific rules, patterns, and best practices.<br><br>
+        <strong>When:</strong> ALWAYS — no <code>if:</code> condition. Cannot be disabled by any toggle.<br><br>
+        <strong>Blocks pipeline:</strong> Yes — <code>fail-on-analysis-error: true</code><br><br>
+        <strong>Action:</strong> <code>check-solution@v1</code>
+      </div>
+    </div>
+  </div>
+
+  <h2 class="sec">📊 Toggle Decision Matrix</h2>
+
+  <div class="scan-matrix">
+    <div class="scan-matrix-head">Scan execution based on toggle combinations</div>
+    <div class="scan-row head">
+      <div class="scan-cell">lowcode-nocode</div>
+      <div class="scan-cell">enable-blackduck / enable-checkmarx</div>
+      <div class="scan-cell">Result</div>
+    </div>
+    <div class="scan-row">
+      <div class="scan-cell"><code>'false'</code> (default)</div>
+      <div class="scan-cell">any value</div>
+      <div class="scan-cell"><span class="skip">⏭ BlackDuck SKIPPED &nbsp;&nbsp; ⏭ Checkmarx SKIPPED &nbsp;&nbsp;</span> <span class="run">✓ Solution Checker RUNS</span></div>
+    </div>
+    <div class="scan-row">
+      <div class="scan-cell"><em>not set</em> (PR trigger)</div>
+      <div class="scan-cell">inputs are empty</div>
+      <div class="scan-cell"><span class="skip">⏭ BlackDuck SKIPPED &nbsp;&nbsp; ⏭ Checkmarx SKIPPED &nbsp;&nbsp;</span> <span class="run">✓ Solution Checker RUNS</span></div>
+    </div>
+    <div class="scan-row">
+      <div class="scan-cell"><code>'true'</code></div>
+      <div class="scan-cell">both = 'false'</div>
+      <div class="scan-cell"><span class="skip">⏭ BlackDuck SKIPPED &nbsp;&nbsp; ⏭ Checkmarx SKIPPED &nbsp;&nbsp;</span> <span class="run">✓ Solution Checker RUNS</span></div>
+    </div>
+    <div class="scan-row">
+      <div class="scan-cell"><code>'true'</code></div>
+      <div class="scan-cell">blackduck='true', checkmarx='false'</div>
+      <div class="scan-cell"><span class="run">✓ BlackDuck RUNS &nbsp;&nbsp;</span> <span class="skip">⏭ Checkmarx SKIPPED &nbsp;&nbsp;</span> <span class="run">✓ Solution Checker RUNS</span></div>
+    </div>
+    <div class="scan-row">
+      <div class="scan-cell"><code>'true'</code></div>
+      <div class="scan-cell">blackduck='false', checkmarx='true'</div>
+      <div class="scan-cell"><span class="skip">⏭ BlackDuck SKIPPED &nbsp;&nbsp;</span> <span class="run">✓ Checkmarx RUNS &nbsp;&nbsp;</span> <span class="run">✓ Solution Checker RUNS</span></div>
+    </div>
+    <div class="scan-row" style="background:#f0fdf4;">
+      <div class="scan-cell"><code>'true'</code></div>
+      <div class="scan-cell">both = 'true'</div>
+      <div class="scan-cell"><span class="run">✓ BlackDuck RUNS &nbsp;&nbsp; ✓ Checkmarx RUNS &nbsp;&nbsp; ✓ Solution Checker RUNS</span></div>
+    </div>
+  </div>
+
+  <h2 class="sec">🔐 Required Secrets for Security Scans</h2>
+
+  <table class="mtable">
+    <thead>
+      <tr><th>Secret</th><th>Scan</th><th>Description</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>BLACKDUCK_URL</code></td><td>BlackDuck SCA</td><td>BlackDuck server URL</td></tr>
+      <tr><td><code>BLACKDUCK_API_TOKEN</code></td><td>BlackDuck SCA</td><td>BlackDuck API token for authentication</td></tr>
+      <tr><td><code>CHECKMARX_BASE_URI</code></td><td>Checkmarx SAST</td><td>Checkmarx AST base URI</td></tr>
+      <tr><td><code>CHECKMARX_CLIENT_ID</code></td><td>Checkmarx SAST</td><td>OIDC client ID for AST API</td></tr>
+      <tr><td><code>CHECKMARX_CLIENT_SECRET</code></td><td>Checkmarx SAST</td><td>OIDC client secret for AST API</td></tr>
+      <tr><td><code>CHECKMARX_TENANT</code></td><td>Checkmarx SAST</td><td>Checkmarx AST tenant name</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout callout-blue">
+    <b>Note on PR triggers:</b> When a PR triggers the workflow, all three inputs (<code>lowcode-nocode</code>, <code>enable-blackduck</code>, <code>enable-checkmarx</code>) are empty strings. The condition <code>inputs.lowcode-nocode == 'true'</code> evaluates to false, so BlackDuck and Checkmarx are automatically skipped. Solution Checker still runs since it has no condition.
+  </div>
+
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     TAB 4 — SETTINGS & STRUCTURE
+     ═══════════════════════════════════════════════════════════════════════ -->
+<div id="settings" class="tab-panel">
+  <div class="page-title">Repository Structure &amp; Settings Files</div>
+  <div class="page-sub">Recommended folder layouts and deployment settings resolution logic</div>
+
+  <h2 class="sec">📁 Recommended Repository Structures</h2>
+
+  <div class="struct-grid">
+    <div class="struct-box">
+      <h4>Single-Solution Repository</h4>
+      <pre>
+repo-name/
+├── src/
+│   └── solutions/
+│       └── MySolution/          ← PAC unpacked source
+│           ├── Solution.xml
+│           └── src/
+├── deployment-settings/
+│   ├── dev/
+│   │   └── deployment-settings.json
+│   ├── intg/
+│   │   └── deployment-settings.json
+│   ├── uat/
+│   │   └── deployment-settings.json
+│   ├── perf/
+│   │   └── deployment-settings.json
+│   └── prod/
+│       └── deployment-settings.json
+├── config/
+│   └── data-schema.xml          ← optional CMT schema
+└── .github/
+    └── workflows/
+        ├── release-pipeline.yml
+        ├── deploy-dev.yml
+        ├── export-solution.yml
+        ├── rollback.yml
+        ├── _reusable-build.yml
+        └── _reusable-deploy.yml
+      </pre>
+      <div style="margin-top:8px;font-size:9.5px;color:#6b7280;border-top:1px solid #e2e6ef;padding-top:8px;">
+        Set <code>PP_SOLUTION_NAME = MySolution</code>. Use <code>solutions: "all"</code>.<br>
+        No <code>solutions-config.json</code> needed.
+      </div>
+    </div>
+    <div class="struct-box">
+      <h4>Multi-Solution Repository</h4>
+      <pre>
+repo-name/
+├── src/
+│   └── solutions/
+│       ├── CoreSolution/        ← base, deploy first
+│       │   └── Solution.xml...
+│       ├── ExtensionA/          ← depends on Core
+│       │   └── Solution.xml...
+│       └── ExtensionB/          ← depends on Core
+│           └── Solution.xml...
+├── deployment-settings/
+│   ├── dev/
+│   │   ├── CoreSolution.json    ← solution-specific
+│   │   ├── ExtensionA.json
+│   │   └── ExtensionB.json
+│   ├── intg/  (same pattern)
+│   └── prod/  (same pattern)
+├── config/
+│   ├── CoreSolution/
+│   │   └── data-schema.xml      ← per-solution schema
+│   └── ExtensionA/
+│       └── data-schema.xml
+└── .github/
+    ├── solutions-config.json    ← ordering REQUIRED
+    └── workflows/...
+      </pre>
+      <div style="margin-top:8px;font-size:9.5px;color:#6b7280;border-top:1px solid #e2e6ef;padding-top:8px;">
+        No <code>PP_SOLUTION_NAME</code> needed — auto-discovered.<br>
+        Use <code>solutions: "all"</code> or <code>"CoreSolution, ExtA"</code>.
+      </div>
+    </div>
+  </div>
+
+  <h2 class="sec">⚙️ Deployment Settings File Resolution</h2>
+
+  <div class="callout callout-green">
+    <b>Multi-solution path (preferred):</b> <code>deployment-settings/{env}/{SolutionName}.json</code><br>
+    <b>Legacy fallback:</b> <code>deployment-settings/{env}/deployment-settings.json</code><br>
+    <b>Graceful skip:</b> If neither exists, the deploy proceeds without deployment settings.
+  </div>
+
+  <div style="background:#fff;border:1.5px solid #e2e6ef;border-radius:10px;padding:14px;font-size:10.5px;margin-bottom:16px;">
+    <strong>Resolution logic in _reusable-deploy.yml (bash step <code>settings-file</code>):</strong>
+    <div style="font-family:monospace;font-size:9.5px;background:#f8fafc;padding:12px;border-radius:6px;margin-top:8px;line-height:1.8;border:1px solid #e2e6ef;">
+      REQUESTED = inputs.deployment-settings-file<br>
+      &nbsp;&nbsp;# e.g. "deployment-settings/dev/CoreSolution.json"<br><br>
+      if REQUESTED != "" AND file exists:<br>
+      &nbsp;&nbsp;→ output.path = REQUESTED, output.exists = true<br><br>
+      elif REQUESTED != "" AND file NOT found:<br>
+      &nbsp;&nbsp;LEGACY = dirname(REQUESTED) + "/deployment-settings.json"<br>
+      &nbsp;&nbsp;if LEGACY exists:<br>
+      &nbsp;&nbsp;&nbsp;&nbsp;→ output.path = LEGACY, output.exists = true<br>
+      &nbsp;&nbsp;else:<br>
+      &nbsp;&nbsp;&nbsp;&nbsp;→ output.exists = false<br><br>
+      # Import step uses:<br>
+      use-deployment-settings-file: steps.settings-file.outputs.exists == 'true'<br>
+      deployment-settings-file:     steps.settings-file.outputs.path || ''
+    </div>
+  </div>
+
+  <h2 class="sec">🏭 GitHub Environment Setup</h2>
+
+  <table class="mtable">
+    <thead>
+      <tr>
+        <th>Environment</th>
+        <th>Declared in job</th>
+        <th>Recommended protection rules</th>
+        <th>Notes</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>Dev</code></td>
+        <td>deploy-dev matrix job</td>
+        <td>Required reviewers: Dev Lead</td>
+        <td>In deploy-dev.yml: environment is on the matrix deploy job directly. In release-pipeline.yml: also on the deploy matrix (no separate gate for Dev).</td>
+      </tr>
+      <tr>
+        <td><code>Intg</code></td>
+        <td>gate-intg (lightweight job)</td>
+        <td>Required reviewers: Integration Lead</td>
+        <td>Gate job is separate from deploy matrix — one approval covers all N solutions. deploy-intg matrix has NO environment: declaration.</td>
+      </tr>
+      <tr>
+        <td><code>UAT</code></td>
+        <td>gate-uat (lightweight job)</td>
+        <td>Required reviewers: QA Lead</td>
+        <td>Same gate pattern as Intg.</td>
+      </tr>
+      <tr>
+        <td><code>Perf</code></td>
+        <td>gate-perf (lightweight job)</td>
+        <td>Required reviewers: Perf Team Lead</td>
+        <td>Same gate pattern as Intg.</td>
+      </tr>
+      <tr>
+        <td><code>Prod</code></td>
+        <td>gate-prod (lightweight job)</td>
+        <td>Required reviewers: Release Manager + 5 min wait timer</td>
+        <td>Most restrictive gate. deploy-prod matrix has NO environment: declaration.</td>
+      </tr>
+    </tbody>
+  </table>
+
+</div>
+
+<script>
+function showTab(id, btn) {
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  if (btn) btn.classList.add('active');
+}
+</script>
+</body>
+</html>

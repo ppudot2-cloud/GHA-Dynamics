@@ -1,0 +1,193 @@
+# =============================================================================
+# REUSABLE WORKFLOW: Build & Pack Solution
+# =============================================================================
+# Called by: release-pipeline.yml, deploy-dev.yml
+# Purpose  : Packs solution source into managed + unmanaged zips, stamps
+#            version, runs mandatory Solution Checker, uploads artifacts.
+#
+# NOTE: Solution Checker is ALWAYS enforced after pack. There is no toggle
+#       to skip it — every build must pass the checker before artifacts are
+#       published. Failures block the pipeline.
+# =============================================================================
+
+name: _reusable-build
+
+on:
+  workflow_call:
+    inputs:
+      solution-name:
+        description: "Unique solution name (e.g. MyCoreSolution)"
+        required: true
+        type: string
+      solution-folder:
+        description: "Relative path to unpacked solution source (e.g. src/solutions/MyCoreSolution)"
+        required: true
+        type: string
+      checker-geo:
+        description: "Solution Checker geography endpoint"
+        required: false
+        default: "UnitedStates"
+        type: string
+      build-version-strategy:
+        description: "Version strategy: 'run_number' (uses GitHub run_number as build) or 'gittags'"
+        required: false
+        default: "run_number"
+        type: string
+      data-schema-file:
+        description: "Relative path to Configuration Migration data schema XML"
+        required: false
+        default: ""
+        type: string
+      source-environment-url:
+        description: "Source environment URL (used only for Solution Checker auth)"
+        required: false
+        default: ""
+        type: string
+    secrets:
+      APP_ID:
+        required: true
+      CLIENT_SECRET:
+        required: true
+      TENANT_ID:
+        required: true
+    outputs:
+      solution-version:
+        description: "Final stamped solution version (e.g. 1.0.NNNN.0)"
+        value: ${{ jobs.build.outputs.solution-version }}
+      artifact-name:
+        description: "Name of the published build artifact"
+        value: ${{ jobs.build.outputs.artifact-name }}
+
+jobs:
+  build:
+    name: "Build | ${{ inputs.solution-name }}"
+    runs-on: ubuntu-latest
+    outputs:
+      solution-version: ${{ steps.stamp-version.outputs.version }}
+      artifact-name:    ${{ steps.set-artifact-name.outputs.artifact-name }}
+
+    steps:
+      # ── 1. Checkout ────────────────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0          # full history required for gittags strategy
+
+      # ── 2. Install Power Platform CLI ──────────────────────────────────────
+      - name: Install PAC CLI
+        uses: microsoft/powerplatform-actions/actions-install@v1
+        with:
+          add-tools-to-path: true
+
+      # ── 3. Stamp solution version ──────────────────────────────────────────
+      - name: Stamp solution version
+        id: stamp-version
+        shell: bash
+        run: |
+          SOLUTION_XML="${{ inputs.solution-folder }}/Other/Solution.xml"
+          if [ ! -f "$SOLUTION_XML" ]; then
+            echo "::error file=$SOLUTION_XML::Solution.xml not found at expected path."
+            exit 1
+          fi
+
+          # Read current version
+          CURRENT=$(grep -oP '(?<=<Version>)[^<]+' "$SOLUTION_XML" || echo "1.0.0.0")
+          MAJOR=$(echo "$CURRENT" | cut -d. -f1)
+          MINOR=$(echo "$CURRENT" | cut -d. -f2)
+
+          if [[ "${{ inputs.build-version-strategy }}" == "run_number" ]]; then
+            BUILD="${{ github.run_number }}"
+            REVISION="0"
+          else
+            # gittags: derive from latest tag
+            TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "1.0.0.0")
+            BUILD=$(echo "$TAG" | cut -d. -f3 || echo "${{ github.run_number }}")
+            REVISION=$(echo "$TAG" | cut -d. -f4 || echo "0")
+          fi
+
+          NEW_VERSION="${MAJOR}.${MINOR}.${BUILD}.${REVISION}"
+          # Replace version in Solution.xml
+          sed -i "s|<Version>[^<]*</Version>|<Version>${NEW_VERSION}</Version>|" "$SOLUTION_XML"
+
+          echo "version=${NEW_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "### 🏷️ Solution Version" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Parameter | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| --- | --- |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Previous | \`${CURRENT}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| New | \`${NEW_VERSION}\` |" >> "$GITHUB_STEP_SUMMARY"
+
+      # ── 4. Set artifact name ───────────────────────────────────────────────
+      - name: Set artifact name
+        id: set-artifact-name
+        run: |
+          ARTIFACT="solution-${{ inputs.solution-name }}-${{ github.run_number }}"
+          echo "artifact-name=${ARTIFACT}" >> "$GITHUB_OUTPUT"
+
+      # ── 5. Pack Unmanaged solution ─────────────────────────────────────────
+      - name: Pack Unmanaged solution
+        uses: microsoft/powerplatform-actions/pack-solution@v1
+        with:
+          solution-folder:  "${{ inputs.solution-folder }}"
+          solution-file:    "out/${{ inputs.solution-name }}_unmanaged.zip"
+          solution-type:    "Unmanaged"
+          process-canvas-apps: true
+
+      # ── 6. Pack Managed solution ───────────────────────────────────────────
+      - name: Pack Managed solution
+        uses: microsoft/powerplatform-actions/pack-solution@v1
+        with:
+          solution-folder:  "${{ inputs.solution-folder }}"
+          solution-file:    "out/${{ inputs.solution-name }}_managed.zip"
+          solution-type:    "Managed"
+          process-canvas-apps: true
+
+      # ── 7. Solution Checker — MANDATORY, always runs, always fails on error ──
+      - name: Run Solution Checker
+        uses: microsoft/powerplatform-actions/check-solution@v1
+        with:
+          app-id:         ${{ secrets.APP_ID }}
+          client-secret:  ${{ secrets.CLIENT_SECRET }}
+          tenant-id:      ${{ secrets.TENANT_ID }}
+          path:           "out/${{ inputs.solution-name }}_unmanaged.zip"
+          geo:            ${{ inputs.checker-geo }}
+          fail-on-analysis-error: true
+          checker-logs-artifact-name: "SolutionChecker-${{ inputs.solution-name }}-${{ github.run_number }}"
+
+      # ── 8. Export config data (if schema provided) ─────────────────────────
+      - name: Export configuration data
+        if: inputs.data-schema-file != ''
+        uses: microsoft/powerplatform-actions/export-data@v1
+        with:
+          environment-url: ${{ inputs.source-environment-url }}
+          app-id:          ${{ secrets.APP_ID }}
+          client-secret:   ${{ secrets.CLIENT_SECRET }}
+          tenant-id:       ${{ secrets.TENANT_ID }}
+          schema-file:     ${{ inputs.data-schema-file }}
+          data-file:       "out/config-data.zip"
+          overwrite:       true
+
+      # ── 9. Upload build artifacts ──────────────────────────────────────────
+      - name: Upload solution artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.set-artifact-name.outputs.artifact-name }}
+          path: |
+            out/${{ inputs.solution-name }}_unmanaged.zip
+            out/${{ inputs.solution-name }}_managed.zip
+            out/config-data.zip
+          retention-days: 30
+          if-no-files-found: warn
+
+      # ── 10. Build summary ──────────────────────────────────────────────────
+      - name: Build summary
+        if: always()
+        shell: bash
+        run: |
+          echo "## 🏗️ Build Results — ${{ inputs.solution-name }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Item | Status |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| --- | --- |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Solution Checker | ✅ Mandatory — Always On |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Version | \`${{ steps.stamp-version.outputs.version }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Artifact | \`${{ steps.set-artifact-name.outputs.artifact-name }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Run # | ${{ github.run_number }} |" >> "$GITHUB_STEP_SUMMARY"

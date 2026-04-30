@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Types>
+  <Default Extension="xml" ContentType="application/octet-stream" />
+  <Default Extension="json" ContentType="application/octet-stream" />
+</Types>

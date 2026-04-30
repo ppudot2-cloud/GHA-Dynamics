@@ -1,0 +1,21 @@
+{
+  "_comment": [
+    "Controls the deployment order for this multi-solution repo.",
+    "CoreSolution must deploy first — ExtensionA and ExtensionB both depend on it.",
+    "Any solution in src/solutions/ NOT listed here is appended alphabetically."
+  ],
+  "solutions": [
+    {
+      "name": "CoreSolution",
+      "description": "Base solution — deploy first. Contains new_Product table, security roles, and shared env variables."
+    },
+    {
+      "name": "ExtensionA",
+      "description": "Order Management — depends on CoreSolution (new_Product lookup). Deploy after CoreSolution."
+    },
+    {
+      "name": "ExtensionB",
+      "description": "Invoice Management — depends on CoreSolution (new_Product lookup). Deploy after CoreSolution."
+    }
+  ]
+}

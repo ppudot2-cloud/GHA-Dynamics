@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Configuration Migration Tool schema for CoreSolution -->
+<!-- Exports reference/config data: product categories and feature flags -->
+<entities>
+  <entity name="new_product" displayname="Product" etc="10000" primaryidfield="new_productid" primarynamefield="new_name" disableplugins="false">
+    <fields>
+      <field displayname="Product ID"  name="new_productid"  type="guid"     primaryKey="true" />
+      <field displayname="Name"        name="new_name"       type="nvarchar" />
+      <field displayname="Category"    name="new_category"   type="picklist" />
+      <field displayname="Price"       name="new_price"      type="money" />
+      <field displayname="Is Active"   name="new_isactive"   type="bit" />
+    </fields>
+    <filter>
+      <condition attribute="new_isactive" operator="eq" value="1" />
+    </filter>
+  </entity>
+</entities>

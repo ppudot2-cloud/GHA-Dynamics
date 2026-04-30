@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<EnvironmentVariableDefinition SchemaName="new_ServiceEndpointUrl"
+                                Type="100000001"
+                                DisplayName="Service Endpoint URL"
+                                Description="URL for the external service API endpoint. Set per environment."
+                                DefaultValue=""
+                                IsRequired="true" />

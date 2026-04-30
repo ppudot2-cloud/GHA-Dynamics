@@ -1,0 +1,40 @@
+{
+  "name": "Generate Invoice PDF",
+  "properties": {
+    "connectionReferences": {
+      "shared_commondataserviceforapps": {
+        "runtimeSource": "embedded",
+        "connection": {
+          "connectionReferenceLogicalName": "new_SharedDataverse_00000"
+        }
+      }
+    },
+    "definition": {
+      "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+      "triggers": {
+        "When_invoice_is_created": {
+          "type": "OpenApiConnectionWebhook",
+          "inputs": {
+            "parameters": {
+              "subscriptionRequest/message": 1,
+              "subscriptionRequest/entityname": "new_invoice"
+            }
+          }
+        }
+      },
+      "actions": {
+        "Call_PDF_service": {
+          "type": "Http",
+          "inputs": {
+            "method": "POST",
+            "uri": "@{variables('new_InvoiceStorageUrl')}/api/generate",
+            "body": {
+              "invoiceId": "@triggerOutputs()?['body/new_invoiceid']",
+              "invoiceNumber": "@triggerOutputs()?['body/new_invoicenumber']"
+            }
+          }
+        }
+      }
+    }
+  }
+}

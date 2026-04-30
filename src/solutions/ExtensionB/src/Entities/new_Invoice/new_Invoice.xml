@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Entity xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <Name LocalizedName="Invoice" OriginalName="Invoice">new_Invoice</Name>
+  <EntityInfo>
+    <entity Name="new_Invoice">
+      <LocalizedNames>
+        <LocalizedName description="Invoice" languagecode="1033" />
+      </LocalizedNames>
+      <attributes>
+        <attribute PhysicalName="new_InvoiceId">
+          <Type>primarykey</Type>
+          <Name>new_InvoiceId</Name>
+          <LogicalName>new_invoiceid</LogicalName>
+        </attribute>
+        <attribute PhysicalName="new_InvoiceNumber">
+          <Type>nvarchar</Type>
+          <Name>new_InvoiceNumber</Name>
+          <LogicalName>new_invoicenumber</LogicalName>
+          <MaxLength>50</MaxLength>
+        </attribute>
+        <attribute PhysicalName="new_ProductId">
+          <Type>lookup</Type>
+          <Name>new_ProductId</Name>
+          <LogicalName>new_productid</LogicalName>
+          <!-- Foreign key to CoreSolution.new_Product -->
+        </attribute>
+        <attribute PhysicalName="new_TotalAmount">
+          <Type>money</Type>
+          <Name>new_TotalAmount</Name>
+          <LogicalName>new_totalamount</LogicalName>
+        </attribute>
+        <attribute PhysicalName="new_InvoiceDate">
+          <Type>datetime</Type>
+          <Name>new_InvoiceDate</Name>
+          <LogicalName>new_invoicedate</LogicalName>
+        </attribute>
+      </attributes>
+    </entity>
+  </EntityInfo>
+</Entity>

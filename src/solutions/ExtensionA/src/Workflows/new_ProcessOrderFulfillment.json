@@ -1,0 +1,55 @@
+{
+  "name": "Process Order Fulfillment",
+  "properties": {
+    "connectionReferences": {
+      "shared_commondataserviceforapps": {
+        "runtimeSource": "embedded",
+        "connection": {
+          "connectionReferenceLogicalName": "new_SharedDataverse_00000"
+        }
+      },
+      "shared_office365": {
+        "runtimeSource": "embedded",
+        "connection": {
+          "connectionReferenceLogicalName": "new_SharedOffice365_00000"
+        }
+      }
+    },
+    "definition": {
+      "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+      "triggers": {
+        "When_order_status_changes": {
+          "type": "OpenApiConnectionWebhook",
+          "inputs": {
+            "parameters": {
+              "subscriptionRequest/message": 3,
+              "subscriptionRequest/entityname": "new_order",
+              "subscriptionRequest/filteringattributes": "new_status"
+            }
+          }
+        }
+      },
+      "actions": {
+        "Check_if_fulfilled": {
+          "type": "If",
+          "expression": "@equals(triggerOutputs()?['body/new_status'], 'Fulfilled')",
+          "actions": {
+            "Send_fulfillment_notification": {
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": { "connectionName": "shared_office365" },
+                "method": "post",
+                "path": "/v2/Mail",
+                "body": {
+                  "To": "@triggerOutputs()?['body/_ownerid_value@OData.Community.Display.V1.FormattedValue']",
+                  "Subject": "Order Fulfilled",
+                  "Body": "Your order has been fulfilled."
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

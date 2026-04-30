@@ -1,0 +1,124 @@
+# =============================================================================
+# WORKFLOW: Environment Rollback
+# =============================================================================
+# Trigger  : Manual (workflow_dispatch) — run by release managers to roll back
+#            a deployment using a previously created backup snapshot.
+# Purpose  : Restores a target environment from a named backup label created
+#            by the backup-environment step in _reusable-deploy.yml.
+# =============================================================================
+
+name: Rollback Environment
+
+on:
+  workflow_dispatch:
+    inputs:
+      target-environment:
+        description: "Environment to roll back"
+        required: true
+        type: choice
+        options:
+          - Dev
+          - Intg
+          - UAT
+          - Perf
+          - Prod
+      restore-latest-backup:
+        description: "Restore latest backup (true) or a specific backup by datetime"
+        required: false
+        default: true
+        type: boolean
+      selected-backup-datetime:
+        description: "Backup datetime if not restoring latest (format: mm/dd/yyyy HH:MM)"
+        required: false
+        default: ""
+      friendly-name-override:
+        description: "Optional: override the restored environment's friendly name"
+        required: false
+        default: ""
+      confirm-rollback:
+        description: "Type CONFIRM to proceed (safeguard against accidental rollback)"
+        required: true
+        default: ""
+
+jobs:
+  rollback:
+    name: "🔄 Rollback ${{ inputs.target-environment }}"
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.target-environment }}   # requires approval for UAT/Perf/Prod
+
+    steps:
+      # ── 1. Safety guard ───────────────────────────────────────────────────
+      - name: Confirm rollback intent
+        shell: bash
+        run: |
+          if [[ "${{ inputs.confirm-rollback }}" != "CONFIRM" ]]; then
+            echo "::error::Rollback aborted — you must type CONFIRM in the confirm-rollback input to proceed."
+            exit 1
+          fi
+          echo "✅ Rollback confirmed by @${{ github.actor }}"
+
+      # ── 2. Resolve target environment URL ─────────────────────────────────
+      - name: Resolve environment URL
+        id: resolve-env
+        shell: bash
+        run: |
+          case "${{ inputs.target-environment }}" in
+            Dev)   echo "env-url=${{ vars.PP_DEV_URL }}"  >> "$GITHUB_OUTPUT" ;;
+            Intg)  echo "env-url=${{ vars.PP_INTG_URL }}" >> "$GITHUB_OUTPUT" ;;
+            UAT)   echo "env-url=${{ vars.PP_UAT_URL }}"  >> "$GITHUB_OUTPUT" ;;
+            Perf)  echo "env-url=${{ vars.PP_PERF_URL }}" >> "$GITHUB_OUTPUT" ;;
+            Prod)  echo "env-url=${{ vars.PP_PROD_URL }}" >> "$GITHUB_OUTPUT" ;;
+            *)
+              echo "::error::Unknown environment: ${{ inputs.target-environment }}"
+              exit 1
+              ;;
+          esac
+
+      # ── 3. Install PAC CLI ─────────────────────────────────────────────────
+      - name: Install PAC CLI
+        uses: microsoft/powerplatform-actions/actions-install@v1
+        with:
+          add-tools-to-path: true
+
+      # ── 4. Validate connection ─────────────────────────────────────────────
+      - name: Validate connection — who-am-i
+        uses: microsoft/powerplatform-actions/who-am-i@v1
+        with:
+          environment-url: ${{ steps.resolve-env.outputs.env-url }}
+          app-id:          ${{ secrets.PP_APP_ID }}
+          client-secret:   ${{ secrets.PP_CLIENT_SECRET }}
+          tenant-id:       ${{ secrets.PP_TENANT_ID }}
+
+      # ── 5. Restore environment ─────────────────────────────────────────────
+      - name: Restore environment from backup
+        id: restore
+        uses: microsoft/powerplatform-actions/restore-environment@v1
+        with:
+          source-env:       ${{ steps.resolve-env.outputs.env-url }}
+          target-env:       ${{ steps.resolve-env.outputs.env-url }}
+          app-id:           ${{ secrets.PP_APP_ID }}
+          client-secret:    ${{ secrets.PP_CLIENT_SECRET }}
+          tenant-id:        ${{ secrets.PP_TENANT_ID }}
+          latest-backup:    ${{ inputs.restore-latest-backup }}
+          selected-backup:  ${{ inputs.selected-backup-datetime }}
+          friendly-name:    ${{ inputs.friendly-name-override }}
+
+      # ── 6. Rollback summary ────────────────────────────────────────────────
+      - name: Rollback summary
+        if: always()
+        shell: bash
+        run: |
+          echo "## 🔄 Rollback Summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Field | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| --- | --- |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Environment | **${{ inputs.target-environment }}** |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| URL | \`${{ steps.resolve-env.outputs.env-url }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Backup type | ${{ inputs.restore-latest-backup == 'true' && 'Latest' || inputs.selected-backup-datetime }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Initiated by | @${{ github.actor }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Result | ${{ steps.restore.outcome == 'success' && '✅ Success' || '❌ Failed' }} |" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Log failure
+        if: failure()
+        run: |
+          echo "::error::❌ Rollback of ${{ inputs.target-environment }} FAILED."
+          echo "::error::Actor: @${{ github.actor }} | Run: #${{ github.run_number }}"

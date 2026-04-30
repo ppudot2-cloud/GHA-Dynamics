@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Configuration Migration Tool schema for ExtensionB -->
+<!-- Exports reference data: invoice templates -->
+<entities>
+  <entity name="new_invoice" displayname="Invoice" etc="10002" primaryidfield="new_invoiceid" primarynamefield="new_invoicenumber" disableplugins="false">
+    <fields>
+      <field displayname="Invoice ID"     name="new_invoiceid"     type="guid"     primaryKey="true" />
+      <field displayname="Invoice Number" name="new_invoicenumber" type="nvarchar" />
+      <field displayname="Total Amount"   name="new_totalamount"   type="money" />
+      <field displayname="Invoice Date"   name="new_invoicedate"   type="datetime" />
+      <field displayname="Product"        name="new_productid"     type="entityreference" lookupType="new_product" />
+    </fields>
+    <filter>
+      <condition attribute="new_invoicenumber" operator="like" value="TEMPLATE%" />
+    </filter>
+  </entity>
+</entities>

@@ -1,0 +1,203 @@
+# =============================================================================
+# WORKFLOW: Ad-hoc Deploy to Dev Environment
+# =============================================================================
+# Trigger  : Manual (workflow_dispatch) only
+# Purpose  : One-click deploy to Dev without the full release pipeline.
+#            Useful for hotfixes, testing a specific branch, or iterating
+#            quickly on a single solution.
+#
+# ┌─ SCENARIO SUPPORT ──────────────────────────────────────────────────────┐
+# │  Single-solution repo : leave `solutions` as "all".                     │
+# │  Multi-solution repo  : select what to deploy:                          │
+# │    "all"              → every solution in src/solutions/                │
+# │    "CoreSolution"     → one solution                                    │
+# │    "CoreSolution, ExtA, ExtB"  → explicit subset                        │
+# └─────────────────────────────────────────────────────────────────────────┘
+#
+# NOTE: Solution Checker is ALWAYS enforced at build — it cannot be disabled.
+# =============================================================================
+
+name: Deploy to Dev
+
+on:
+  workflow_dispatch:
+    inputs:
+      solutions:
+        description: >
+          Solutions to build and deploy.
+          "all" = every solution in src/solutions/ (default).
+          Comma-separated for a subset: "CoreSolution" or "CoreSolution, ExtA, ExtB".
+          Single-solution repos: leave as "all".
+        required: false
+        default: 'all'
+      enable-backup:
+        description: 'Backup Dev before deploying'
+        required: false
+        default: false
+        type: boolean
+      enable-blocking-check:
+        description: 'Check for in-progress async operations before deploying'
+        required: false
+        default: true
+        type: boolean
+      mock-deploy:
+        description: 'Dry run only — skip actual import'
+        required: false
+        default: false
+        type: boolean
+      import-config-data:
+        description: 'Import config data after solution import'
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  # ============================================================================
+  # JOB 0 ─ Setup
+  # ============================================================================
+  setup:
+    name: "🔍 Resolve Solutions"
+    runs-on: ubuntu-latest
+    outputs:
+      matrix:         ${{ steps.resolve.outputs.matrix }}
+      solution-list:  ${{ steps.resolve.outputs.solution-list }}
+      solution-count: ${{ steps.resolve.outputs.solution-count }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Resolve solution list
+        id: resolve
+        shell: python3 {0}
+        run: |
+          import json, os, sys
+
+          input_solutions  = "${{ inputs.solutions || 'all' }}".strip()
+          pp_solution_name = "${{ vars.PP_SOLUTION_NAME }}".strip()
+          solutions_dir    = "src/solutions"
+          config_file      = ".github/solutions-config.json"
+
+          discovered = []
+          if os.path.isdir(solutions_dir):
+              discovered = sorted([
+                  d for d in os.listdir(solutions_dir)
+                  if os.path.isdir(os.path.join(solutions_dir, d)) and not d.startswith(".")
+              ])
+
+          if input_solutions.lower() == "all":
+              if discovered:
+                  selected = discovered
+              elif pp_solution_name:
+                  selected = [pp_solution_name]
+              else:
+                  print("::error::No solutions found in src/solutions/ and PP_SOLUTION_NAME is not set.")
+                  sys.exit(1)
+          else:
+              selected = [s.strip() for s in input_solutions.split(",") if s.strip()]
+              if not selected:
+                  print("::error::The 'solutions' input is empty.")
+                  sys.exit(1)
+              if discovered:
+                  unknown = [s for s in selected if s not in discovered]
+                  if unknown:
+                      print(f"::error::Not found in {solutions_dir}/: {', '.join(unknown)}")
+                      print(f"::error::Available: {', '.join(discovered)}")
+                      sys.exit(1)
+
+          if os.path.isfile(config_file):
+              try:
+                  with open(config_file) as f:
+                      config = json.load(f)
+                  selected_set = set(selected)
+                  ordered = []
+                  for entry in config.get("solutions", []):
+                      name = entry["name"] if isinstance(entry, dict) else str(entry)
+                      if name in selected_set:
+                          ordered.append(name)
+                          selected_set.discard(name)
+                  ordered.extend(sorted(selected_set))
+                  selected = ordered
+              except Exception:
+                  pass
+
+          matrix        = json.dumps({"solution": selected})
+          solution_list = ", ".join(selected)
+
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"matrix={matrix}\n")
+              f.write(f"solution-list={solution_list}\n")
+              f.write(f"solution-count={len(selected)}\n")
+
+          print(f"✅ {len(selected)} solution(s): {solution_list}")
+
+  # ============================================================================
+  # JOB 1 ─ Build (PARALLEL per solution)
+  # ============================================================================
+  build:
+    name: "🏗️ Build | ${{ matrix.solution }}"
+    needs: setup
+    if: needs.setup.result == 'success'
+    strategy:
+      matrix: ${{ fromJSON(needs.setup.outputs.matrix) }}
+      fail-fast: false
+    uses: ./.github/workflows/_reusable-build.yml
+    with:
+      solution-name:          ${{ matrix.solution }}
+      solution-folder:        src/solutions/${{ matrix.solution }}
+      checker-geo:            ${{ vars.PP_CHECKER_GEO || 'UnitedStates' }}
+      build-version-strategy: run_number
+    secrets: inherit
+
+  # ============================================================================
+  # JOB 2 ─ Deploy to Dev (Unmanaged) — SEQUENTIAL
+  # ============================================================================
+  deploy:
+    name: "🚀 Dev [Unmanaged] | ${{ matrix.solution }}"
+    needs: [setup, build]
+    if: needs.build.result == 'success'
+    strategy:
+      matrix: ${{ fromJSON(needs.setup.outputs.matrix) }}
+      max-parallel: 1
+      fail-fast: false
+    environment: Dev
+    uses: ./.github/workflows/_reusable-deploy.yml
+    with:
+      environment-name:                   Dev
+      environment-url:                    ${{ vars.PP_DEV_URL }}
+      solution-name:                      ${{ matrix.solution }}
+      solution-type:                      unmanaged
+      artifact-name:                      solution-${{ matrix.solution }}-${{ github.run_number }}
+      enable-backup:                      ${{ inputs.enable-backup == true }}
+      enable-blocking-check:              ${{ inputs.enable-blocking-check != false }}
+      enable-version-compare:             false
+      mock-deploy:                        ${{ inputs.mock-deploy == true }}
+      trigger-upgrade:                    false
+      overwrite-unmanaged-customizations: true
+      import-config-data:                 ${{ inputs.import-config-data == true }}
+      deployment-settings-file:           deployment-settings/dev/${{ matrix.solution }}.json
+    secrets: inherit
+
+  # ============================================================================
+  # JOB 3 ─ Summary
+  # ============================================================================
+  summary:
+    name: "📋 Summary"
+    needs: [setup, build, deploy]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Write summary
+        shell: bash
+        run: |
+          icon() { case "$1" in success) echo "✅";; skipped) echo "⏭️";; *) echo "❌";; esac; }
+          echo "# 🚀 Deploy to Dev — Summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Solutions:** \`${{ needs.setup.outputs.solution-list }}\`  " >> "$GITHUB_STEP_SUMMARY"
+          echo "**Run:** \`#${{ github.run_number }}\` | **Ref:** \`${{ github.ref_name }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Stage | Result |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| --- | --- |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| 🔍 Resolve (×${{ needs.setup.outputs.solution-count }}) | $(icon '${{ needs.setup.result }}') |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| 🏗️ Build | $(icon '${{ needs.build.result }}') |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| 🚀 Deploy → Dev | $(icon '${{ needs.deploy.result }}') |" >> "$GITHUB_STEP_SUMMARY"

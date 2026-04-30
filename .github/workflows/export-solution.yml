@@ -1,0 +1,417 @@
+# =============================================================================
+# WORKFLOW: Export Solution(s) from Sandbox → GitHub Branch
+# =============================================================================
+# Trigger  : Manual (workflow_dispatch) — run by makers after customising in SDBX
+# Purpose  : Exports one or more solutions from the sandbox environment,
+#            unpacks them to source files, exports config data (optional),
+#            resets build numbers, commits all changes to a shared feature
+#            branch, and opens a single PR to main.
+#
+# ┌─ SCENARIO SUPPORT ──────────────────────────────────────────────────────┐
+# │  Single-solution repo : leave `solutions` as "all".                     │
+# │  Multi-solution repo  : select what to export:                          │
+# │    "all"                  → export every solution in src/solutions/     │
+# │    "CoreSolution"         → export one solution                         │
+# │    "CoreSolution, ExtA"   → export an explicit subset                   │
+# └─────────────────────────────────────────────────────────────────────────┘
+#
+# MULTI-SOLUTION BEHAVIOUR:
+#   Each selected solution is exported sequentially on the SAME feature branch
+#   (max-parallel: 1). A single Pull Request is created after all exports
+#   complete, bundling all changes into one review.
+# =============================================================================
+
+name: Export Solution from Sandbox
+
+on:
+  workflow_dispatch:
+    inputs:
+      solutions:
+        description: >
+          Which solution(s) to export.
+          "all" = every solution in src/solutions/ (default).
+          Comma-separated for a subset: "CoreSolution" or "CoreSolution, ExtA, ExtB".
+          Single-solution repos: leave as "all".
+        required: false
+        default: 'all'
+      branch-name:
+        description: 'Feature branch to commit to (blank = auto-generate)'
+        required: false
+        default: ''
+      create-pr:
+        description: 'Open a Pull Request to main after all exports complete'
+        required: false
+        default: true
+        type: boolean
+      commit-message:
+        description: 'Git commit message prefix'
+        required: false
+        default: 'chore: export solution(s) from sandbox'
+      export-config-data:
+        description: 'Export configuration migration data for each solution'
+        required: false
+        default: false
+        type: boolean
+      publish-before-export:
+        description: 'Publish customizations in sandbox before exporting'
+        required: false
+        default: true
+        type: boolean
+      process-canvas-apps:
+        description: 'Unpack Canvas App .msapp to YAML source'
+        required: false
+        default: true
+        type: boolean
+
+jobs:
+  # ============================================================================
+  # JOB 0 ─ Setup
+  # Resolves the solution list and generates the shared branch name so every
+  # sequential export instance commits to the exact same branch.
+  # ============================================================================
+  setup:
+    name: "🔍 Resolve Solutions & Branch"
+    runs-on: ubuntu-latest
+    outputs:
+      matrix:         ${{ steps.resolve.outputs.matrix }}
+      solution-list:  ${{ steps.resolve.outputs.solution-list }}
+      solution-count: ${{ steps.resolve.outputs.solution-count }}
+      branch-name:    ${{ steps.resolve.outputs.branch-name }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Resolve solution list and branch name
+        id: resolve
+        shell: python3 {0}
+        run: |
+          import json, os, sys
+          from datetime import datetime
+
+          input_solutions  = "${{ inputs.solutions || 'all' }}".strip()
+          input_branch     = "${{ inputs.branch-name }}".strip()
+          pp_solution_name = "${{ vars.PP_SOLUTION_NAME }}".strip()
+          solutions_dir    = "src/solutions"
+          config_file      = ".github/solutions-config.json"
+
+          # ── 1. Discover solutions from filesystem ──────────────────────────
+          discovered = []
+          if os.path.isdir(solutions_dir):
+              discovered = sorted([
+                  d for d in os.listdir(solutions_dir)
+                  if os.path.isdir(os.path.join(solutions_dir, d)) and not d.startswith(".")
+              ])
+
+          # ── 2. Determine the selected solution set ─────────────────────────
+          if input_solutions.lower() == "all":
+              if discovered:
+                  selected = discovered
+                  print(f"ℹ️  Exporting all {len(discovered)} solution(s)")
+              elif pp_solution_name:
+                  selected = [pp_solution_name]
+                  print(f"ℹ️  Using PP_SOLUTION_NAME: {pp_solution_name}")
+              else:
+                  print("::error::No solutions found in src/solutions/ and PP_SOLUTION_NAME is not set.")
+                  sys.exit(1)
+          else:
+              selected = [s.strip() for s in input_solutions.split(",") if s.strip()]
+              if not selected:
+                  print("::error::The 'solutions' input is empty after parsing.")
+                  sys.exit(1)
+              if discovered:
+                  unknown = [s for s in selected if s not in discovered]
+                  if unknown:
+                      print(f"::error::Solution(s) not found in {solutions_dir}/: {', '.join(unknown)}")
+                      print(f"::error::Available: {', '.join(discovered)}")
+                      sys.exit(1)
+
+          # ── 3. Apply ordering from config (optional) ───────────────────────
+          if os.path.isfile(config_file):
+              try:
+                  with open(config_file) as f:
+                      config = json.load(f)
+                  selected_set = set(selected)
+                  ordered = []
+                  for entry in config.get("solutions", []):
+                      name = entry["name"] if isinstance(entry, dict) else str(entry)
+                      if name in selected_set:
+                          ordered.append(name)
+                          selected_set.discard(name)
+                  ordered.extend(sorted(selected_set))
+                  selected = ordered
+              except Exception:
+                  pass
+
+          # ── 4. Determine branch name ───────────────────────────────────────
+          if input_branch:
+              branch = input_branch
+          elif len(selected) == 1:
+              ts = datetime.utcnow().strftime("%Y%m%d-%H%M")
+              branch = f"export/{selected[0]}-{ts}"
+          else:
+              ts = datetime.utcnow().strftime("%Y%m%d-%H%M")
+              branch = f"export/multi-{ts}-run-${{ github.run_number }}"
+
+          # ── 5. Write outputs ───────────────────────────────────────────────
+          matrix        = json.dumps({"solution": selected})
+          solution_list = ", ".join(selected)
+
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"matrix={matrix}\n")
+              f.write(f"solution-list={solution_list}\n")
+              f.write(f"solution-count={len(selected)}\n")
+              f.write(f"branch-name={branch}\n")
+
+          print(f"\n✅ {len(selected)} solution(s) to export: {solution_list}")
+          print(f"📌 Target branch: {branch}")
+
+  # ============================================================================
+  # JOB 1 ─ Export (SEQUENTIAL — max-parallel: 1)
+  # Each instance exports one solution, commits to the shared branch, and
+  # pushes. Sequential execution prevents git conflicts on the same branch.
+  # ============================================================================
+  export:
+    name: "📤 Export | ${{ matrix.solution }}"
+    needs: setup
+    if: needs.setup.result == 'success'
+    strategy:
+      matrix: ${{ fromJSON(needs.setup.outputs.matrix) }}
+      max-parallel: 1     # MUST be 1 — all instances commit to the same branch
+      fail-fast: false
+    runs-on: ubuntu-latest
+
+    env:
+      SOLUTION_FOLDER:  src/solutions/${{ matrix.solution }}
+      DATA_SCHEMA_FILE: config/${{ matrix.solution }}/data-schema.xml
+      BRANCH_NAME:      ${{ needs.setup.outputs.branch-name }}
+
+    steps:
+      # ── 1. Checkout (full history for branch operations) ────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      # ── 2. Set up (or sync) the shared feature branch ───────────────────
+      - name: Set up feature branch
+        shell: bash
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Create branch if it doesn't exist remotely; otherwise check it out
+          if git ls-remote --exit-code origin "${{ env.BRANCH_NAME }}" > /dev/null 2>&1; then
+            git fetch origin "${{ env.BRANCH_NAME }}"
+            git checkout "${{ env.BRANCH_NAME }}"
+            git pull --rebase origin "${{ env.BRANCH_NAME }}"
+            echo "ℹ️ Checked out existing branch: ${{ env.BRANCH_NAME }}"
+          else
+            git checkout -b "${{ env.BRANCH_NAME }}"
+            echo "ℹ️ Created new branch: ${{ env.BRANCH_NAME }}"
+          fi
+
+      # ── 3. Install PAC CLI ───────────────────────────────────────────────
+      - name: Install PAC CLI
+        uses: microsoft/powerplatform-actions/actions-install@v1
+        with:
+          add-tools-to-path: true
+
+      # ── 4. Validate sandbox connection ──────────────────────────────────
+      - name: Validate sandbox connection (who-am-i)
+        uses: microsoft/powerplatform-actions/who-am-i@v1
+        with:
+          environment-url: ${{ vars.PP_SDBX_URL }}
+          app-id:          ${{ secrets.PP_APP_ID }}
+          client-secret:   ${{ secrets.PP_CLIENT_SECRET }}
+          tenant-id:       ${{ secrets.PP_TENANT_ID }}
+
+      # ── 5. Publish customizations in sandbox (optional) ─────────────────
+      - name: Publish customizations in sandbox
+        if: inputs.publish-before-export == true
+        uses: microsoft/powerplatform-actions/publish-solution@v1
+        with:
+          environment-url:     ${{ vars.PP_SDBX_URL }}
+          app-id:              ${{ secrets.PP_APP_ID }}
+          client-secret:       ${{ secrets.PP_CLIENT_SECRET }}
+          tenant-id:           ${{ secrets.PP_TENANT_ID }}
+          run-asynchronously:  true
+          max-async-wait-time: 10
+
+      # ── 6. Export solution (unmanaged) ───────────────────────────────────
+      - name: Export solution — ${{ matrix.solution }}
+        uses: microsoft/powerplatform-actions/export-solution@v1
+        with:
+          environment-url:      ${{ vars.PP_SDBX_URL }}
+          app-id:               ${{ secrets.PP_APP_ID }}
+          client-secret:        ${{ secrets.PP_CLIENT_SECRET }}
+          tenant-id:            ${{ secrets.PP_TENANT_ID }}
+          solution-name:        ${{ matrix.solution }}
+          solution-output-file: out/${{ matrix.solution }}.zip
+          managed:              false
+          run-asynchronously:   true
+          max-async-wait-time:  60
+          overwrite:            true
+
+      # ── 7. Unpack solution to source files ───────────────────────────────
+      - name: Unpack solution — ${{ matrix.solution }}
+        uses: microsoft/powerplatform-actions/unpack-solution@v1
+        with:
+          solution-file:       out/${{ matrix.solution }}.zip
+          solution-folder:     ${{ env.SOLUTION_FOLDER }}
+          solution-type:       Unmanaged
+          overwrite-files:     true
+          process-canvas-apps: ${{ inputs.process-canvas-apps }}
+
+      # ── 8. Reset build number in Solution.xml ────────────────────────────
+      # Keep major.minor; reset build to 0 so CI stamps it at build time.
+      - name: Reset build number in Solution.xml
+        shell: bash
+        run: |
+          SOLUTION_XML="${{ env.SOLUTION_FOLDER }}/Other/Solution.xml"
+          if [ -f "$SOLUTION_XML" ]; then
+            CURRENT=$(grep -oP '(?<=<Version>)[^<]+' "$SOLUTION_XML" || echo "1.0.0.0")
+            MAJOR=$(echo "$CURRENT" | cut -d. -f1)
+            MINOR=$(echo "$CURRENT" | cut -d. -f2)
+            NEW_VERSION="${MAJOR}.${MINOR}.0.0"
+            sed -i "s|<Version>[^<]*</Version>|<Version>${NEW_VERSION}</Version>|" "$SOLUTION_XML"
+            echo "ℹ️  Version reset: ${CURRENT} → ${NEW_VERSION}"
+          fi
+
+      # ── 9. Export configuration data (optional) ──────────────────────────
+      # Looks for config/<SolutionName>/data-schema.xml
+      # Falls back to config/data-schema.xml for single-solution repos
+      - name: Export configuration data — ${{ matrix.solution }}
+        if: inputs.export-config-data == true
+        shell: bash
+        run: |
+          # Resolve schema file: solution-specific, then repo-level fallback
+          SCHEMA=""
+          if [ -f "${{ env.DATA_SCHEMA_FILE }}" ]; then
+            SCHEMA="${{ env.DATA_SCHEMA_FILE }}"
+          elif [ -f "config/data-schema.xml" ]; then
+            SCHEMA="config/data-schema.xml"
+            echo "ℹ️  Using repo-level config/data-schema.xml"
+          fi
+
+          if [ -z "$SCHEMA" ]; then
+            echo "::notice::No data-schema.xml found for ${{ matrix.solution }}. Skipping config data export."
+            exit 0
+          fi
+
+          echo "RESOLVED_SCHEMA=${SCHEMA}" >> "$GITHUB_ENV"
+
+      - name: Run config data export
+        if: inputs.export-config-data == true && env.RESOLVED_SCHEMA != ''
+        uses: microsoft/powerplatform-actions/export-data@v1
+        with:
+          environment-url: ${{ vars.PP_SDBX_URL }}
+          app-id:          ${{ secrets.PP_APP_ID }}
+          client-secret:   ${{ secrets.PP_CLIENT_SECRET }}
+          tenant-id:       ${{ secrets.PP_TENANT_ID }}
+          schema-file:     ${{ env.RESOLVED_SCHEMA }}
+          data-file:       config/${{ matrix.solution }}/config-data.zip
+          overwrite:       true
+        continue-on-error: true
+
+      # ── 10. Commit and push ───────────────────────────────────────────────
+      - name: Commit and push — ${{ matrix.solution }}
+        id: commit
+        shell: bash
+        run: |
+          git add --all
+
+          if git diff --cached --quiet; then
+            echo "nothing-to-commit=true"  >> "$GITHUB_OUTPUT"
+            echo "::notice::No changes detected for ${{ matrix.solution }}. Nothing to commit."
+          else
+            git commit -m "${{ inputs.commit-message }}: ${{ matrix.solution }} [run #${{ github.run_number }}]"
+            git push origin "${{ env.BRANCH_NAME }}"
+            echo "nothing-to-commit=false" >> "$GITHUB_OUTPUT"
+            echo "✅ Committed and pushed ${{ matrix.solution }} to \`${{ env.BRANCH_NAME }}\`" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      # ── 11. Per-solution export summary ──────────────────────────────────
+      - name: Export summary — ${{ matrix.solution }}
+        if: always()
+        shell: bash
+        run: |
+          echo "### 📤 ${{ matrix.solution }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Field | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| --- | --- |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Source env | \`${{ vars.PP_SDBX_URL }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Branch | \`${{ env.BRANCH_NAME }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Config data | ${{ inputs.export-config-data == 'true' && '✅' || '⏭️' }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Canvas apps | ${{ inputs.process-canvas-apps == 'true' && '✅' || '⏭️' }} |" >> "$GITHUB_STEP_SUMMARY"
+
+  # ============================================================================
+  # JOB 2 ─ Create PR (runs once after ALL exports complete)
+  # Opens a single Pull Request covering all exported solutions.
+  # ============================================================================
+  create-pr:
+    name: "🔀 Create Pull Request"
+    needs: [setup, export]
+    if: >
+      needs.export.result == 'success' &&
+      inputs.create-pr == true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Create Pull Request
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BRANCH:   ${{ needs.setup.outputs.branch-name }}
+        run: |
+          SOLUTION_COUNT="${{ needs.setup.outputs.solution-count }}"
+          SOLUTION_LIST="${{ needs.setup.outputs.solution-list }}"
+
+          if [ "$SOLUTION_COUNT" -eq "1" ]; then
+            TITLE="🔄 Export: ${SOLUTION_LIST} (#${{ github.run_number }})"
+          else
+            TITLE="🔄 Export: ${SOLUTION_COUNT} solutions (#${{ github.run_number }})"
+          fi
+
+          # Build solution list for PR body
+          SOL_ROWS=""
+          IFS=',' read -ra SOLS <<< "$SOLUTION_LIST"
+          for SOL in "${SOLS[@]}"; do
+            TRIMMED="$(echo "$SOL" | xargs)"
+            SOL_ROWS="${SOL_ROWS}\n- \`${TRIMMED}\`"
+          done
+
+          BODY="## Automated sandbox export
+
+          **Solutions exported:**
+          $(echo -e "$SOL_ROWS")
+
+          **Source environment:** \`${{ vars.PP_SDBX_URL }}\`
+          **Run:** #${{ github.run_number }}
+          **Actor:** @${{ github.actor }}
+
+          ---
+          > Review the diff and merge to trigger the CI/CD release pipeline."
+
+          gh pr create \
+            --title  "$TITLE" \
+            --body   "$BODY" \
+            --head   "$BRANCH" \
+            --base   "main" \
+          || echo "::warning::PR may already exist for branch $BRANCH — check GitHub."
+
+      - name: PR creation summary
+        if: always()
+        shell: bash
+        run: |
+          echo "## 🔀 Pull Request" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Field | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| --- | --- |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Branch | \`${{ needs.setup.outputs.branch-name }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Solutions | ${{ needs.setup.outputs.solution-count }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Target | \`main\` |" >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,12 @@
+{
+  "artifact-name": "solution-CoreSolution-42",
+  "solution-name": "CoreSolution",
+  "solution-version": "1.0.42.0",
+  "run-number": 42,
+  "files": [
+    "CoreSolution_unmanaged.zip",
+    "CoreSolution_managed.zip",
+    "config-data.zip"
+  ],
+  "created-at": "2026-04-30T10:52:19.593866"
+}

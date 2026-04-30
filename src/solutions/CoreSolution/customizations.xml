@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ImportExportXml>
+  <Entities>
+    <Entity Name="new_Product">
+      <EntityInfo>
+        <entity Name="new_Product" unmodified="1">
+          <LocalizedNames>
+            <LocalizedName description="Product" languagecode="1033" />
+          </LocalizedNames>
+        </entity>
+      </EntityInfo>
+    </Entity>
+  </Entities>
+  <Roles>
+    <Role id="00000000-0000-0000-0000-000000000001" name="Core Admin" />
+  </Roles>
+  <Workflows>
+    <Workflow WorkflowId="00000000-0000-0000-0000-000000000002"
+              Name="Process Product Approval"
+              Type="1"
+              Category="0"
+              Subprocess="0"
+              Scope="1" />
+  </Workflows>
+  <EnvironmentVariableDefinitions>
+    <EnvironmentVariableDefinition SchemaName="new_ServiceEndpointUrl"
+                                    Type="100000001"
+                                    DisplayName="Service Endpoint URL"
+                                    DefaultValue="" />
+    <EnvironmentVariableDefinition SchemaName="new_FeatureToggleEnabled"
+                                    Type="100000002"
+                                    DisplayName="Feature Toggle Enabled"
+                                    DefaultValue="false" />
+  </EnvironmentVariableDefinitions>
+</ImportExportXml>
