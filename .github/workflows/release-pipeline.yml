@@ -1,5 +1,5 @@
 # =============================================================================
-# WORKFLOW: Full Release Pipeline — Dev → Intg → UAT → Perf → Prod
+# WORKFLOW: Full Release Pipeline — Parallel Environment Deployment
 # =============================================================================
 #
 # ┌─ SCENARIO SUPPORT ──────────────────────────────────────────────────────┐
@@ -14,28 +14,32 @@
 # │                           "CoreSolution, ExtA" → explicit subset        │
 # └─────────────────────────────────────────────────────────────────────────┘
 #
-# PIPELINE FLOW:
-#   setup
-#     └─► build (PARALLEL per solution)
-#           │    └─► JFrog upload runs as step 12a inside build (no separate job)
-#           └─► deploy-dev (SEQUENTIAL, max-parallel:1)
-#                       └─► gate-intg
-#                             └─► deploy-intg (SEQUENTIAL)
-#                                   └─► gate-uat → deploy-uat
-#                                         └─► gate-perf → deploy-perf
-#                                               └─► gate-prod → deploy-prod
-#   pipeline-summary (always)
+# PIPELINE FLOW (parallel after build):
 #
-# DEPLOY ORDERING:
-#   Default: alphabetical. Custom order: create .github/solutions-config.json.
+#   setup → build ──┬─► deploy-dev                        (if deploy_dev)
+#                   ├─► gate-intg  → deploy-intg           (if deploy_intg)
+#                   ├─► gate-uat   → deploy-uat            (if deploy_uat)
+#                   ├─► gate-perf  → deploy-perf           (if deploy_perf)
+#                   └─► (prod gate unlocks only after deploy-uat succeeds)
+#                         deploy-uat → gate-prod → deploy-prod  (if deploy_prod)
 #
-# SEQUENTIAL DEPLOYMENT:
+# ENVIRONMENT SELECTION:
+#   Use the boolean inputs deploy_dev / deploy_intg / deploy_uat / deploy_perf
+#   / deploy_prod. Any combination is valid EXCEPT deploy_prod=true without
+#   deploy_uat=true — the setup job enforces this constraint.
+#
+# DEPLOY ORDERING WITHIN AN ENVIRONMENT:
 #   max-parallel: 1 in all deploy jobs — Power Platform platform constraint.
 #   Dataverse cannot process parallel solution imports without async conflicts.
 #
+# APPROVAL GATES:
+#   Intg, UAT, Perf, and Prod gates trigger simultaneously after build
+#   completes. Approvers see pending gates for all selected environments at
+#   once; each gate resolves independently as reviewers approve.
+#
 # MANDATORY (non-mock runs):
-#   enable_jfrog_upload  must be true
-# Solution Checker always runs — there is no toggle.
+#   enable_jfrog_upload must be true.
+#   Solution Checker always runs — there is no toggle.
 # =============================================================================
 
 name: Release Pipeline
@@ -57,17 +61,40 @@ on:
         required: false
         default: 'all'
 
-      target_environments:
-        description: 'Which environments to deploy to'
+      # ── Environment selection ───────────────────────────────────────────────
+      # Any combination is valid. Prod requires deploy_uat=true in the same run.
+      # On pull_request events only Dev is deployed (inputs are not available).
+      deploy_dev:
+        description: 'Deploy to Dev (unmanaged)'
         required: false
-        default: 'all'
-        type: choice
-        options:
-          - all
-          - dev
-          - dev-intg
-          - dev-intg-uat
+        default: true
+        type: boolean
 
+      deploy_intg:
+        description: 'Deploy to Integration (managed)'
+        required: false
+        default: false
+        type: boolean
+
+      deploy_uat:
+        description: 'Deploy to UAT (managed) — required when deploy_prod=true'
+        required: false
+        default: false
+        type: boolean
+
+      deploy_perf:
+        description: 'Deploy to Performance (managed)'
+        required: false
+        default: false
+        type: boolean
+
+      deploy_prod:
+        description: 'Deploy to Production (managed) — requires deploy_uat=true'
+        required: false
+        default: false
+        type: boolean
+
+      # ── Deploy behaviour ────────────────────────────────────────────────────
       enable_backup:
         description: 'Backup each environment before deploying (rollback point)'
         required: false
@@ -129,8 +156,8 @@ concurrency:
 jobs:
   # ============================================================================
   # JOB 0 ─ Setup
-  # Discovers solutions, validates the selection, applies ordering, and outputs
-  # the JSON matrix that every downstream job uses to fan out per solution.
+  # Discovers solutions, validates environment selection, applies ordering, and
+  # outputs the JSON matrix that every downstream job uses to fan out per solution.
   # ============================================================================
   setup:
     name: "🔍 Resolve Solutions"
@@ -144,6 +171,30 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Validate environment selection
+        shell: pwsh
+        run: |
+          $deployProd = '${{ inputs.deploy_prod }}' -eq 'true'
+          $deployUat  = '${{ inputs.deploy_uat }}'  -eq 'true'
+
+          if ($deployProd -and -not $deployUat) {
+            Write-Error "::error::deploy_prod=true requires deploy_uat=true in the same run. UAT must succeed before Prod gate opens."
+            exit 1
+          }
+
+          $selected = @()
+          if ('${{ inputs.deploy_dev }}'  -eq 'true' -or '${{ github.event_name }}' -eq 'pull_request') { $selected += 'dev' }
+          if ('${{ inputs.deploy_intg }}' -eq 'true') { $selected += 'intg' }
+          if ('${{ inputs.deploy_uat }}'  -eq 'true') { $selected += 'uat' }
+          if ('${{ inputs.deploy_perf }}' -eq 'true') { $selected += 'perf' }
+          if ($deployProd)                            { $selected += 'prod' }
+
+          if ($selected.Count -eq 0) {
+            Write-Warning "No environments selected — only build and Solution Checker will run."
+          } else {
+            Write-Host "Selected environments: $($selected -join ', ')"
+          }
+
       - name: Resolve solution list
         id: resolve
         shell: pwsh
@@ -154,7 +205,8 @@ jobs:
 
   # ============================================================================
   # JOB 1 ─ Build (runs in PARALLEL — one job per solution simultaneously)
-  # Pack managed + unmanaged ZIPs, stamp version, run Solution Checker.
+  # Pack managed + unmanaged ZIPs, stamp version, run Solution Checker,
+  # upload to JFrog (step 12a inside _reusable-build.yml).
   # ============================================================================
   build:
     name: "🏗️ Build | ${{ matrix.solution }}"
@@ -179,60 +231,52 @@ jobs:
     secrets: inherit
 
   # ============================================================================
-  # JOB 2 ─ Deploy to Dev (Unmanaged) — SEQUENTIAL
-  # JFrog upload is performed inside _reusable-build.yml (step 12a/12b).
-  # max-parallel: 1  ← Power Platform platform constraint, not solution dependency
+  # JOB 2 ─ Deploy to Dev (Unmanaged) — PARALLEL with other environments
+  # Triggered on: deploy_dev=true OR pull_request event.
+  # max-parallel:1 within this job to serialise multi-solution imports.
   # ============================================================================
   deploy-dev:
     name: "🚀 Dev [Unmanaged] | ${{ matrix.solution }}"
     needs: [setup, build]
     if: >
       needs.build.result == 'success' &&
-      (inputs.target_environments == 'all'          ||
-       inputs.target_environments == 'dev'          ||
-       inputs.target_environments == 'dev-intg'     ||
-       inputs.target_environments == 'dev-intg-uat' ||
-       github.event_name == 'pull_request')
+      (inputs.deploy_dev == true || github.event_name == 'pull_request')
     strategy:
       matrix: ${{ fromJSON(needs.setup.outputs.matrix) }}
       max-parallel: 1
       fail-fast: false
     uses: ./.github/workflows/_reusable-deploy.yml
     with:
-      environment_name:                  Dev
-      environment_url:                   ${{ vars.PP_DEV_URL }}
-      solution_name:                     ${{ matrix.solution }}
-      solution_type:                     unmanaged
-      artifact_name:                     solution-${{ matrix.solution }}-${{ github.run_number }}
-      solution_version:                  ${{ needs.build.outputs.solution_version }}
-      enable_backup:                     ${{ inputs.enable_backup != false }}
-      enable_blocking_check:             ${{ inputs.enable_blocking_check != false }}
-      enable_version_compare:            false
-      mock_deploy:                       ${{ inputs.mock_deploy == true }}
-      trigger_upgrade:                   false
+      environment_name:                   Dev
+      environment_url:                    ${{ vars.PP_DEV_URL }}
+      solution_name:                      ${{ matrix.solution }}
+      solution_type:                      unmanaged
+      artifact_name:                      solution-${{ matrix.solution }}-${{ github.run_number }}
+      solution_version:                   ${{ needs.build.outputs.solution_version }}
+      enable_backup:                      ${{ inputs.enable_backup != false }}
+      enable_blocking_check:              ${{ inputs.enable_blocking_check != false }}
+      enable_version_compare:             false
+      mock_deploy:                        ${{ inputs.mock_deploy == true }}
+      trigger_upgrade:                    false
       overwrite_unmanaged_customizations: true
-      import_config_data:                ${{ inputs.import_config_data == true }}
-      deployment_settings_file:          deployment-settings/dev/${{ matrix.solution }}.json
-      jfrog_url:                         ${{ vars.JFROG_URL || '' }}
-      jfrog_repo:                        ${{ vars.JFROG_REPO || 'powerplatform-solutions' }}
-      build_run_number:                  ${{ github.run_number }}
-      build_run_attempt:                 ${{ github.run_attempt }}
+      import_config_data:                 ${{ inputs.import_config_data == true }}
+      deployment_settings_file:           deployment-settings/dev/${{ matrix.solution }}.json
+      jfrog_url:                          ${{ vars.JFROG_URL || '' }}
+      jfrog_repo:                         ${{ vars.JFROG_REPO || 'powerplatform-solutions' }}
+      build_run_number:                   ${{ github.run_number }}
+      build_run_attempt:                  ${{ github.run_attempt }}
     secrets: inherit
 
   # ============================================================================
-  # GATE ─ Intg
-  # ONE approval here covers ALL solutions deploying to Intg.
-  # Set required reviewers: Settings → Environments → Intg.
+  # GATE ─ Intg (triggers in PARALLEL with other gates after build succeeds)
+  # Required reviewers: Settings → Environments → Intg.
   # ============================================================================
   gate-intg:
     name: "🔐 Gate | Intg"
-    needs: [setup, deploy-dev]
+    needs: [setup, build]
     if: >
-      needs.deploy-dev.result == 'success' &&
-      (inputs.target_environments == 'all'          ||
-       inputs.target_environments == 'dev-intg'     ||
-       inputs.target_environments == 'dev-intg-uat' ||
-       github.event_name == 'pull_request')
+      needs.build.result == 'success' &&
+      inputs.deploy_intg == true
     runs-on: ubuntu-latest
     environment: Intg
     steps:
@@ -243,7 +287,7 @@ jobs:
           Write-Host "Solutions about to deploy: ${{ needs.setup.outputs.solution_list }}"
 
   # ============================================================================
-  # JOB 3 ─ Deploy to Intg (Managed) — SEQUENTIAL
+  # JOB 3 ─ Deploy to Intg (Managed) — SEQUENTIAL within this job
   # ============================================================================
   deploy-intg:
     name: "🚀 Intg [Managed] | ${{ matrix.solution }}"
@@ -255,38 +299,37 @@ jobs:
       fail-fast: false
     uses: ./.github/workflows/_reusable-deploy.yml
     with:
-      environment_name:                  Intg
-      environment_url:                   ${{ vars.PP_INTG_URL }}
-      solution_name:                     ${{ matrix.solution }}
-      solution_type:                     managed
-      artifact_name:                     solution-${{ matrix.solution }}-${{ github.run_number }}
-      solution_version:                  ${{ needs.build.outputs.solution_version }}
-      enable_backup:                     ${{ inputs.enable_backup != false }}
-      enable_blocking_check:             ${{ inputs.enable_blocking_check != false }}
-      enable_version_compare:            ${{ inputs.enable_version_compare != false }}
-      previous_environment_url:          ${{ vars.PP_DEV_URL }}
-      mock_deploy:                       ${{ inputs.mock_deploy == true }}
-      trigger_upgrade:                   ${{ inputs.trigger_upgrade == true }}
+      environment_name:                   Intg
+      environment_url:                    ${{ vars.PP_INTG_URL }}
+      solution_name:                      ${{ matrix.solution }}
+      solution_type:                      managed
+      artifact_name:                      solution-${{ matrix.solution }}-${{ github.run_number }}
+      solution_version:                   ${{ needs.build.outputs.solution_version }}
+      enable_backup:                      ${{ inputs.enable_backup != false }}
+      enable_blocking_check:              ${{ inputs.enable_blocking_check != false }}
+      enable_version_compare:             ${{ inputs.enable_version_compare != false }}
+      previous_environment_url:           ${{ vars.PP_DEV_URL }}
+      mock_deploy:                        ${{ inputs.mock_deploy == true }}
+      trigger_upgrade:                    ${{ inputs.trigger_upgrade == true }}
       overwrite_unmanaged_customizations: true
-      import_config_data:                ${{ inputs.import_config_data == true }}
-      deployment_settings_file:          deployment-settings/intg/${{ matrix.solution }}.json
-      jfrog_url:                         ${{ vars.JFROG_URL || '' }}
-      jfrog_repo:                        ${{ vars.JFROG_REPO || 'powerplatform-solutions' }}
-      build_run_number:                  ${{ github.run_number }}
-      build_run_attempt:                 ${{ github.run_attempt }}
+      import_config_data:                 ${{ inputs.import_config_data == true }}
+      deployment_settings_file:           deployment-settings/intg/${{ matrix.solution }}.json
+      jfrog_url:                          ${{ vars.JFROG_URL || '' }}
+      jfrog_repo:                         ${{ vars.JFROG_REPO || 'powerplatform-solutions' }}
+      build_run_number:                   ${{ github.run_number }}
+      build_run_attempt:                  ${{ github.run_attempt }}
     secrets: inherit
 
   # ============================================================================
-  # GATE ─ UAT
+  # GATE ─ UAT (triggers in PARALLEL with other gates after build succeeds)
+  # Required reviewers: Settings → Environments → UAT.
   # ============================================================================
   gate-uat:
     name: "🔐 Gate | UAT"
-    needs: [setup, deploy-intg]
+    needs: [setup, build]
     if: >
-      needs.deploy-intg.result == 'success' &&
-      (inputs.target_environments == 'all'          ||
-       inputs.target_environments == 'dev-intg-uat' ||
-       github.event_name == 'pull_request')
+      needs.build.result == 'success' &&
+      inputs.deploy_uat == true
     runs-on: ubuntu-latest
     environment: UAT
     steps:
@@ -297,7 +340,7 @@ jobs:
           Write-Host "Solutions about to deploy: ${{ needs.setup.outputs.solution_list }}"
 
   # ============================================================================
-  # JOB 4 ─ Deploy to UAT (Managed) — SEQUENTIAL
+  # JOB 4 ─ Deploy to UAT (Managed) — SEQUENTIAL within this job
   # ============================================================================
   deploy-uat:
     name: "🚀 UAT [Managed] | ${{ matrix.solution }}"
@@ -309,36 +352,37 @@ jobs:
       fail-fast: false
     uses: ./.github/workflows/_reusable-deploy.yml
     with:
-      environment_name:                  UAT
-      environment_url:                   ${{ vars.PP_UAT_URL }}
-      solution_name:                     ${{ matrix.solution }}
-      solution_type:                     managed
-      artifact_name:                     solution-${{ matrix.solution }}-${{ github.run_number }}
-      solution_version:                  ${{ needs.build.outputs.solution_version }}
-      enable_backup:                     ${{ inputs.enable_backup != false }}
-      enable_blocking_check:             ${{ inputs.enable_blocking_check != false }}
-      enable_version_compare:            ${{ inputs.enable_version_compare != false }}
-      previous_environment_url:          ${{ vars.PP_INTG_URL }}
-      mock_deploy:                       ${{ inputs.mock_deploy == true }}
-      trigger_upgrade:                   ${{ inputs.trigger_upgrade == true }}
+      environment_name:                   UAT
+      environment_url:                    ${{ vars.PP_UAT_URL }}
+      solution_name:                      ${{ matrix.solution }}
+      solution_type:                      managed
+      artifact_name:                      solution-${{ matrix.solution }}-${{ github.run_number }}
+      solution_version:                   ${{ needs.build.outputs.solution_version }}
+      enable_backup:                      ${{ inputs.enable_backup != false }}
+      enable_blocking_check:              ${{ inputs.enable_blocking_check != false }}
+      enable_version_compare:             ${{ inputs.enable_version_compare != false }}
+      previous_environment_url:           ${{ vars.PP_INTG_URL }}
+      mock_deploy:                        ${{ inputs.mock_deploy == true }}
+      trigger_upgrade:                    ${{ inputs.trigger_upgrade == true }}
       overwrite_unmanaged_customizations: false
-      import_config_data:                ${{ inputs.import_config_data == true }}
-      deployment_settings_file:          deployment-settings/uat/${{ matrix.solution }}.json
-      jfrog_url:                         ${{ vars.JFROG_URL || '' }}
-      jfrog_repo:                        ${{ vars.JFROG_REPO || 'powerplatform-solutions' }}
-      build_run_number:                  ${{ github.run_number }}
-      build_run_attempt:                 ${{ github.run_attempt }}
+      import_config_data:                 ${{ inputs.import_config_data == true }}
+      deployment_settings_file:           deployment-settings/uat/${{ matrix.solution }}.json
+      jfrog_url:                          ${{ vars.JFROG_URL || '' }}
+      jfrog_repo:                         ${{ vars.JFROG_REPO || 'powerplatform-solutions' }}
+      build_run_number:                   ${{ github.run_number }}
+      build_run_attempt:                  ${{ github.run_attempt }}
     secrets: inherit
 
   # ============================================================================
-  # GATE ─ Perf
+  # GATE ─ Perf (triggers in PARALLEL with other gates after build succeeds)
+  # Required reviewers: Settings → Environments → Perf.
   # ============================================================================
   gate-perf:
     name: "🔐 Gate | Perf"
-    needs: [setup, deploy-uat]
+    needs: [setup, build]
     if: >
-      needs.deploy-uat.result == 'success' &&
-      inputs.target_environments == 'all'
+      needs.build.result == 'success' &&
+      inputs.deploy_perf == true
     runs-on: ubuntu-latest
     environment: Perf
     steps:
@@ -349,7 +393,7 @@ jobs:
           Write-Host "Solutions about to deploy: ${{ needs.setup.outputs.solution_list }}"
 
   # ============================================================================
-  # JOB 5 ─ Deploy to Perf (Managed) — SEQUENTIAL
+  # JOB 5 ─ Deploy to Perf (Managed) — SEQUENTIAL within this job
   # ============================================================================
   deploy-perf:
     name: "🚀 Perf [Managed] | ${{ matrix.solution }}"
@@ -361,36 +405,39 @@ jobs:
       fail-fast: false
     uses: ./.github/workflows/_reusable-deploy.yml
     with:
-      environment_name:                  Perf
-      environment_url:                   ${{ vars.PP_PERF_URL }}
-      solution_name:                     ${{ matrix.solution }}
-      solution_type:                     managed
-      artifact_name:                     solution-${{ matrix.solution }}-${{ github.run_number }}
-      solution_version:                  ${{ needs.build.outputs.solution_version }}
-      enable_backup:                     ${{ inputs.enable_backup != false }}
-      enable_blocking_check:             ${{ inputs.enable_blocking_check != false }}
-      enable_version_compare:            ${{ inputs.enable_version_compare != false }}
-      previous_environment_url:          ${{ vars.PP_UAT_URL }}
-      mock_deploy:                       ${{ inputs.mock_deploy == true }}
-      trigger_upgrade:                   ${{ inputs.trigger_upgrade == true }}
+      environment_name:                   Perf
+      environment_url:                    ${{ vars.PP_PERF_URL }}
+      solution_name:                      ${{ matrix.solution }}
+      solution_type:                      managed
+      artifact_name:                      solution-${{ matrix.solution }}-${{ github.run_number }}
+      solution_version:                   ${{ needs.build.outputs.solution_version }}
+      enable_backup:                      ${{ inputs.enable_backup != false }}
+      enable_blocking_check:              ${{ inputs.enable_blocking_check != false }}
+      enable_version_compare:             ${{ inputs.enable_version_compare != false }}
+      previous_environment_url:           ${{ vars.PP_UAT_URL }}
+      mock_deploy:                        ${{ inputs.mock_deploy == true }}
+      trigger_upgrade:                    ${{ inputs.trigger_upgrade == true }}
       overwrite_unmanaged_customizations: false
-      import_config_data:                ${{ inputs.import_config_data == true }}
-      deployment_settings_file:          deployment-settings/perf/${{ matrix.solution }}.json
-      jfrog_url:                         ${{ vars.JFROG_URL || '' }}
-      jfrog_repo:                        ${{ vars.JFROG_REPO || 'powerplatform-solutions' }}
-      build_run_number:                  ${{ github.run_number }}
-      build_run_attempt:                 ${{ github.run_attempt }}
+      import_config_data:                 ${{ inputs.import_config_data == true }}
+      deployment_settings_file:           deployment-settings/perf/${{ matrix.solution }}.json
+      jfrog_url:                          ${{ vars.JFROG_URL || '' }}
+      jfrog_repo:                         ${{ vars.JFROG_REPO || 'powerplatform-solutions' }}
+      build_run_number:                   ${{ github.run_number }}
+      build_run_attempt:                  ${{ github.run_attempt }}
     secrets: inherit
 
   # ============================================================================
   # GATE ─ Prod
+  # Hard dependency on deploy-uat — this gate only becomes available after
+  # ALL UAT solution deploys complete successfully. The setup job enforces
+  # that deploy_prod=true cannot be selected without deploy_uat=true.
   # ============================================================================
   gate-prod:
     name: "🔐 Gate | Prod"
-    needs: [setup, deploy-perf]
+    needs: [setup, build, deploy-uat]
     if: >
-      needs.deploy-perf.result == 'success' &&
-      inputs.target_environments == 'all'
+      needs.deploy-uat.result == 'success' &&
+      inputs.deploy_prod == true
     runs-on: ubuntu-latest
     environment: Prod
     steps:
@@ -401,7 +448,7 @@ jobs:
           Write-Host "Solutions about to deploy: ${{ needs.setup.outputs.solution_list }}"
 
   # ============================================================================
-  # JOB 6 ─ Deploy to Prod (Managed) — SEQUENTIAL
+  # JOB 6 ─ Deploy to Prod (Managed) — SEQUENTIAL within this job
   # ============================================================================
   deploy-prod:
     name: "🚀 Prod [Managed] | ${{ matrix.solution }}"
@@ -413,25 +460,25 @@ jobs:
       fail-fast: false
     uses: ./.github/workflows/_reusable-deploy.yml
     with:
-      environment_name:                  Prod
-      environment_url:                   ${{ vars.PP_PROD_URL }}
-      solution_name:                     ${{ matrix.solution }}
-      solution_type:                     managed
-      artifact_name:                     solution-${{ matrix.solution }}-${{ github.run_number }}
-      solution_version:                  ${{ needs.build.outputs.solution_version }}
-      enable_backup:                     ${{ inputs.enable_backup != false }}
-      enable_blocking_check:             ${{ inputs.enable_blocking_check != false }}
-      enable_version_compare:            ${{ inputs.enable_version_compare != false }}
-      previous_environment_url:          ${{ vars.PP_PERF_URL }}
-      mock_deploy:                       ${{ inputs.mock_deploy == true }}
-      trigger_upgrade:                   ${{ inputs.trigger_upgrade == true }}
+      environment_name:                   Prod
+      environment_url:                    ${{ vars.PP_PROD_URL }}
+      solution_name:                      ${{ matrix.solution }}
+      solution_type:                      managed
+      artifact_name:                      solution-${{ matrix.solution }}-${{ github.run_number }}
+      solution_version:                   ${{ needs.build.outputs.solution_version }}
+      enable_backup:                      ${{ inputs.enable_backup != false }}
+      enable_blocking_check:              ${{ inputs.enable_blocking_check != false }}
+      enable_version_compare:             ${{ inputs.enable_version_compare != false }}
+      previous_environment_url:           ${{ vars.PP_PERF_URL }}
+      mock_deploy:                        ${{ inputs.mock_deploy == true }}
+      trigger_upgrade:                    ${{ inputs.trigger_upgrade == true }}
       overwrite_unmanaged_customizations: false
-      import_config_data:                ${{ inputs.import_config_data == true }}
-      deployment_settings_file:          deployment-settings/prod/${{ matrix.solution }}.json
-      jfrog_url:                         ${{ vars.JFROG_URL || '' }}
-      jfrog_repo:                        ${{ vars.JFROG_REPO || 'powerplatform-solutions' }}
-      build_run_number:                  ${{ github.run_number }}
-      build_run_attempt:                 ${{ github.run_attempt }}
+      import_config_data:                 ${{ inputs.import_config_data == true }}
+      deployment_settings_file:           deployment-settings/prod/${{ matrix.solution }}.json
+      jfrog_url:                          ${{ vars.JFROG_URL || '' }}
+      jfrog_repo:                         ${{ vars.JFROG_REPO || 'powerplatform-solutions' }}
+      build_run_number:                   ${{ github.run_number }}
+      build_run_attempt:                  ${{ github.run_attempt }}
     secrets: inherit
 
   # ============================================================================
