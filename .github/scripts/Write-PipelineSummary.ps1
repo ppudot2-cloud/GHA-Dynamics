@@ -17,35 +17,33 @@
 .PARAMETER CommitSha
     Full commit SHA.
 
-.PARAMETER SetupResult
-    GitHub job outcome for setup.
+.PARAMETER SetupResult / BuildResult
+    GitHub job outcomes for setup and build.
 
-.PARAMETER BuildResult
-    GitHub job outcome for build.
-
-.PARAMETER DeployDevResult
-    GitHub job outcome for deploy-dev.
+.PARAMETER GateDevResult / DeployDevResult
+    GitHub job outcomes for the Dev gate and deploy.
 
 .PARAMETER GateIntgResult / DeployIntgResult / etc.
     GitHub job outcomes for each gate and deploy stage.
 #>
 param(
-    [string] $SolutionList       = '',
-    [string] $SolutionCount      = '0',
-    [string] $RunNumber          = '',
-    [string] $RefName            = '',
-    [string] $CommitSha          = '',
-    [string] $SetupResult        = 'skipped',
-    [string] $BuildResult        = 'skipped',
-    [string] $DeployDevResult    = 'skipped',
-    [string] $GateIntgResult     = 'skipped',
-    [string] $DeployIntgResult   = 'skipped',
-    [string] $GateUatResult      = 'skipped',
-    [string] $DeployUatResult    = 'skipped',
-    [string] $GatePerfResult     = 'skipped',
-    [string] $DeployPerfResult   = 'skipped',
-    [string] $GateProdResult     = 'skipped',
-    [string] $DeployProdResult   = 'skipped'
+    [string] $SolutionList      = '',
+    [string] $SolutionCount     = '0',
+    [string] $RunNumber         = '',
+    [string] $RefName           = '',
+    [string] $CommitSha         = '',
+    [string] $SetupResult       = 'skipped',
+    [string] $BuildResult       = 'skipped',
+    [string] $GateDevResult     = 'skipped',
+    [string] $DeployDevResult   = 'skipped',
+    [string] $GateIntgResult    = 'skipped',
+    [string] $DeployIntgResult  = 'skipped',
+    [string] $GateUatResult     = 'skipped',
+    [string] $DeployUatResult   = 'skipped',
+    [string] $GatePerfResult    = 'skipped',
+    [string] $DeployPerfResult  = 'skipped',
+    [string] $GateProdResult    = 'skipped',
+    [string] $DeployProdResult  = 'skipped'
 )
 
 function Get-Icon([string]$outcome) {
@@ -67,6 +65,7 @@ function Get-Icon([string]$outcome) {
 | --- | --- | --- |
 | 🔍 Resolve | — | $(Get-Icon $SetupResult) |
 | 🏗️ Build + JFrog Upload (×$SolutionCount) | — | $(Get-Icon $BuildResult) |
+| 🔐 Gate | Dev | $(Get-Icon $GateDevResult) |
 | 🚀 Deploy | Dev | $(Get-Icon $DeployDevResult) |
 | 🔐 Gate | Intg | $(Get-Icon $GateIntgResult) |
 | 🚀 Deploy | Intg | $(Get-Icon $DeployIntgResult) |

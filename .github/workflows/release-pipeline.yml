@@ -1,5 +1,5 @@
 # =============================================================================
-# WORKFLOW: Full Release Pipeline — Parallel Environment Deployment
+# WORKFLOW: Full Release Pipeline — Approval-Gated Parallel Deployment
 # =============================================================================
 #
 # ┌─ SCENARIO SUPPORT ──────────────────────────────────────────────────────┐
@@ -14,28 +14,32 @@
 # │                           "CoreSolution, ExtA" → explicit subset        │
 # └─────────────────────────────────────────────────────────────────────────┘
 #
-# PIPELINE FLOW (parallel after build):
+# PIPELINE FLOW:
 #
-#   setup → build ──┬─► deploy-dev                        (if deploy_dev)
-#                   ├─► gate-intg  → deploy-intg           (if deploy_intg)
-#                   ├─► gate-uat   → deploy-uat            (if deploy_uat)
-#                   ├─► gate-perf  → deploy-perf           (if deploy_perf)
-#                   └─► (prod gate unlocks only after deploy-uat succeeds)
-#                         deploy-uat → gate-prod → deploy-prod  (if deploy_prod)
+#   setup → build ──┬─► gate-dev  → deploy-dev   ┐
+#                   ├─► gate-intg → deploy-intg   │ all fire in parallel
+#                   ├─► gate-uat  → deploy-uat    │ after build succeeds
+#                   └─► gate-perf → deploy-perf  ─┘
+#
+#                         deploy-uat (must succeed)
+#                              └─► gate-prod → deploy-prod
 #
 # ENVIRONMENT SELECTION:
-#   Use the boolean inputs deploy_dev / deploy_intg / deploy_uat / deploy_perf
-#   / deploy_prod. Any combination is valid EXCEPT deploy_prod=true without
-#   deploy_uat=true — the setup job enforces this constraint.
+#   There are no environment toggle inputs. Every environment gate becomes
+#   available the moment build succeeds. Which environments actually get
+#   deployed is controlled entirely by GitHub Environment protection rules:
+#     Settings → Environments → <name> → Required reviewers
+#   If an environment has no required reviewers its gate passes immediately.
+#   If no one approves a gate within the configured timeout it is skipped.
 #
-# DEPLOY ORDERING WITHIN AN ENVIRONMENT:
-#   max-parallel: 1 in all deploy jobs — Power Platform platform constraint.
-#   Dataverse cannot process parallel solution imports without async conflicts.
+# PROD CONSTRAINT:
+#   gate-prod only opens after ALL solutions have successfully deployed to
+#   UAT (needs: deploy-uat). If UAT fails or is not approved, Prod is
+#   automatically blocked.
 #
-# APPROVAL GATES:
-#   Intg, UAT, Perf, and Prod gates trigger simultaneously after build
-#   completes. Approvers see pending gates for all selected environments at
-#   once; each gate resolves independently as reviewers approve.
+# SEQUENTIAL IMPORTS PER ENVIRONMENT:
+#   max-parallel: 1 in all deploy jobs — Power Platform cannot process
+#   parallel solution imports without async conflicts.
 #
 # MANDATORY (non-mock runs):
 #   enable_jfrog_upload must be true.
@@ -61,40 +65,6 @@ on:
         required: false
         default: 'all'
 
-      # ── Environment selection ───────────────────────────────────────────────
-      # Any combination is valid. Prod requires deploy_uat=true in the same run.
-      # On pull_request events only Dev is deployed (inputs are not available).
-      deploy_dev:
-        description: 'Deploy to Dev (unmanaged)'
-        required: false
-        default: true
-        type: boolean
-
-      deploy_intg:
-        description: 'Deploy to Integration (managed)'
-        required: false
-        default: false
-        type: boolean
-
-      deploy_uat:
-        description: 'Deploy to UAT (managed) — required when deploy_prod=true'
-        required: false
-        default: false
-        type: boolean
-
-      deploy_perf:
-        description: 'Deploy to Performance (managed)'
-        required: false
-        default: false
-        type: boolean
-
-      deploy_prod:
-        description: 'Deploy to Production (managed) — requires deploy_uat=true'
-        required: false
-        default: false
-        type: boolean
-
-      # ── Deploy behaviour ────────────────────────────────────────────────────
       enable_backup:
         description: 'Backup each environment before deploying (rollback point)'
         required: false
@@ -156,44 +126,20 @@ concurrency:
 jobs:
   # ============================================================================
   # JOB 0 ─ Setup
-  # Discovers solutions, validates environment selection, applies ordering, and
-  # outputs the JSON matrix that every downstream job uses to fan out per solution.
+  # Discovers solutions, applies ordering, and outputs the JSON matrix that
+  # every downstream job uses to fan out per solution.
   # ============================================================================
   setup:
     name: "🔍 Resolve Solutions"
     runs-on: ubuntu-latest
     outputs:
-      matrix:          ${{ steps.resolve.outputs.matrix }}
-      solution_list:   ${{ steps.resolve.outputs.solution_list }}
-      solution_count:  ${{ steps.resolve.outputs.solution_count }}
+      matrix:         ${{ steps.resolve.outputs.matrix }}
+      solution_list:  ${{ steps.resolve.outputs.solution_list }}
+      solution_count: ${{ steps.resolve.outputs.solution_count }}
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
-      - name: Validate environment selection
-        shell: pwsh
-        run: |
-          $deployProd = '${{ inputs.deploy_prod }}' -eq 'true'
-          $deployUat  = '${{ inputs.deploy_uat }}'  -eq 'true'
-
-          if ($deployProd -and -not $deployUat) {
-            Write-Error "::error::deploy_prod=true requires deploy_uat=true in the same run. UAT must succeed before Prod gate opens."
-            exit 1
-          }
-
-          $selected = @()
-          if ('${{ inputs.deploy_dev }}'  -eq 'true' -or '${{ github.event_name }}' -eq 'pull_request') { $selected += 'dev' }
-          if ('${{ inputs.deploy_intg }}' -eq 'true') { $selected += 'intg' }
-          if ('${{ inputs.deploy_uat }}'  -eq 'true') { $selected += 'uat' }
-          if ('${{ inputs.deploy_perf }}' -eq 'true') { $selected += 'perf' }
-          if ($deployProd)                            { $selected += 'prod' }
-
-          if ($selected.Count -eq 0) {
-            Write-Warning "No environments selected — only build and Solution Checker will run."
-          } else {
-            Write-Host "Selected environments: $($selected -join ', ')"
-          }
 
       - name: Resolve solution list
         id: resolve
@@ -204,7 +150,7 @@ jobs:
             -PpSolutionName '${{ vars.PP_SOLUTION_NAME }}'
 
   # ============================================================================
-  # JOB 1 ─ Build (runs in PARALLEL — one job per solution simultaneously)
+  # JOB 1 ─ Build (PARALLEL per solution)
   # Pack managed + unmanaged ZIPs, stamp version, run Solution Checker,
   # upload to JFrog (step 12a inside _reusable-build.yml).
   # ============================================================================
@@ -217,30 +163,43 @@ jobs:
       fail-fast: false
     uses: ./.github/workflows/_reusable-build.yml
     with:
-      solution_name:            ${{ matrix.solution }}
-      solution_source_folder:   src/solutions/${{ matrix.solution }}
-      checker_geo:              ${{ vars.PP_CHECKER_GEO || 'UnitedStates' }}
-      checker_error_level:      ${{ inputs.checker_error_level || 'HighIssue' }}
-      build_version_strategy:   run_number
-      data_schema_file:         ${{ vars.PP_DATA_SCHEMA_FILE || '' }}
-      source_environment_url:   ${{ vars.PP_SDBX_URL || '' }}
-      mock_deploy:              ${{ inputs.mock_deploy == true }}
-      enable_jfrog_upload:      ${{ inputs.enable_jfrog_upload != false }}
-      jfrog_url:                ${{ vars.JFROG_URL || '' }}
-      jfrog_repo:               ${{ vars.JFROG_REPO || 'powerplatform-solutions' }}
+      solution_name:          ${{ matrix.solution }}
+      solution_source_folder: src/solutions/${{ matrix.solution }}
+      checker_geo:            ${{ vars.PP_CHECKER_GEO || 'UnitedStates' }}
+      checker_error_level:    ${{ inputs.checker_error_level || 'HighIssue' }}
+      build_version_strategy: run_number
+      data_schema_file:       ${{ vars.PP_DATA_SCHEMA_FILE || '' }}
+      source_environment_url: ${{ vars.PP_SDBX_URL || '' }}
+      mock_deploy:            ${{ inputs.mock_deploy == true }}
+      enable_jfrog_upload:    ${{ inputs.enable_jfrog_upload != false }}
+      jfrog_url:              ${{ vars.JFROG_URL || '' }}
+      jfrog_repo:             ${{ vars.JFROG_REPO || 'powerplatform-solutions' }}
     secrets: inherit
 
   # ============================================================================
-  # JOB 2 ─ Deploy to Dev (Unmanaged) — PARALLEL with other environments
-  # Triggered on: deploy_dev=true OR pull_request event.
-  # max-parallel:1 within this job to serialise multi-solution imports.
+  # GATE ─ Dev  (fires in PARALLEL with all other non-prod gates)
+  # Configure required reviewers: Settings → Environments → Dev.
+  # If Dev has no required reviewers this gate passes immediately.
+  # ============================================================================
+  gate-dev:
+    name: "🔐 Gate | Dev"
+    needs: [setup, build]
+    runs-on: ubuntu-latest
+    environment: Dev
+    steps:
+      - name: Gate approved
+        shell: pwsh
+        run: |
+          Write-Host "✅ Dev gate approved for run #${{ github.run_number }}"
+          Write-Host "Solutions about to deploy: ${{ needs.setup.outputs.solution_list }}"
+
+  # ============================================================================
+  # JOB 2 ─ Deploy to Dev (Unmanaged) — SEQUENTIAL within this job
   # ============================================================================
   deploy-dev:
     name: "🚀 Dev [Unmanaged] | ${{ matrix.solution }}"
-    needs: [setup, build]
-    if: >
-      needs.build.result == 'success' &&
-      (inputs.deploy_dev == true || github.event_name == 'pull_request')
+    needs: [setup, build, gate-dev]
+    if: needs.gate-dev.result == 'success'
     strategy:
       matrix: ${{ fromJSON(needs.setup.outputs.matrix) }}
       max-parallel: 1
@@ -268,15 +227,12 @@ jobs:
     secrets: inherit
 
   # ============================================================================
-  # GATE ─ Intg (triggers in PARALLEL with other gates after build succeeds)
-  # Required reviewers: Settings → Environments → Intg.
+  # GATE ─ Intg  (fires in PARALLEL with all other non-prod gates)
+  # Configure required reviewers: Settings → Environments → Intg.
   # ============================================================================
   gate-intg:
     name: "🔐 Gate | Intg"
     needs: [setup, build]
-    if: >
-      needs.build.result == 'success' &&
-      inputs.deploy_intg == true
     runs-on: ubuntu-latest
     environment: Intg
     steps:
@@ -321,15 +277,12 @@ jobs:
     secrets: inherit
 
   # ============================================================================
-  # GATE ─ UAT (triggers in PARALLEL with other gates after build succeeds)
-  # Required reviewers: Settings → Environments → UAT.
+  # GATE ─ UAT  (fires in PARALLEL with all other non-prod gates)
+  # Configure required reviewers: Settings → Environments → UAT.
   # ============================================================================
   gate-uat:
     name: "🔐 Gate | UAT"
     needs: [setup, build]
-    if: >
-      needs.build.result == 'success' &&
-      inputs.deploy_uat == true
     runs-on: ubuntu-latest
     environment: UAT
     steps:
@@ -374,15 +327,12 @@ jobs:
     secrets: inherit
 
   # ============================================================================
-  # GATE ─ Perf (triggers in PARALLEL with other gates after build succeeds)
-  # Required reviewers: Settings → Environments → Perf.
+  # GATE ─ Perf  (fires in PARALLEL with all other non-prod gates)
+  # Configure required reviewers: Settings → Environments → Perf.
   # ============================================================================
   gate-perf:
     name: "🔐 Gate | Perf"
     needs: [setup, build]
-    if: >
-      needs.build.result == 'success' &&
-      inputs.deploy_perf == true
     runs-on: ubuntu-latest
     environment: Perf
     steps:
@@ -428,16 +378,14 @@ jobs:
 
   # ============================================================================
   # GATE ─ Prod
-  # Hard dependency on deploy-uat — this gate only becomes available after
-  # ALL UAT solution deploys complete successfully. The setup job enforces
-  # that deploy_prod=true cannot be selected without deploy_uat=true.
+  # Only becomes available after ALL solutions have successfully deployed to
+  # UAT. If UAT was not approved, timed out, or failed, this gate is skipped
+  # automatically and Prod is never reached.
   # ============================================================================
   gate-prod:
     name: "🔐 Gate | Prod"
     needs: [setup, build, deploy-uat]
-    if: >
-      needs.deploy-uat.result == 'success' &&
-      inputs.deploy_prod == true
+    if: needs.deploy-uat.result == 'success'
     runs-on: ubuntu-latest
     environment: Prod
     steps:
@@ -513,6 +461,7 @@ jobs:
     needs:
       - setup
       - build
+      - gate-dev
       - deploy-dev
       - gate-intg
       - deploy-intg
@@ -539,6 +488,7 @@ jobs:
             -CommitSha        '${{ github.sha }}' `
             -SetupResult      '${{ needs.setup.result }}' `
             -BuildResult      '${{ needs.build.result }}' `
+            -GateDevResult    '${{ needs.gate-dev.result }}' `
             -DeployDevResult  '${{ needs.deploy-dev.result }}' `
             -GateIntgResult   '${{ needs.gate-intg.result }}' `
             -DeployIntgResult '${{ needs.deploy-intg.result }}' `
