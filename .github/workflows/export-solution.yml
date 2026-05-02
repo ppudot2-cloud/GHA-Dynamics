@@ -88,11 +88,19 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Checkout GHA-Core CI scripts
+        uses: actions/checkout@v4
+        with:
+          repository: YOUR_ORG/GHA-Core
+          ref: main
+          path: .ci
+          token: ${{ secrets.GHA_CORE_PAT }}
+
       - name: Resolve solution list
         id: resolve
         shell: pwsh
         run: |
-          & .github/scripts/Resolve-SolutionMatrix.ps1 `
+          & .ci/.github/scripts/Resolve-SolutionMatrix.ps1 `
             -InputSolutions '${{ inputs.solutions || 'all' }}' `
             -PpSolutionName '${{ vars.PP_SOLUTION_NAME }}'
 
@@ -290,18 +298,6 @@ jobs:
           "| 📂 File count | Source: $srcCount | Round-trip: $rtCount |" |
             Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
 
-      # ── 8. Reset version build number ──────────────────────────────────────────
-      # Always run (real and mock) — resets build/revision to 0 so exported
-      # source doesn't carry a pipeline-specific build number.
-      - name: Reset version in Solution.xml
-        shell: pwsh
-        run: |
-          & .github/scripts/Set-SolutionVersion.ps1 `
-            -SolutionXmlPath "src/solutions/${{ matrix.solution }}/Other/Solution.xml" `
-            -VersionStrategy 'run_number' `
-            -RunNumber       '0'
-          Write-Host "ℹ️  Version reset to x.y.0.0 (build number cleared)"
-
       # ── 9a. Export config data (REAL) ─────────────────────────────────────────
       - name: Export configuration data
         id: export-config-real
@@ -333,7 +329,7 @@ jobs:
         if: inputs.export_config_data == true && inputs.mock_deploy == true
         shell: pwsh
         run: |
-          & .github/scripts/Export-ConfigDataSim.ps1 `
+          & .ci/.github/scripts/Export-ConfigDataSim.ps1 `
             -SchemaFile           '${{ vars.PP_DATA_SCHEMA_FILE }}' `
             -OutputZipPath        "config/${{ matrix.solution }}/config-data.zip" `
             -SourceEnvironmentUrl '${{ vars.PP_SDBX_URL }}' `
@@ -362,7 +358,7 @@ jobs:
         if: inputs.mock_deploy == true
         shell: pwsh
         run: |
-          & .github/scripts/Invoke-ExportCommitSim.ps1 `
+          & .ci/.github/scripts/Invoke-ExportCommitSim.ps1 `
             -SolutionName         '${{ matrix.solution }}' `
             -BranchName           '${{ needs.setup.outputs.branch_name }}' `
             -CommitMessagePrefix  '${{ inputs.commit_message }}' `

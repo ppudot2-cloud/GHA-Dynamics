@@ -1,13 +1,20 @@
 # =============================================================================
-# WORKFLOW: Environment Rollback
+# WORKFLOW: Solution Rollback
 # =============================================================================
-# Trigger  : Manual (workflow_dispatch) — run by release managers to roll back
-#            a deployment using a previously created backup snapshot.
-# Purpose  : Restores a target environment from a named backup label created
-#            by the backup-environment step in _reusable-deploy.yml.
+# Trigger  : Manual (workflow_dispatch)
+# Delegates: All logic lives in GHA-Core/_reusable-rollback.yml.
+#
+# This file is intentionally thin — it exists only to:
+#   1. Expose the workflow_dispatch UI with typed inputs (including type: choice,
+#      which is only valid on workflow_dispatch — not workflow_call)
+#   2. Read repository variables (vars.*) which cannot cross repo boundaries
+#   3. Forward everything to the reusable workflow in GHA-Core
+#
+# To change rollback logic, edit:
+#   GHA-Core/.github/workflows/_reusable-rollback.yml
 # =============================================================================
 
-name: Rollback Environment
+name: Rollback Solution
 
 on:
   workflow_dispatch:
@@ -22,103 +29,46 @@ on:
           - UAT
           - Perf
           - Prod
-      restore-latest-backup:
-        description: "Restore latest backup (true) or a specific backup by datetime"
-        required: false
-        default: true
-        type: boolean
-      selected-backup-datetime:
-        description: "Backup datetime if not restoring latest (format: mm/dd/yyyy HH:MM)"
+
+      solution-name:
+        description: "Name of the solution to roll back (e.g. CoreSolution)"
+        required: true
+        type: string
+
+      run-number:
+        description: >
+          Run number of the deployment to roll back FROM.
+          Find it in the Actions tab — e.g. 42 restores backup-{solution}-{env}-v42.
+        required: true
+        type: string
+
+      deployment-settings-file:
+        description: "Optional: relative path to deployment-settings.json for this environment"
         required: false
         default: ""
-      friendly-name-override:
-        description: "Optional: override the restored environment's friendly name"
-        required: false
-        default: ""
+        type: string
+
       confirm-rollback:
         description: "Type CONFIRM to proceed (safeguard against accidental rollback)"
         required: true
         default: ""
+        type: string
 
 jobs:
   rollback:
-    name: "🔄 Rollback ${{ inputs.target-environment }}"
-    runs-on: ubuntu-latest
-    environment: ${{ inputs.target-environment }}   # requires approval for UAT/Perf/Prod
-
-    steps:
-      # ── 1. Safety guard ───────────────────────────────────────────────────
-      - name: Confirm rollback intent
-        shell: bash
-        run: |
-          if [[ "${{ inputs.confirm-rollback }}" != "CONFIRM" ]]; then
-            echo "::error::Rollback aborted — you must type CONFIRM in the confirm-rollback input to proceed."
-            exit 1
-          fi
-          echo "✅ Rollback confirmed by @${{ github.actor }}"
-
-      # ── 2. Resolve target environment URL ─────────────────────────────────
-      - name: Resolve environment URL
-        id: resolve-env
-        shell: bash
-        run: |
-          case "${{ inputs.target-environment }}" in
-            Dev)   echo "env-url=${{ vars.PP_DEV_URL }}"  >> "$GITHUB_OUTPUT" ;;
-            Intg)  echo "env-url=${{ vars.PP_INTG_URL }}" >> "$GITHUB_OUTPUT" ;;
-            UAT)   echo "env-url=${{ vars.PP_UAT_URL }}"  >> "$GITHUB_OUTPUT" ;;
-            Perf)  echo "env-url=${{ vars.PP_PERF_URL }}" >> "$GITHUB_OUTPUT" ;;
-            Prod)  echo "env-url=${{ vars.PP_PROD_URL }}" >> "$GITHUB_OUTPUT" ;;
-            *)
-              echo "::error::Unknown environment: ${{ inputs.target-environment }}"
-              exit 1
-              ;;
-          esac
-
-      # ── 3. Install PAC CLI ─────────────────────────────────────────────────
-      - name: Install PAC CLI
-        uses: microsoft/powerplatform-actions/actions-install@v1
-        with:
-          add-tools-to-path: true
-
-      # ── 4. Validate connection ─────────────────────────────────────────────
-      - name: Validate connection — who-am-i
-        uses: microsoft/powerplatform-actions/who-am-i@v1
-        with:
-          environment-url: ${{ steps.resolve-env.outputs.env-url }}
-          app-id:          ${{ secrets.PP_APP_ID }}
-          client-secret:   ${{ secrets.PP_CLIENT_SECRET }}
-          tenant-id:       ${{ secrets.PP_TENANT_ID }}
-
-      # ── 5. Restore environment ─────────────────────────────────────────────
-      - name: Restore environment from backup
-        id: restore
-        uses: microsoft/powerplatform-actions/restore-environment@v1
-        with:
-          source-env:       ${{ steps.resolve-env.outputs.env-url }}
-          target-env:       ${{ steps.resolve-env.outputs.env-url }}
-          app-id:           ${{ secrets.PP_APP_ID }}
-          client-secret:    ${{ secrets.PP_CLIENT_SECRET }}
-          tenant-id:        ${{ secrets.PP_TENANT_ID }}
-          latest-backup:    ${{ inputs.restore-latest-backup }}
-          selected-backup:  ${{ inputs.selected-backup-datetime }}
-          friendly-name:    ${{ inputs.friendly-name-override }}
-
-      # ── 6. Rollback summary ────────────────────────────────────────────────
-      - name: Rollback summary
-        if: always()
-        shell: bash
-        run: |
-          echo "## 🔄 Rollback Summary" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Field | Value |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| --- | --- |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Environment | **${{ inputs.target-environment }}** |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| URL | \`${{ steps.resolve-env.outputs.env-url }}\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Backup type | ${{ inputs.restore-latest-backup == 'true' && 'Latest' || inputs.selected-backup-datetime }} |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Initiated by | @${{ github.actor }} |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Result | ${{ steps.restore.outcome == 'success' && '✅ Success' || '❌ Failed' }} |" >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Log failure
-        if: failure()
-        run: |
-          echo "::error::❌ Rollback of ${{ inputs.target-environment }} FAILED."
-          echo "::error::Actor: @${{ github.actor }} | Run: #${{ github.run_number }}"
+    name: "Rollback Solution"
+    uses: YOUR_ORG/GHA-Core/.github/workflows/_reusable-rollback.yml@main
+    with:
+      # ── User inputs ────────────────────────────────────────────────────────
+      target-environment:       ${{ inputs.target-environment }}
+      solution-name:            ${{ inputs.solution-name }}
+      run-number:               ${{ inputs.run-number }}
+      deployment-settings-file: ${{ inputs.deployment-settings-file || '' }}
+      confirm-rollback:         ${{ inputs.confirm-rollback }}
+      # ── Repository variables (read here — not accessible inside GHA-Core) ──
+      pp-dev-url:               ${{ vars.PP_DEV_URL }}
+      pp-intg-url:              ${{ vars.PP_INTG_URL }}
+      pp-uat-url:               ${{ vars.PP_UAT_URL }}
+      pp-perf-url:              ${{ vars.PP_PERF_URL }}
+      pp-prod-url:              ${{ vars.PP_PROD_URL }}
+    secrets: inherit

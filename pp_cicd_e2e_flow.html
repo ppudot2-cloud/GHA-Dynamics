@@ -64,7 +64,7 @@
   /* ── TOOLTIP ──────────────────────────────────────────────────────────── */
   .tt {
     display: none; position: absolute; left: 50%; transform: translateX(-50%);
-    top: calc(100% + 8px); width: 300px;
+    top: calc(100% + 8px); width: 320px;
     background: #1e2235; color: #d8ddf0;
     padding: 11px 13px; border-radius: 9px; font-size: 10.5px; font-weight: 400;
     z-index: 200; box-shadow: 0 10px 30px rgba(0,0,0,.4);
@@ -76,11 +76,12 @@
   .tt-desc { color: #94a3b8; font-size: 10px; margin-bottom: 7px; line-height: 1.45; }
   .tt-sec { font-size: 9.5px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: .5px; margin: 6px 0 3px; }
   .tt-row { display: flex; gap: 5px; align-items: baseline; font-size: 10px; color: #c4cce0; margin-bottom: 2px; }
-  .tt-row .lbl { color: #e2e8f0; font-weight: 600; min-width: 120px; flex-shrink: 0; }
+  .tt-row .lbl { color: #e2e8f0; font-weight: 600; min-width: 130px; flex-shrink: 0; }
   .tt-out { color: #86efac; }
   .tt-warn { color: #fbbf24; font-size: 9.5px; margin-top: 5px; }
   .tt-mand { color: #f87171; font-size: 9.5px; font-weight: 700; margin-top: 4px; }
   .tt-toggle { color: #a5b4fc; font-size: 9.5px; margin-top: 5px; }
+  .tt-strategy { color: #6ee7b7; font-size: 9.5px; margin-top: 4px; }
 
   /* ── GATE ─────────────────────────────────────────────────────────────── */
   .gate { display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 10px; font-size: 10px; font-weight: 700; flex-shrink: 0; }
@@ -103,6 +104,7 @@
   .sl-perf   { background: #b45309; }
   .sl-prod   { background: #991b1b; }
   .sl-rollbk { background: #1e40af; }
+  .sl-sum    { background: #334155; }
 
   /* ── PILL COLOURS ─────────────────────────────────────────────────────── */
   .c-setup  { background: #cffafe; border-color: #22d3ee; color: #164e63; }
@@ -119,6 +121,8 @@
   .c-rollbk { background: #dbeafe; border-color: #60a5fa; color: #1e3a8a; }
   .c-warn   { background: #fff7ed; border-color: #fb923c; color: #7c2d12; }
   .c-git    { background: #f1f5f9; border-color: #94a3b8; color: #1e293b; }
+  .c-gha    { background: #f0f9ff; border-color: #38bdf8; color: #0c4a6e; }
+  .c-sum    { background: #f8fafc; border-color: #94a3b8; color: #334155; }
 
   /* ── VARS TAB ─────────────────────────────────────────────────────────── */
   .var-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; }
@@ -136,7 +140,6 @@
   .bh-input  { background: #d1fae5; color: #065f46; }
   .bh-output { background: #fef3c7; color: #92400e; }
   .bh-file   { background: #f3e8ff; color: #6b21a8; }
-  .bh-svc    { background: #fce7f3; color: #9d174d; }
   .var-new { font-size: 9px; background: #10b981; color: #fff; padding: 1px 5px; border-radius: 6px; margin-left: 4px; }
 
   .svc-table { width: 100%; border-collapse: collapse; font-size: 10.5px; }
@@ -181,12 +184,13 @@
     <div class="leg"><div class="leg-dot" style="background:#4ade80"></div> Build/Pack</div>
     <div class="leg"><div class="leg-dot" style="background:#facc15"></div> Check/Verify</div>
     <div class="leg"><div class="leg-dot" style="background:#fb7185"></div> Security Scan (toggle)</div>
-    <div class="leg"><div class="leg-dot" style="background:#f472b6"></div> Backup</div>
+    <div class="leg"><div class="leg-dot" style="background:#f472b6"></div> Backup (solution export)</div>
     <div class="leg"><div class="leg-dot" style="background:#c084fc"></div> Deploy/Import</div>
     <div class="leg"><div class="leg-dot" style="background:#818cf8"></div> Publish/Activate</div>
     <div class="leg"><div class="leg-dot" style="background:#2dd4bf"></div> Data/Config</div>
-    <div class="leg"><div class="leg-dot" style="background:#fb923c"></div> Cleanup on failure</div>
+    <div class="leg"><div class="leg-dot" style="background:#fb923c"></div> Cleanup on failure / Warn-only</div>
     <div class="leg"><div class="leg-dot" style="background:#f59e0b"></div> JFrog Artifactory</div>
+    <div class="leg"><div class="leg-dot" style="background:#94a3b8"></div> Summary</div>
     <div class="leg"><span style="font-size:10px;color:#6b7280">Hover any pill for I/O details</span></div>
   </div>
 
@@ -194,7 +198,7 @@
   <div class="pipeline">
 
     <!-- ══════════════════════════════════════════════════════════════════
-         EXPORT WORKFLOW  (export-solution.yml)
+         EXPORT WORKFLOW  (export-solution.yml — full logic in GHA-Dynamics)
          ══════════════════════════════════════════════════════════════════ -->
 
     <!-- ── EXPORT SETUP ─────────────────────────────────────────────────── -->
@@ -212,21 +216,15 @@
             <div class="tt-row"><span class="lbl">solutions input</span><span class="src-badge sb-i">[I]</span> "all" or "CoreSolution, ExtA"</div>
             <div class="tt-row"><span class="lbl">branch-name input</span><span class="src-badge sb-i">[I]</span> inputs.branch-name or auto: export/{name}-{date}</div>
             <div class="tt-row"><span class="lbl">PP_SOLUTION_NAME</span><span class="src-badge sb-v">[V]</span> fallback for single-solution repos</div>
-            <div class="tt-row"><span class="lbl">solutions-config.json</span><span class="src-badge sb-h">[H]</span> .github/solutions-config.json (optional)</div>
             <div class="tt-sec">📤 Outputs (job outputs)</div>
             <div class="tt-row tt-out">matrix → {"solution":["CoreSolution","ExtA","ExtB"]}</div>
-            <div class="tt-row tt-out">solution-list → "CoreSolution, ExtA, ExtB"</div>
-            <div class="tt-row tt-out">solution-count → 3</div>
-            <div class="tt-row tt-out">branch-name → computed once, shared by all matrix instances</div>
+            <div class="tt-row tt-out">solution-list, solution-count, branch-name</div>
           </div>
         </div><div class="arrow">→</div>
 
         <div class="pill c-setup">solutions-config.json <span class="badge">optional</span>
           <div class="tt"><div class="tt-title">.github/solutions-config.json</div>
-            <div class="tt-desc">Optional JSON file that controls deploy order for dependent solutions (e.g. CoreSolution must export/deploy before ExtensionA which depends on it).</div>
-            <div class="tt-sec">📥 Example</div>
-            <div class="tt-row"><span class="lbl">solutions[0]</span><span class="src-badge sb-h">[H]</span> {"name":"CoreSolution"}</div>
-            <div class="tt-row"><span class="lbl">solutions[1]</span><span class="src-badge sb-h">[H]</span> {"name":"ExtensionA"}</div>
+            <div class="tt-desc">Optional JSON file controlling deploy order for dependent solutions (e.g. CoreSolution before ExtensionA).</div>
             <div class="tt-sec">📤 Effect</div>
             <div class="tt-row tt-out">Overrides alphabetical order — solutions deploy in dependency order</div>
             <div class="tt-warn">⚠ Unlisted solutions are appended alphabetically after listed ones</div>
@@ -234,7 +232,7 @@
         </div>
 
         <div class="divider"></div>
-        <div class="gate-info">matrix → ×N parallel jobs fan-out</div>
+        <div class="gate-info">matrix → ×N sequential jobs fan-out (max-parallel:1)</div>
 
       </div>
     </div>
@@ -252,54 +250,41 @@
         <div class="pill c-auth">actions-install
           <div class="tt"><div class="tt-title">actions-install@v1</div>
             <div class="tt-desc">Installs PAC CLI and Power Platform Build Tools into runner PATH.</div>
-            <div class="tt-sec">📥 Inputs</div>
-            <div class="tt-row"><span class="lbl">add-tools-to-path</span><span class="src-badge sb-h">[H]</span> true</div>
             <div class="tt-sec">📤 Outputs</div>
             <div class="tt-row tt-out">PAC CLI available in $PATH for all subsequent steps</div>
           </div>
         </div><div class="arrow">→</div>
 
         <div class="pill c-auth">who-am-i
-          <div class="tt"><div class="tt-title">who-am-i@v1</div>
+          <div class="tt"><div class="tt-title">who-am-i@v1 — Sandbox</div>
             <div class="tt-desc">Validates SPN credentials against Sandbox env. Fails fast if auth is broken.</div>
             <div class="tt-sec">📥 Inputs</div>
             <div class="tt-row"><span class="lbl">environment-url</span><span class="src-badge sb-v">[V]</span> vars.PP_SDBX_URL</div>
-            <div class="tt-row"><span class="lbl">app-id</span><span class="src-badge sb-s">[S]</span> secrets.PP_APP_ID</div>
-            <div class="tt-row"><span class="lbl">client-secret</span><span class="src-badge sb-s">[S]</span> secrets.PP_CLIENT_SECRET</div>
-            <div class="tt-row"><span class="lbl">tenant-id</span><span class="src-badge sb-s">[S]</span> secrets.PP_TENANT_ID</div>
+            <div class="tt-row"><span class="lbl">app-id / secret / tenant</span><span class="src-badge sb-s">[S]</span> secrets.*</div>
           </div>
         </div><div class="arrow">→</div>
 
         <div class="pill c-deploy">publish-solution <span class="badge">toggle</span>
           <div class="tt"><div class="tt-title">publish-solution@v1</div>
-            <div class="tt-desc">Publishes all pending customizations in Sandbox before export so nothing is missed.</div>
-            <div class="tt-sec">📥 Inputs</div>
-            <div class="tt-row"><span class="lbl">environment-url</span><span class="src-badge sb-v">[V]</span> vars.PP_SDBX_URL</div>
-            <div class="tt-row"><span class="lbl">async</span><span class="src-badge sb-h">[H]</span> true</div>
+            <div class="tt-desc">Publishes all pending customizations in Sandbox before export.</div>
             <div class="tt-warn">⚠ Toggle: inputs.publish-before-export</div>
           </div>
         </div><div class="arrow">→</div>
 
         <div class="pill c-build">export-solution
-          <div class="tt"><div class="tt-title">export-solution@v1</div>
-            <div class="tt-desc">Exports solution from Sandbox as both managed and unmanaged ZIPs.</div>
+          <div class="tt"><div class="tt-title">export-solution@v1 (from Sandbox)</div>
+            <div class="tt-desc">Exports solution from Sandbox as both managed and unmanaged ZIPs. Note: this is the EXPORT workflow — it exports FOR source control. Backup uses a separate export in deploy jobs.</div>
             <div class="tt-sec">📥 Inputs</div>
-            <div class="tt-row"><span class="lbl">solution-name</span><span class="src-badge sb-o">[O]</span> matrix.solution (e.g. "CoreSolution")</div>
+            <div class="tt-row"><span class="lbl">solution-name</span><span class="src-badge sb-o">[O]</span> matrix.solution</div>
             <div class="tt-row"><span class="lbl">environment-url</span><span class="src-badge sb-v">[V]</span> vars.PP_SDBX_URL</div>
-            <div class="tt-row"><span class="lbl">managed</span><span class="src-badge sb-h">[H]</span> true (exports both)</div>
             <div class="tt-sec">📤 Outputs</div>
-            <div class="tt-row tt-out">out/{matrix.solution}_unmanaged.zip</div>
-            <div class="tt-row tt-out">out/{matrix.solution}_managed.zip</div>
+            <div class="tt-row tt-out">out/{name}_unmanaged.zip + out/{name}_managed.zip</div>
           </div>
         </div><div class="arrow">→</div>
 
         <div class="pill c-build">unpack-solution
           <div class="tt"><div class="tt-title">unpack-solution@v1</div>
             <div class="tt-desc">Unpacks solution ZIP into source-control-friendly XML/JSON files.</div>
-            <div class="tt-sec">📥 Inputs</div>
-            <div class="tt-row"><span class="lbl">solution-folder</span><span class="src-badge sb-h">[H]</span> src/solutions/{matrix.solution}</div>
-            <div class="tt-row"><span class="lbl">solution-type</span><span class="src-badge sb-h">[H]</span> Both</div>
-            <div class="tt-row"><span class="lbl">process-canvas-apps</span><span class="src-badge sb-h">[H]</span> true</div>
             <div class="tt-sec">📤 Outputs</div>
             <div class="tt-row tt-out">src/solutions/{name}/ — XML/JSON source tree</div>
           </div>
@@ -307,34 +292,20 @@
 
         <div class="pill c-data">export-data <span class="badge">toggle</span>
           <div class="tt"><div class="tt-title">export-data@v1</div>
-            <div class="tt-desc">Exports Configuration Migration data from Sandbox using schema XML. Schema file resolution: checks config/{SolutionName}/data-schema.xml first, falls back to config/data-schema.xml.</div>
-            <div class="tt-sec">📥 Inputs</div>
-            <div class="tt-row"><span class="lbl">environment-url</span><span class="src-badge sb-v">[V]</span> vars.PP_SDBX_URL</div>
-            <div class="tt-row"><span class="lbl">schema-file</span><span class="src-badge sb-h">[H]</span> config/{name}/data-schema.xml → fallback: config/data-schema.xml</div>
-            <div class="tt-row"><span class="lbl">data-file</span><span class="src-badge sb-h">[H]</span> out/config-data.zip</div>
+            <div class="tt-desc">Exports Configuration Migration data from Sandbox. Schema resolution: config/{SolutionName}/data-schema.xml → fallback config/data-schema.xml.</div>
             <div class="tt-warn">⚠ Toggle: inputs.export-config-data</div>
           </div>
         </div><div class="arrow">→</div>
 
         <div class="pill c-git">git pull --rebase
           <div class="tt"><div class="tt-title">git pull --rebase (bash)</div>
-            <div class="tt-desc">Pulls latest changes from the shared export branch before committing. Required because max-parallel:1 means each export instance commits sequentially to the same branch — rebase prevents conflicts.</div>
-            <div class="tt-sec">📥 Context</div>
-            <div class="tt-row"><span class="lbl">BRANCH_NAME</span><span class="src-badge sb-o">[O]</span> needs.setup.outputs.branch-name (computed once, shared)</div>
-            <div class="tt-sec">📤 Outputs</div>
-            <div class="tt-row tt-out">Working tree synced with remote before commit</div>
+            <div class="tt-desc">Pulls latest changes from the shared export branch before committing. Required because max-parallel:1 means each instance commits sequentially to the same branch.</div>
           </div>
         </div><div class="arrow">→</div>
 
         <div class="pill c-git">git commit + push
           <div class="tt"><div class="tt-title">git commit &amp; push (bash)</div>
             <div class="tt-desc">Commits unpacked source + config data for this solution to the shared export branch.</div>
-            <div class="tt-sec">📥 Inputs</div>
-            <div class="tt-row"><span class="lbl">BRANCH_NAME</span><span class="src-badge sb-o">[O]</span> needs.setup.outputs.branch-name</div>
-            <div class="tt-row"><span class="lbl">commit-message</span><span class="src-badge sb-i">[I]</span> inputs.commit-message</div>
-            <div class="tt-row"><span class="lbl">GITHUB_TOKEN</span><span class="src-badge sb-s">[S]</span> auto-provided</div>
-            <div class="tt-sec">📤 Outputs</div>
-            <div class="tt-row tt-out">src/solutions/{name}/ committed to shared branch</div>
           </div>
         </div>
 
@@ -344,13 +315,7 @@
 
         <div class="pill c-git">create-pr <span class="badge">post-matrix</span>
           <div class="tt"><div class="tt-title">gh pr create (separate job)</div>
-            <div class="tt-desc">Runs ONCE after all N export matrix jobs complete. Creates a single PR for all exported solutions rather than one PR per solution.</div>
-            <div class="tt-sec">📥 Inputs</div>
-            <div class="tt-row"><span class="lbl">BRANCH_NAME</span><span class="src-badge sb-o">[O]</span> needs.setup.outputs.branch-name</div>
-            <div class="tt-row"><span class="lbl">solution-list</span><span class="src-badge sb-o">[O]</span> needs.setup.outputs.solution-list</div>
-            <div class="tt-row"><span class="lbl">create-pr</span><span class="src-badge sb-i">[I]</span> inputs.create-pr (toggle)</div>
-            <div class="tt-sec">📤 Outputs</div>
-            <div class="tt-row tt-out">One PR listing all exported solutions in the PR body</div>
+            <div class="tt-desc">Runs ONCE after all N export matrix jobs complete. Creates a single PR for all exported solutions.</div>
             <div class="tt-warn">⚠ Toggle: inputs.create-pr</div>
           </div>
         </div>
@@ -372,14 +337,13 @@
 
         <div class="pill c-setup">discover solutions
           <div class="tt"><div class="tt-title">Resolve Solution List (Python)</div>
-            <div class="tt-desc">Discovers solutions from src/solutions/*, validates requested names, applies solutions-config.json ordering. Same logic used by deploy-dev.yml and export-solution.yml.</div>
+            <div class="tt-desc">Discovers solutions from src/solutions/*, validates requested names, applies solutions-config.json ordering. Same resolver used by _reusable-deploy-dev.yml.</div>
             <div class="tt-sec">📥 Inputs</div>
             <div class="tt-row"><span class="lbl">solutions</span><span class="src-badge sb-i">[I]</span> "all" | "CoreSolution" | "CoreSolution, ExtA"</div>
             <div class="tt-row"><span class="lbl">PP_SOLUTION_NAME</span><span class="src-badge sb-v">[V]</span> single-solution repo fallback</div>
             <div class="tt-sec">📤 Outputs</div>
             <div class="tt-row tt-out">matrix → {"solution":["A","B","C"]}</div>
-            <div class="tt-row tt-out">solution-list → "CoreSolution, ExtA, ExtB"</div>
-            <div class="tt-row tt-out">solution-count → 3</div>
+            <div class="tt-row tt-out">solution-list, solution-count</div>
           </div>
         </div>
 
@@ -393,17 +357,24 @@
     <div class="stage">
       <div class="stage-label sl-build">
         <div class="emoji">🏗️</div>Build
-        <div class="sub">_reusable-build.yml<br>parallel × N<br>fail-fast: false</div>
+        <div class="sub">_reusable-build.yml<br>(GHA-Core)<br>parallel × N<br>fail-fast: false</div>
       </div>
       <div class="stage-body">
         <div class="gate-info" style="flex-shrink:0;">⇉ parallel matrix (one job per solution)</div>
         <div class="divider"></div>
 
+        <div class="pill c-check">validate-inputs
+          <div class="tt"><div class="tt-title">Validate Mandatory Inputs (PowerShell)</div>
+            <div class="tt-desc">Collects ALL validation errors before exiting. Checks: solution_name, solution source folder + Solution.xml, build_version_strategy, checker_geo (17 valid values), checker_error_level, data_schema_file existence, source_environment_url (required if schema set), and non-mock secrets: APP_ID, CLIENT_SECRET, TENANT_ID, JFROG_API_KEY.</div>
+            <div class="tt-sec">📤 Outputs</div>
+            <div class="tt-row tt-out">::warning:: for each warning, ::error:: for each error</div>
+            <div class="tt-mand">🔴 exit 1 only if error count > 0 — all errors reported at once</div>
+          </div>
+        </div><div class="arrow">→</div>
+
         <div class="pill c-auth">actions-install
           <div class="tt"><div class="tt-title">actions-install@v1</div>
-            <div class="tt-sec">📥 Inputs</div>
             <div class="tt-row"><span class="lbl">add-tools-to-path</span><span class="src-badge sb-h">[H]</span> true</div>
-            <div class="tt-sec">📤 Outputs</div>
             <div class="tt-row tt-out">PAC CLI in PATH</div>
           </div>
         </div><div class="arrow">→</div>
@@ -411,9 +382,6 @@
         <div class="pill c-build">stamp version
           <div class="tt"><div class="tt-title">Version Stamp (bash + sed)</div>
             <div class="tt-desc">Reads Major.Minor from Solution.xml and stamps Build = github.run_number (or git tag).</div>
-            <div class="tt-sec">📥 Inputs</div>
-            <div class="tt-row"><span class="lbl">solution-folder</span><span class="src-badge sb-i">[I]</span> src/solutions/{matrix.solution}</div>
-            <div class="tt-row"><span class="lbl">build-version-strategy</span><span class="src-badge sb-i">[I]</span> run_number | gittags</div>
             <div class="tt-sec">📤 Outputs</div>
             <div class="tt-row tt-out">steps.stamp-version.outputs.version → e.g. 1.0.42.0</div>
           </div>
@@ -421,10 +389,6 @@
 
         <div class="pill c-build">pack-solution ×2
           <div class="tt"><div class="tt-title">pack-solution@v1 (×2 — Unmanaged + Managed)</div>
-            <div class="tt-desc">Packs solution source into distribution ZIPs.</div>
-            <div class="tt-sec">📥 Inputs</div>
-            <div class="tt-row"><span class="lbl">solution-folder</span><span class="src-badge sb-i">[I]</span> src/solutions/{matrix.solution}</div>
-            <div class="tt-row"><span class="lbl">process-canvas-apps</span><span class="src-badge sb-h">[H]</span> true</div>
             <div class="tt-sec">📤 Outputs</div>
             <div class="tt-row tt-out">out/{name}_unmanaged.zip</div>
             <div class="tt-row tt-out">out/{name}_managed.zip</div>
@@ -434,12 +398,6 @@
         <div class="pill c-scan">BlackDuck SCA <span class="toggle-badge">lowcode-nocode</span>
           <div class="tt"><div class="tt-title">synopsys-sig/detect-action@v1.3.1</div>
             <div class="tt-desc">Open-source composition analysis (SCA). Scans solution dependencies for known vulnerabilities.</div>
-            <div class="tt-sec">📥 Inputs</div>
-            <div class="tt-row"><span class="lbl">scan-mode</span><span class="src-badge sb-h">[H]</span> RAPID</div>
-            <div class="tt-row"><span class="lbl">detect-version</span><span class="src-badge sb-h">[H]</span> latest</div>
-            <div class="tt-row"><span class="lbl">blackduck-url</span><span class="src-badge sb-s">[S]</span> secrets.BLACKDUCK_URL</div>
-            <div class="tt-row"><span class="lbl">blackduck-api-token</span><span class="src-badge sb-s">[S]</span> secrets.BLACKDUCK_API_TOKEN</div>
-            <div class="tt-row"><span class="lbl">github-token</span><span class="src-badge sb-s">[S]</span> secrets.GITHUB_TOKEN</div>
             <div class="tt-toggle">🔀 if: lowcode-nocode == 'true' AND enable-blackduck == 'true'</div>
             <div class="tt-warn">⚠ Skipped entirely if lowcode-nocode != 'true'</div>
           </div>
@@ -447,13 +405,7 @@
 
         <div class="pill c-scan">Checkmarx SAST <span class="toggle-badge">lowcode-nocode</span>
           <div class="tt"><div class="tt-title">checkmarx/ast-github-action@main</div>
-            <div class="tt-desc">Static Application Security Testing (SAST). Scans solution source code for security vulnerabilities.</div>
-            <div class="tt-sec">📥 Inputs</div>
-            <div class="tt-row"><span class="lbl">base_uri</span><span class="src-badge sb-s">[S]</span> secrets.CHECKMARX_BASE_URI</div>
-            <div class="tt-row"><span class="lbl">cx_client_id</span><span class="src-badge sb-s">[S]</span> secrets.CHECKMARX_CLIENT_ID</div>
-            <div class="tt-row"><span class="lbl">cx_client_secret</span><span class="src-badge sb-s">[S]</span> secrets.CHECKMARX_CLIENT_SECRET</div>
-            <div class="tt-row"><span class="lbl">cx_tenant</span><span class="src-badge sb-s">[S]</span> secrets.CHECKMARX_TENANT</div>
-            <div class="tt-row"><span class="lbl">project_name</span><span class="src-badge sb-h">[H]</span> github.repository</div>
+            <div class="tt-desc">Static Application Security Testing (SAST). Scans solution source code for security vulnerabilities in custom code.</div>
             <div class="tt-toggle">🔀 if: lowcode-nocode == 'true' AND enable-checkmarx == 'true'</div>
             <div class="tt-warn">⚠ Skipped entirely if lowcode-nocode != 'true'</div>
           </div>
@@ -461,48 +413,49 @@
 
         <div class="pill c-check">check-solution <span class="mand-badge">MANDATORY</span>
           <div class="tt"><div class="tt-title">check-solution@v1 — ALWAYS ON (no if: condition)</div>
-            <div class="tt-desc">Runs Power Apps Solution Checker static analysis. Cannot be disabled by any toggle — always executes after pack-solution.</div>
+            <div class="tt-desc">Power Apps Solution Checker. Cannot be disabled by any toggle.</div>
             <div class="tt-sec">📥 Inputs</div>
             <div class="tt-row"><span class="lbl">path</span><span class="src-badge sb-h">[H]</span> out/{name}_unmanaged.zip</div>
-            <div class="tt-row"><span class="lbl">geo</span><span class="src-badge sb-v">[V]</span> vars.PP_CHECKER_GEO || 'UnitedStates'</div>
-            <div class="tt-row"><span class="lbl">app-id</span><span class="src-badge sb-s">[S]</span> secrets.PP_APP_ID</div>
-            <div class="tt-row"><span class="lbl">client-secret</span><span class="src-badge sb-s">[S]</span> secrets.PP_CLIENT_SECRET</div>
+            <div class="tt-row"><span class="lbl">geo</span><span class="src-badge sb-v">[V]</span> pp-checker-geo input (from vars.PP_CHECKER_GEO)</div>
             <div class="tt-row"><span class="lbl">fail-on-analysis-error</span><span class="src-badge sb-h">[H]</span> true</div>
-            <div class="tt-sec">📤 Outputs</div>
-            <div class="tt-row tt-out">Checker logs artifact: SolutionChecker-{name}-{run#}</div>
-            <div class="tt-row tt-out">SARIF report → uploaded to JFrog</div>
             <div class="tt-mand">🔴 Pipeline BLOCKS on any rule violations</div>
           </div>
         </div><div class="arrow">→</div>
 
         <div class="pill c-data">export-data <span class="badge">if schema</span>
           <div class="tt"><div class="tt-title">export-data@v1</div>
-            <div class="tt-desc">Exports config migration data into build artifact. Schema resolution: config/{SolutionName}/data-schema.xml → fallback config/data-schema.xml → skip if neither exists.</div>
-            <div class="tt-sec">📤 Outputs</div>
-            <div class="tt-row tt-out">out/config-data.zip included in build artifact</div>
+            <div class="tt-desc">Exports config migration data into build artifact. Schema: config/{SolutionName}/data-schema.xml → fallback config/data-schema.xml → skip if neither.</div>
           </div>
         </div><div class="arrow">→</div>
 
         <div class="pill c-jfrog">JFrog upload
           <div class="tt"><div class="tt-title">jfrog/setup-jfrog-cli@v3 + jf rt upload</div>
-            <div class="tt-desc">Uploads solution ZIPs and Solution Checker SARIF report to JFrog Artifactory for traceability.</div>
+            <div class="tt-desc">Uploads solution ZIPs and Solution Checker SARIF report to JFrog Artifactory for traceability. Always runs (no toggle). JFrog is NOT used as the download source in deploy jobs — GHA pipeline artifacts are used for deploy.</div>
             <div class="tt-sec">📥 Inputs</div>
-            <div class="tt-row"><span class="lbl">JF_URL</span><span class="src-badge sb-s">[S]</span> secrets.JFROG_URL</div>
-            <div class="tt-row"><span class="lbl">JF_ACCESS_TOKEN</span><span class="src-badge sb-s">[S]</span> secrets.JFROG_ACCESS_TOKEN</div>
+            <div class="tt-row"><span class="lbl">JFROG_API_KEY</span><span class="src-badge sb-s">[S]</span> secrets.JFROG_API_KEY</div>
             <div class="tt-row"><span class="lbl">target path</span><span class="src-badge sb-h">[H]</span> {JFROG_REPO}/{name}/{version}/</div>
             <div class="tt-sec">📤 Outputs</div>
-            <div class="tt-row tt-out">Artifacts traceable by solution name + version</div>
+            <div class="tt-row tt-out">Artifacts traceable by solution name + version in JFrog</div>
           </div>
         </div><div class="arrow">→</div>
 
-        <div class="pill c-build">upload-artifact
-          <div class="tt"><div class="tt-title">actions/upload-artifact@v4</div>
-            <div class="tt-desc">Publishes build outputs to GitHub Actions artifact store. Name pattern used by deploy jobs to download without cross-job output passing.</div>
+        <div class="pill c-gha">upload-artifact (GHA)
+          <div class="tt"><div class="tt-title">actions/upload-artifact@v4 — Primary deploy source</div>
+            <div class="tt-desc">Publishes build outputs to GitHub Actions artifact store. Deploy jobs download from here — NOT from JFrog. JFrog is upload-only for traceability.</div>
             <div class="tt-sec">📥 Inputs</div>
             <div class="tt-row"><span class="lbl">name</span><span class="src-badge sb-h">[H]</span> solution-{matrix.solution}-{run_number}</div>
             <div class="tt-row"><span class="lbl">retention-days</span><span class="src-badge sb-h">[H]</span> 30</div>
             <div class="tt-sec">📤 Outputs</div>
-            <div class="tt-row tt-out">Artifact: solution-{name}-{run#} — deterministic name reconstructable in deploy jobs</div>
+            <div class="tt-row tt-out">Artifact: solution-{name}-{run#} — deterministic name reconstructed by deploy jobs</div>
+          </div>
+        </div><div class="arrow">→</div>
+
+        <div class="pill c-sum">job-summary artifact
+          <div class="tt"><div class="tt-title">Upload Job Summary Record</div>
+            <div class="tt-desc">Write-BuildSummary.ps1 writes JSON record (solution, version, artifact, checker_geo, mock, jfrog status, timestamp) to job-summaries/ folder, then uploads as artifact. Consumed by pipeline-summary job at the end.</div>
+            <div class="tt-sec">📤 Outputs</div>
+            <div class="tt-row tt-out">Artifact: job-summary-build-{solution}-{run#}</div>
+            <div class="tt-row tt-out">JSON fields: job_type, solution, version, artifact_name, run_number, mock_deploy, checker_geo, timestamp</div>
           </div>
         </div>
 
@@ -513,75 +466,84 @@
     <div class="stage">
       <div class="stage-label sl-dev">
         <div class="emoji">🚀</div>Dev
-        <div class="sub">Unmanaged<br>sequential × N<br>max-parallel: 1</div>
+        <div class="sub">Unmanaged<br>_reusable-deploy.yml<br>sequential × N<br>max-parallel: 1</div>
       </div>
       <div class="stage-body">
         <div class="gate gate-green">🔒 Dev Lead approval</div>
-        <div class="gate-info">environment: Dev (approvals gate here)</div>
+        <div class="gate-info">environment: Dev</div>
         <div class="arrow">→</div>
         <div class="gate-info">⬇ sequential max-parallel:1</div>
         <div class="divider"></div>
 
+        <div class="pill c-gha">download GHA artifact
+          <div class="tt"><div class="tt-title">actions/download-artifact@v4 — Primary source</div>
+            <div class="tt-desc">Downloads build artifact from GitHub Actions artifact store. This is the PRIMARY source — not JFrog. Artifact name reconstructed deterministically without cross-job output passing.</div>
+            <div class="tt-sec">📥 Inputs</div>
+            <div class="tt-row"><span class="lbl">name</span><span class="src-badge sb-i">[I]</span> artifact_name input → solution-{name}-{run#}</div>
+            <div class="tt-row"><span class="lbl">path</span><span class="src-badge sb-h">[H]</span> out/{solution_name}/</div>
+          </div>
+        </div><div class="arrow">→</div>
+
         <div class="pill c-auth">who-am-i
           <div class="tt"><div class="tt-title">who-am-i@v1</div>
-            <div class="tt-sec">📥 Inputs</div>
-            <div class="tt-row"><span class="lbl">environment-url</span><span class="src-badge sb-v">[V]</span> vars.PP_DEV_URL</div>
+            <div class="tt-row"><span class="lbl">environment-url</span><span class="src-badge sb-i">[I]</span> environment_url (from vars.PP_DEV_URL)</div>
             <div class="tt-row"><span class="lbl">app-id / secret / tenant</span><span class="src-badge sb-s">[S]</span> secrets.*</div>
-            <div class="tt-sec">📤 Outputs</div>
             <div class="tt-row tt-out">Identity confirmed. Fails if SPN has no access.</div>
           </div>
         </div><div class="arrow">→</div>
 
-        <div class="pill c-backup">backup-env <span class="badge">toggle</span>
-          <div class="tt"><div class="tt-title">backup-environment@v1</div>
+        <div class="pill c-backup">export-solution backup <span class="badge">toggle</span>
+          <div class="tt"><div class="tt-title">export-solution@v1 — Solution-Scoped Backup</div>
+            <div class="tt-desc">Exports the CURRENT solution from the target environment as a backup ZIP BEFORE importing the new version. Solution-scoped: only this solution is backed up, not the full environment.</div>
             <div class="tt-sec">📥 Inputs</div>
-            <div class="tt-row"><span class="lbl">backup-label</span><span class="src-badge sb-h">[H]</span> "Pre-deploy Dev #{run_number}"</div>
-            <div class="tt-warn">⚠ Toggle: inputs.enable-backup</div>
+            <div class="tt-row"><span class="lbl">solution-name</span><span class="src-badge sb-i">[I]</span> solution_name</div>
+            <div class="tt-row"><span class="lbl">solution-output-file</span><span class="src-badge sb-h">[H]</span> backup/{name}/Pre-Deploy-{name}-v{run#}.zip</div>
+            <div class="tt-row"><span class="lbl">managed</span><span class="src-badge sb-h">[H]</span> false (Dev is always unmanaged)</div>
+            <div class="tt-row"><span class="lbl">continue-on-error</span><span class="src-badge sb-h">[H]</span> true</div>
+            <div class="tt-sec">📤 Outputs</div>
+            <div class="tt-row tt-out">GHA artifact: backup-{solution}-Dev-v{run#} (retained 30 days)</div>
+            <div class="tt-warn">⚠ Toggle: enable_backup=true</div>
+            <div class="tt-warn">⚠ continue-on-error: true — backup failure does NOT block deploy</div>
           </div>
         </div><div class="arrow">→</div>
 
         <div class="pill c-warn">blocking-check <span class="warn-badge">warn only</span>
-          <div class="tt"><div class="tt-title">Dataverse asyncoperations API (bash)</div>
-            <div class="tt-desc">Queries for in-progress async jobs. Logs as warning — does NOT block pipeline.</div>
-            <div class="tt-warn">⚠ Warning only — pipeline continues regardless</div>
+          <div class="tt"><div class="tt-title">Dataverse asyncoperations API (Invoke-BlockingCheck.ps1)</div>
+            <div class="tt-desc">Queries for in-progress async jobs in the target environment. Emits ::warning:: annotations — NEVER blocks pipeline. blocking-count output used in job summary.</div>
+            <div class="tt-sec">📤 Outputs</div>
+            <div class="tt-row tt-out">blocking-count → count of in-flight async ops</div>
+            <div class="tt-row tt-out">::warning:: annotation (visible in GitHub Actions UI)</div>
+            <div class="tt-strategy">💡 Handling strategies: retry-with-backoff, wait-and-poll, defer to another env, manual-override flag</div>
+            <div class="tt-warn">⚠ OAuth token failure = exit 1 (auth broken — correct to fail)</div>
+            <div class="tt-warn">⚠ Toggle: enable-blocking-check</div>
           </div>
         </div><div class="arrow">→</div>
 
         <div class="pill c-check">settings-file resolve <span class="badge">auto</span>
           <div class="tt"><div class="tt-title">Resolve Deployment Settings File (bash)</div>
-            <div class="tt-desc">Multi-solution aware settings resolution. Checks solution-specific path first, falls back to legacy single-solution path.</div>
             <div class="tt-sec">📥 Resolution order</div>
             <div class="tt-row"><span class="lbl">Primary</span><span class="src-badge sb-h">[H]</span> deployment-settings/dev/{SolutionName}.json</div>
             <div class="tt-row"><span class="lbl">Fallback</span><span class="src-badge sb-h">[H]</span> deployment-settings/dev/deployment-settings.json</div>
             <div class="tt-row"><span class="lbl">Missing</span><span class="src-badge sb-h">[H]</span> skip gracefully (exists=false)</div>
-            <div class="tt-sec">📤 Outputs</div>
-            <div class="tt-row tt-out">steps.settings-file.outputs.exists → true/false</div>
-            <div class="tt-row tt-out">steps.settings-file.outputs.path → resolved path</div>
           </div>
         </div><div class="arrow">→</div>
 
         <div class="pill c-deploy">import-solution (unmanaged)
           <div class="tt"><div class="tt-title">import-solution@v1 — Unmanaged</div>
-            <div class="tt-sec">📥 Inputs</div>
-            <div class="tt-row"><span class="lbl">solution-file</span><span class="src-badge sb-h">[H]</span> out/{name}_unmanaged.zip</div>
+            <div class="tt-row"><span class="lbl">solution-file</span><span class="src-badge sb-h">[H]</span> out/{name}/{name}_unmanaged.zip</div>
             <div class="tt-row"><span class="lbl">force-overwrite</span><span class="src-badge sb-h">[H]</span> true</div>
             <div class="tt-row"><span class="lbl">deployment-settings-file</span><span class="src-badge sb-o">[O]</span> steps.settings-file.outputs.path</div>
-            <div class="tt-row"><span class="lbl">use-deployment-settings-file</span><span class="src-badge sb-o">[O]</span> steps.settings-file.outputs.exists</div>
-            <div class="tt-sec">📤 Outputs</div>
-            <div class="tt-row tt-out">Solution imported into Dev (unmanaged)</div>
           </div>
         </div><div class="arrow">→</div>
 
         <div class="pill c-pub">publish-customizations
           <div class="tt"><div class="tt-title">publish-solution@v1</div>
-            <div class="tt-desc">Publishes all solution customizations after import.</div>
-            <div class="tt-row"><span class="lbl">if condition</span><span class="src-badge sb-h">[H]</span> mock-deploy == false</div>
+            <div class="tt-row"><span class="lbl">if condition</span><span class="src-badge sb-h">[H]</span> mock-deploy == false AND outcome == success</div>
           </div>
         </div><div class="arrow">→</div>
 
         <div class="pill c-pub">activate-workflows
           <div class="tt"><div class="tt-title">Activate Cloud Flows (Dataverse API)</div>
-            <div class="tt-desc">Re-enables Cloud Flows that may be deactivated after import.</div>
             <div class="tt-row"><span class="lbl">if condition</span><span class="src-badge sb-h">[H]</span> mock-deploy == false</div>
           </div>
         </div><div class="arrow">→</div>
@@ -589,7 +551,15 @@
         <div class="pill c-data">import-data <span class="badge">toggle</span>
           <div class="tt"><div class="tt-title">import-data@v1</div>
             <div class="tt-row"><span class="lbl">data-file</span><span class="src-badge sb-h">[H]</span> out/config-data.zip</div>
-            <div class="tt-warn">⚠ Toggle: inputs.import-config-data</div>
+            <div class="tt-warn">⚠ Toggle: import-config-data</div>
+          </div>
+        </div><div class="arrow">→</div>
+
+        <div class="pill c-sum">job-summary artifact
+          <div class="tt"><div class="tt-title">Upload Job Summary Record (Deploy)</div>
+            <div class="tt-desc">Write-DeploySummary.ps1 writes JSON record to job-summaries/ and uploads as artifact. Steps captured: who-am-i, blocking-check (⚠️/✅), version-compare, backup, import.</div>
+            <div class="tt-sec">📤 Outputs</div>
+            <div class="tt-row tt-out">Artifact: job-summary-deploy-Dev-{solution}-{run#}</div>
           </div>
         </div>
 
@@ -605,7 +575,7 @@
       <div class="stage-body">
         <div class="gate gate-green">🔒 Integration Lead approval</div>
         <div class="arrow">→</div>
-        <span style="font-size:10px;color:#6b7280;">Single approval covers all N solutions — <code style="font-size:9px;background:#f1f5f9;padding:1px 4px;border-radius:3px;">environment: Intg</code> set here, not on the deploy matrix job</span>
+        <span style="font-size:10px;color:#6b7280;">Single approval covers all N solutions — <code style="font-size:9px;background:#f1f5f9;padding:1px 4px;border-radius:3px;">environment: Intg</code> set on THIS job, NOT on the deploy matrix job</span>
       </div>
     </div>
 
@@ -613,22 +583,30 @@
     <div class="stage">
       <div class="stage-label sl-intg">
         <div class="emoji">🚀</div>Intg
-        <div class="sub">Managed<br>sequential × N<br>max-parallel: 1</div>
+        <div class="sub">Managed<br>_reusable-deploy.yml<br>sequential × N<br>max-parallel: 1</div>
       </div>
       <div class="stage-body">
         <div class="gate-info" style="flex-shrink:0;">⬇ sequential max-parallel:1 (no environment: here)</div>
         <div class="divider"></div>
 
-        <div class="pill c-auth">who-am-i<div class="tt"><div class="tt-title">who-am-i@v1</div><div class="tt-row"><span class="lbl">environment-url</span><span class="src-badge sb-v">[V]</span> vars.PP_INTG_URL</div></div></div><div class="arrow">→</div>
+        <div class="pill c-gha">download GHA artifact<div class="tt"><div class="tt-title">actions/download-artifact@v4</div><div class="tt-row"><span class="lbl">name</span><span class="src-badge sb-i">[I]</span> solution-{name}-{run#}</div></div></div><div class="arrow">→</div>
 
-        <div class="pill c-backup">backup-env <span class="badge">toggle</span><div class="tt"><div class="tt-title">backup-environment@v1</div><div class="tt-warn">⚠ Toggle: enable-backup</div></div></div><div class="arrow">→</div>
+        <div class="pill c-auth">who-am-i<div class="tt"><div class="tt-title">who-am-i@v1</div><div class="tt-row"><span class="lbl">environment-url</span><span class="src-badge sb-i">[I]</span> pp-intg-url (from vars.PP_INTG_URL)</div></div></div><div class="arrow">→</div>
 
-        <div class="pill c-warn">blocking-check <span class="warn-badge">warn only</span><div class="tt"><div class="tt-title">Dataverse asyncoperations API</div><div class="tt-row tt-out">::warning:: — does not block</div></div></div><div class="arrow">→</div>
+        <div class="pill c-backup">export-solution backup <span class="badge">toggle</span>
+          <div class="tt"><div class="tt-title">export-solution@v1 — Solution-Scoped Backup</div>
+            <div class="tt-row"><span class="lbl">managed</span><span class="src-badge sb-h">[H]</span> true (Intg is managed)</div>
+            <div class="tt-row tt-out">GHA artifact: backup-{solution}-Intg-v{run#}</div>
+            <div class="tt-warn">⚠ Toggle: enable_backup</div>
+          </div>
+        </div><div class="arrow">→</div>
+
+        <div class="pill c-warn">blocking-check <span class="warn-badge">warn only</span><div class="tt"><div class="tt-title">Dataverse asyncoperations API</div><div class="tt-row tt-out">::warning:: — pipeline continues regardless</div></div></div><div class="arrow">→</div>
 
         <div class="pill c-check">version-compare <span class="badge">toggle</span>
           <div class="tt"><div class="tt-title">Multi-Solution Version Compare (Dataverse API)</div>
             <div class="tt-desc">Compares solution version in Dev vs Intg. Warns on mismatch but does not block.</div>
-            <div class="tt-row"><span class="lbl">previous-env-url</span><span class="src-badge sb-v">[V]</span> vars.PP_DEV_URL</div>
+            <div class="tt-row"><span class="lbl">previous-env-url</span><span class="src-badge sb-i">[I]</span> pp-dev-url</div>
             <div class="tt-warn">⚠ Warning only — does not block pipeline</div>
           </div>
         </div><div class="arrow">→</div>
@@ -637,20 +615,23 @@
 
         <div class="pill c-deploy">import-solution (managed)
           <div class="tt"><div class="tt-title">import-solution@v1 — Managed (Update OR Holding)</div>
-            <div class="tt-desc">Two deployment paths controlled by trigger-upgrade toggle.</div>
+            <div class="tt-desc">Two deployment paths: trigger_upgrade=false → in-place Update; trigger_upgrade=true → Phase 1 holding import (SolutionName_Upgrade) + Phase 2 apply-upgrade.</div>
             <div class="tt-row"><span class="lbl">solution-file</span><span class="src-badge sb-h">[H]</span> out/{name}_managed.zip</div>
-            <div class="tt-row"><span class="lbl">deployment-settings-file</span><span class="src-badge sb-o">[O]</span> steps.settings-file.outputs.path</div>
             <div class="tt-warn">⚠ trigger-upgrade toggle controls Update vs Holding path</div>
           </div>
         </div><div class="arrow">→</div>
 
         <div class="pill c-clean">delete-solution <span class="badge">on failure</span><div class="tt"><div class="tt-title">delete-solution@v1</div><div class="tt-desc">Cleans up _Upgrade holding solution if upgrade fails. continue-on-error: true</div></div></div><div class="arrow">→</div>
 
-        <div class="pill c-pub">publish-customizations<div class="tt"><div class="tt-title">publish-solution@v1</div><div class="tt-row tt-out">Components published in Intg</div></div></div><div class="arrow">→</div>
+        <div class="pill c-pub">publish-customizations</div><div class="arrow">→</div>
+        <div class="pill c-pub">activate-workflows</div><div class="arrow">→</div>
+        <div class="pill c-data">import-data <span class="badge">toggle</span></div><div class="arrow">→</div>
 
-        <div class="pill c-pub">activate-workflows<div class="tt"><div class="tt-title">Activate Cloud Flows (Dataverse API)</div><div class="tt-row tt-out">Flows activated in Intg</div></div></div><div class="arrow">→</div>
-
-        <div class="pill c-data">import-data <span class="badge">toggle</span><div class="tt"><div class="tt-title">import-data@v1</div><div class="tt-warn">⚠ Toggle: import-config-data</div></div></div>
+        <div class="pill c-sum">job-summary artifact
+          <div class="tt"><div class="tt-title">Upload Job Summary Record (Intg Deploy)</div>
+            <div class="tt-row tt-out">Artifact: job-summary-deploy-Intg-{solution}-{run#}</div>
+          </div>
+        </div>
 
       </div>
     </div>
@@ -672,21 +653,23 @@
     <div class="stage">
       <div class="stage-label sl-uat">
         <div class="emoji">🚀</div>UAT
-        <div class="sub">Managed<br>sequential × N<br>max-parallel: 1</div>
+        <div class="sub">Managed<br>_reusable-deploy.yml<br>sequential × N<br>max-parallel: 1</div>
       </div>
       <div class="stage-body">
         <div class="gate-info" style="flex-shrink:0;">⬇ sequential max-parallel:1</div>
         <div class="divider"></div>
-        <div class="pill c-auth">who-am-i<div class="tt"><div class="tt-row"><span class="lbl">environment-url</span><span class="src-badge sb-v">[V]</span> vars.PP_UAT_URL</div></div></div><div class="arrow">→</div>
-        <div class="pill c-backup">backup-env <span class="badge">toggle</span><div class="tt"><div class="tt-warn">⚠ Toggle: enable-backup</div></div></div><div class="arrow">→</div>
-        <div class="pill c-warn">blocking-check <span class="warn-badge">warn only</span><div class="tt"><div class="tt-row tt-out">::warning:: — does not block</div></div></div><div class="arrow">→</div>
-        <div class="pill c-check">version-compare <span class="badge">toggle</span><div class="tt"><div class="tt-title">Multi-Solution Version Compare</div><div class="tt-row"><span class="lbl">previous-env</span><span class="src-badge sb-v">[V]</span> vars.PP_INTG_URL</div><div class="tt-warn">⚠ Warning on mismatch</div></div></div><div class="arrow">→</div>
-        <div class="pill c-check">settings-file resolve <span class="badge">auto</span><div class="tt"><div class="tt-title">Resolve Deployment Settings File</div><div class="tt-row"><span class="lbl">Primary</span><span class="src-badge sb-h">[H]</span> deployment-settings/uat/{SolutionName}.json</div></div></div><div class="arrow">→</div>
-        <div class="pill c-deploy">import-solution (managed)<div class="tt"><div class="tt-row"><span class="lbl">solution-file</span><span class="src-badge sb-h">[H]</span> out/{name}_managed.zip</div><div class="tt-row"><span class="lbl">deployment-settings-file</span><span class="src-badge sb-o">[O]</span> steps.settings-file.outputs.path</div></div></div><div class="arrow">→</div>
+        <div class="pill c-gha">download GHA artifact</div><div class="arrow">→</div>
+        <div class="pill c-auth">who-am-i<div class="tt"><div class="tt-row"><span class="lbl">environment-url</span><span class="src-badge sb-i">[I]</span> pp-uat-url (from vars.PP_UAT_URL)</div></div></div><div class="arrow">→</div>
+        <div class="pill c-backup">export-solution backup <span class="badge">toggle</span><div class="tt"><div class="tt-title">export-solution@v1 — Solution-Scoped Backup</div><div class="tt-row"><span class="lbl">managed</span><span class="src-badge sb-h">[H]</span> true</div><div class="tt-row tt-out">GHA artifact: backup-{solution}-UAT-v{run#}</div><div class="tt-warn">⚠ Toggle: enable_backup</div></div></div><div class="arrow">→</div>
+        <div class="pill c-warn">blocking-check <span class="warn-badge">warn only</span></div><div class="arrow">→</div>
+        <div class="pill c-check">version-compare <span class="badge">toggle</span><div class="tt"><div class="tt-row"><span class="lbl">previous-env</span><span class="src-badge sb-i">[I]</span> pp-intg-url</div><div class="tt-warn">⚠ Warning on mismatch</div></div></div><div class="arrow">→</div>
+        <div class="pill c-check">settings-file resolve <span class="badge">auto</span><div class="tt"><div class="tt-row"><span class="lbl">Primary</span><span class="src-badge sb-h">[H]</span> deployment-settings/uat/{SolutionName}.json</div></div></div><div class="arrow">→</div>
+        <div class="pill c-deploy">import-solution (managed)</div><div class="arrow">→</div>
         <div class="pill c-clean">delete-solution <span class="badge">on failure</span></div><div class="arrow">→</div>
         <div class="pill c-pub">publish-customizations</div><div class="arrow">→</div>
         <div class="pill c-pub">activate-workflows</div><div class="arrow">→</div>
-        <div class="pill c-data">import-data <span class="badge">toggle</span></div>
+        <div class="pill c-data">import-data <span class="badge">toggle</span></div><div class="arrow">→</div>
+        <div class="pill c-sum">job-summary artifact<div class="tt"><div class="tt-row tt-out">Artifact: job-summary-deploy-UAT-{solution}-{run#}</div></div></div>
       </div>
     </div>
 
@@ -699,7 +682,7 @@
       <div class="stage-body">
         <div class="gate gate-yellow">🔒 Perf Team approval</div>
         <div class="arrow">→</div>
-        <span style="font-size:10px;color:#6b7280;">Single approval covers all N solutions — <code style="font-size:9px;background:#f1f5f9;padding:1px 4px;border-radius:3px;">environment: Perf</code> set here, not on the deploy matrix job</span>
+        <span style="font-size:10px;color:#6b7280;">Single approval covers all N solutions — <code style="font-size:9px;background:#f1f5f9;padding:1px 4px;border-radius:3px;">environment: Perf</code> set here</span>
       </div>
     </div>
 
@@ -707,21 +690,23 @@
     <div class="stage">
       <div class="stage-label sl-perf">
         <div class="emoji">🚀</div>Perf
-        <div class="sub">Managed<br>sequential × N<br>max-parallel: 1</div>
+        <div class="sub">Managed<br>_reusable-deploy.yml<br>sequential × N<br>max-parallel: 1</div>
       </div>
       <div class="stage-body">
         <div class="gate-info" style="flex-shrink:0;">⬇ sequential max-parallel:1</div>
         <div class="divider"></div>
-        <div class="pill c-auth">who-am-i<div class="tt"><div class="tt-row"><span class="lbl">environment-url</span><span class="src-badge sb-v">[V]</span> vars.PP_PERF_URL</div></div></div><div class="arrow">→</div>
-        <div class="pill c-backup">backup-env <span class="badge">toggle</span><div class="tt"><div class="tt-warn">⚠ Toggle: enable-backup</div></div></div><div class="arrow">→</div>
+        <div class="pill c-gha">download GHA artifact</div><div class="arrow">→</div>
+        <div class="pill c-auth">who-am-i<div class="tt"><div class="tt-row"><span class="lbl">environment-url</span><span class="src-badge sb-i">[I]</span> pp-perf-url (from vars.PP_PERF_URL)</div></div></div><div class="arrow">→</div>
+        <div class="pill c-backup">export-solution backup <span class="badge">toggle</span><div class="tt"><div class="tt-title">export-solution@v1 — Solution-Scoped Backup</div><div class="tt-row"><span class="lbl">managed</span><span class="src-badge sb-h">[H]</span> true</div><div class="tt-row tt-out">GHA artifact: backup-{solution}-Perf-v{run#}</div><div class="tt-warn">⚠ Toggle: enable_backup</div></div></div><div class="arrow">→</div>
         <div class="pill c-warn">blocking-check <span class="warn-badge">warn only</span></div><div class="arrow">→</div>
-        <div class="pill c-check">version-compare <span class="badge">toggle</span><div class="tt"><div class="tt-row"><span class="lbl">previous-env</span><span class="src-badge sb-v">[V]</span> vars.PP_UAT_URL</div><div class="tt-warn">⚠ Warning on mismatch</div></div></div><div class="arrow">→</div>
-        <div class="pill c-check">settings-file resolve <span class="badge">auto</span><div class="tt"><div class="tt-row"><span class="lbl">Primary</span><span class="src-badge sb-h">[H]</span> deployment-settings/perf/{SolutionName}.json</div></div></div><div class="arrow">→</div>
-        <div class="pill c-deploy">import-solution (managed)<div class="tt"><div class="tt-row"><span class="lbl">deployment-settings-file</span><span class="src-badge sb-o">[O]</span> steps.settings-file.outputs.path</div></div></div><div class="arrow">→</div>
+        <div class="pill c-check">version-compare <span class="badge">toggle</span><div class="tt"><div class="tt-row"><span class="lbl">previous-env</span><span class="src-badge sb-i">[I]</span> pp-uat-url</div><div class="tt-warn">⚠ Warning on mismatch</div></div></div><div class="arrow">→</div>
+        <div class="pill c-check">settings-file resolve <span class="badge">auto</span></div><div class="arrow">→</div>
+        <div class="pill c-deploy">import-solution (managed)</div><div class="arrow">→</div>
         <div class="pill c-clean">delete-solution <span class="badge">on failure</span></div><div class="arrow">→</div>
         <div class="pill c-pub">publish-customizations</div><div class="arrow">→</div>
         <div class="pill c-pub">activate-workflows</div><div class="arrow">→</div>
-        <div class="pill c-data">import-data <span class="badge">toggle</span></div>
+        <div class="pill c-data">import-data <span class="badge">toggle</span></div><div class="arrow">→</div>
+        <div class="pill c-sum">job-summary artifact<div class="tt"><div class="tt-row tt-out">Artifact: job-summary-deploy-Perf-{solution}-{run#}</div></div></div>
       </div>
     </div>
 
@@ -734,7 +719,7 @@
       <div class="stage-body">
         <div class="gate gate-yellow">🔒 Release Manager approval + 5 min wait</div>
         <div class="arrow">→</div>
-        <span style="font-size:10px;color:#6b7280;">Single approval covers all N solutions — <code style="font-size:9px;background:#f1f5f9;padding:1px 4px;border-radius:3px;">environment: Prod</code> set here, not on the deploy matrix job</span>
+        <span style="font-size:10px;color:#6b7280;">Single approval covers all N solutions — <code style="font-size:9px;background:#f1f5f9;padding:1px 4px;border-radius:3px;">environment: Prod</code> set here</span>
       </div>
     </div>
 
@@ -742,21 +727,67 @@
     <div class="stage">
       <div class="stage-label sl-prod">
         <div class="emoji">🚀</div>Prod
-        <div class="sub">Managed<br>sequential × N<br>max-parallel: 1</div>
+        <div class="sub">Managed<br>_reusable-deploy.yml<br>sequential × N<br>max-parallel: 1</div>
       </div>
       <div class="stage-body">
         <div class="gate-info" style="flex-shrink:0;">⬇ sequential max-parallel:1</div>
         <div class="divider"></div>
-        <div class="pill c-auth">who-am-i<div class="tt"><div class="tt-row"><span class="lbl">environment-url</span><span class="src-badge sb-v">[V]</span> vars.PP_PROD_URL</div></div></div><div class="arrow">→</div>
-        <div class="pill c-backup">backup-env <span class="badge">toggle</span><div class="tt"><div class="tt-desc">Strongly recommended for Prod. Creates restorable snapshot before any change.</div><div class="tt-warn">⚠ Toggle: enable-backup</div></div></div><div class="arrow">→</div>
+        <div class="pill c-gha">download GHA artifact</div><div class="arrow">→</div>
+        <div class="pill c-auth">who-am-i<div class="tt"><div class="tt-row"><span class="lbl">environment-url</span><span class="src-badge sb-i">[I]</span> pp-prod-url (from vars.PP_PROD_URL)</div></div></div><div class="arrow">→</div>
+        <div class="pill c-backup">export-solution backup <span class="badge">toggle</span>
+          <div class="tt"><div class="tt-title">export-solution@v1 — Solution-Scoped Backup</div>
+            <div class="tt-desc">Strongly recommended for Prod. Creates solution-scoped rollback point before any Prod change.</div>
+            <div class="tt-row"><span class="lbl">managed</span><span class="src-badge sb-h">[H]</span> true</div>
+            <div class="tt-row tt-out">GHA artifact: backup-{solution}-Prod-v{run#} (30 days retention)</div>
+            <div class="tt-warn">⚠ Toggle: enable_backup</div>
+          </div>
+        </div><div class="arrow">→</div>
         <div class="pill c-warn">blocking-check <span class="warn-badge">warn only</span></div><div class="arrow">→</div>
-        <div class="pill c-check">version-compare <span class="badge">toggle</span><div class="tt"><div class="tt-row"><span class="lbl">previous-env</span><span class="src-badge sb-v">[V]</span> vars.PP_PERF_URL</div><div class="tt-warn">⚠ Warning on mismatch</div></div></div><div class="arrow">→</div>
+        <div class="pill c-check">version-compare <span class="badge">toggle</span><div class="tt"><div class="tt-row"><span class="lbl">previous-env</span><span class="src-badge sb-i">[I]</span> pp-perf-url</div><div class="tt-warn">⚠ Warning on mismatch</div></div></div><div class="arrow">→</div>
         <div class="pill c-check">settings-file resolve <span class="badge">auto</span><div class="tt"><div class="tt-row"><span class="lbl">Primary</span><span class="src-badge sb-h">[H]</span> deployment-settings/prod/{SolutionName}.json</div></div></div><div class="arrow">→</div>
-        <div class="pill c-deploy">import-solution (managed)<div class="tt"><div class="tt-row"><span class="lbl">solution-file</span><span class="src-badge sb-h">[H]</span> out/{name}_managed.zip</div><div class="tt-row"><span class="lbl">deployment-settings-file</span><span class="src-badge sb-o">[O]</span> steps.settings-file.outputs.path</div></div></div><div class="arrow">→</div>
+        <div class="pill c-deploy">import-solution (managed)</div><div class="arrow">→</div>
         <div class="pill c-clean">delete-solution <span class="badge">on failure</span></div><div class="arrow">→</div>
         <div class="pill c-pub">publish-customizations</div><div class="arrow">→</div>
         <div class="pill c-pub">activate-workflows</div><div class="arrow">→</div>
-        <div class="pill c-data">import-data <span class="badge">toggle</span></div>
+        <div class="pill c-data">import-data <span class="badge">toggle</span></div><div class="arrow">→</div>
+        <div class="pill c-jfrog">JFrog tag
+          <div class="tt"><div class="tt-title">JFrog Release Tag (post-Prod)</div>
+            <div class="tt-desc">Tags the artifact in JFrog Artifactory as a released version after successful Prod deployment. Provides an immutable release marker for audit and rollforward.</div>
+            <div class="tt-row tt-out">Artifact tagged as released in {JFROG_REPO}/{name}/{version}/</div>
+          </div>
+        </div><div class="arrow">→</div>
+        <div class="pill c-sum">job-summary artifact<div class="tt"><div class="tt-row tt-out">Artifact: job-summary-deploy-Prod-{solution}-{run#}</div></div></div>
+      </div>
+    </div>
+
+    <!-- ── PIPELINE SUMMARY ───────────────────────────────────────────── -->
+    <div class="stage">
+      <div class="stage-label sl-sum">
+        <div class="emoji">📋</div>Pipeline Summary
+        <div class="sub">release-pipeline.yml<br>if: always()</div>
+      </div>
+      <div class="stage-body">
+        <div class="pill c-gha">download job-summary-* artifacts
+          <div class="tt"><div class="tt-title">actions/download-artifact@v4 — Aggregate</div>
+            <div class="tt-desc">Downloads all job summary JSON records from all build and deploy jobs. Uses pattern matching with merge-multiple: true so all JSONs land in a single flat directory.</div>
+            <div class="tt-sec">📥 Inputs</div>
+            <div class="tt-row"><span class="lbl">pattern</span><span class="src-badge sb-h">[H]</span> job-summary-*</div>
+            <div class="tt-row"><span class="lbl">merge-multiple</span><span class="src-badge sb-h">[H]</span> true</div>
+            <div class="tt-row"><span class="lbl">path</span><span class="src-badge sb-h">[H]</span> job-summaries/</div>
+            <div class="tt-row"><span class="lbl">continue-on-error</span><span class="src-badge sb-h">[H]</span> true</div>
+          </div>
+        </div><div class="arrow">→</div>
+        <div class="pill c-sum">Write-PipelineSummary.ps1
+          <div class="tt"><div class="tt-title">Consolidated Pipeline Summary (PowerShell)</div>
+            <div class="tt-desc">Reads all JSON records from job-summaries/ directory and renders a consolidated report to GITHUB_STEP_SUMMARY. Includes status table, Build Details table, and Deployment Details table with per-step outcomes.</div>
+            <div class="tt-sec">📥 Inputs</div>
+            <div class="tt-row"><span class="lbl">-JobSummariesDir</span><span class="src-badge sb-h">[H]</span> 'job-summaries'</div>
+            <div class="tt-sec">📤 Outputs (in GITHUB_STEP_SUMMARY)</div>
+            <div class="tt-row tt-out">Status table: Build ✅/❌, Deploy Dev/Intg/UAT/Perf/Prod</div>
+            <div class="tt-row tt-out">Build Details: solution, version, artifact, checker geo</div>
+            <div class="tt-row tt-out">Deployment Details: env, auth ✅, blocking ⚠️/✅, backup, import</div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -764,24 +795,71 @@
     <div class="stage">
       <div class="stage-label sl-rollbk">
         <div class="emoji">↩️</div>Rollback
-        <div class="sub">rollback.yml<br>type CONFIRM</div>
+        <div class="sub">rollback.yml →<br>_reusable-rollback.yml<br>type CONFIRM</div>
       </div>
       <div class="stage-body">
         <div class="gate gate-red">🔒 Type "CONFIRM" required</div><div class="arrow">→</div>
         <div class="gate gate-yellow">🔒 Target env approval gate</div><div class="arrow">→</div>
-        <div class="pill c-auth">who-am-i<div class="tt"><div class="tt-row"><span class="lbl">environment-url</span><span class="src-badge sb-i">[I]</span> target env URL (from inputs)</div></div></div><div class="arrow">→</div>
-        <div class="pill c-rollbk">restore-environment
-          <div class="tt"><div class="tt-title">restore-environment@v1</div>
-            <div class="tt-desc">Restores the environment to a previous backup point.</div>
+
+        <div class="pill c-rollbk">resolve env config
+          <div class="tt"><div class="tt-title">Resolve Environment URL + Solution Type (PowerShell)</div>
+            <div class="tt-desc">Maps target-environment to URL from inputs (pp-dev-url, pp-intg-url, etc.). Sets solution-type: Dev=unmanaged, all others=managed.</div>
             <div class="tt-sec">📥 Inputs</div>
-            <div class="tt-row"><span class="lbl">environment-url</span><span class="src-badge sb-i">[I]</span> target environment URL</div>
-            <div class="tt-row"><span class="lbl">app-id / secret / tenant</span><span class="src-badge sb-s">[S]</span> secrets.*</div>
-            <div class="tt-row"><span class="lbl">latest-backup</span><span class="src-badge sb-i">[I]</span> inputs.restore-latest-backup</div>
-            <div class="tt-row"><span class="lbl">selected-backup-datetime</span><span class="src-badge sb-i">[I]</span> inputs.selected-backup-datetime</div>
+            <div class="tt-row"><span class="lbl">target-environment</span><span class="src-badge sb-i">[I]</span> Dev | Intg | UAT | Perf | Prod</div>
+            <div class="tt-row"><span class="lbl">pp-{env}-url</span><span class="src-badge sb-i">[I]</span> forwarded from vars.PP_{ENV}_URL by wrapper</div>
             <div class="tt-sec">📤 Outputs</div>
-            <div class="tt-row tt-out">Environment restored to selected backup point</div>
+            <div class="tt-row tt-out">env-url, solution-type (managed|unmanaged)</div>
+          </div>
+        </div><div class="arrow">→</div>
+
+        <div class="pill c-rollbk">download backup artifact
+          <div class="tt"><div class="tt-title">actions/download-artifact@v4</div>
+            <div class="tt-desc">Downloads the solution backup ZIP that was exported BEFORE the deployment being rolled back. Artifact must have been created by a prior deploy job with enable-backup=true.</div>
+            <div class="tt-sec">📥 Inputs</div>
+            <div class="tt-row"><span class="lbl">name</span><span class="src-badge sb-i">[I]</span> backup-{solution-name}-{target-environment}-v{run-number}</div>
+            <div class="tt-row"><span class="lbl">solution-name</span><span class="src-badge sb-i">[I]</span> inputs.solution-name</div>
+            <div class="tt-row"><span class="lbl">run-number</span><span class="src-badge sb-i">[I]</span> inputs.run-number (the run# of the deploy to roll back FROM)</div>
+          </div>
+        </div><div class="arrow">→</div>
+
+        <div class="pill c-rollbk">locate ZIP
+          <div class="tt"><div class="tt-title">Find Backup ZIP (PowerShell)</div>
+            <div class="tt-desc">Finds *.zip in the downloaded artifact folder. Picks most recent by LastWriteTime. Errors if no ZIP found.</div>
+          </div>
+        </div><div class="arrow">→</div>
+
+        <div class="pill c-auth">install + who-am-i
+          <div class="tt"><div class="tt-title">actions-install@v1 + who-am-i@v1</div>
+            <div class="tt-row"><span class="lbl">environment-url</span><span class="src-badge sb-o">[O]</span> steps.resolve-env.outputs.env-url</div>
+          </div>
+        </div><div class="arrow">→</div>
+
+        <div class="pill c-rollbk">import-solution (backup ZIP)
+          <div class="tt"><div class="tt-title">import-solution@v1 — Re-import Pre-Deploy Backup</div>
+            <div class="tt-desc">Imports the pre-deploy backup ZIP back into the target environment, rolling back to the state before the failed/unwanted deployment. Dev uses unmanaged path; all others use managed path.</div>
+            <div class="tt-sec">📥 Inputs</div>
+            <div class="tt-row"><span class="lbl">solution-file</span><span class="src-badge sb-o">[O]</span> steps.locate-zip.outputs.zip-path</div>
+            <div class="tt-row"><span class="lbl">force-overwrite</span><span class="src-badge sb-h">[H]</span> true</div>
+            <div class="tt-row"><span class="lbl">activate-plugins</span><span class="src-badge sb-h">[H]</span> true</div>
+            <div class="tt-row"><span class="lbl">run-asynchronously</span><span class="src-badge sb-h">[H]</span> true (120 min max-wait)</div>
+            <div class="tt-sec">📤 Outputs</div>
+            <div class="tt-row tt-out">Solution rolled back to pre-deploy version in target environment</div>
+            <div class="tt-warn">⚠ Caveat: if deployment used trigger_upgrade and removed components, those components are NOT restored. Full env restore required in that case.</div>
+          </div>
+        </div><div class="arrow">→</div>
+
+        <div class="pill c-pub">publish <span class="badge">Dev only</span>
+          <div class="tt"><div class="tt-title">publish-solution@v1</div>
+            <div class="tt-row"><span class="lbl">if condition</span><span class="src-badge sb-h">[H]</span> solution-type == 'unmanaged' AND import succeeded</div>
+          </div>
+        </div><div class="arrow">→</div>
+
+        <div class="pill c-sum">rollback summary
+          <div class="tt"><div class="tt-title">Rollback Summary (GITHUB_STEP_SUMMARY)</div>
+            <div class="tt-desc">Writes markdown table to step summary: solution, environment, URL, solution type, restored from run#, backup artifact name, initiated by, result.</div>
           </div>
         </div>
+
       </div>
     </div>
 
@@ -789,11 +867,13 @@
   </div><!-- /pipeline-wrap -->
 
   <div class="flow-note">
-    <b>Multi-solution support:</b> All workflows accept a <code>solutions</code> input — <code>"all"</code> deploys every solution in <code>src/solutions/</code>; comma-separated names deploy a subset. Dependency order is controlled by <code>.github/solutions-config.json</code>.
-    &nbsp;|&nbsp; <b>Gate pattern:</b> Each environment has a lightweight gate job (<code>environment:</code> declaration triggers approval) separate from the matrix deploy job — meaning ONE approval covers all N solutions.
-    &nbsp;|&nbsp; <b>Security scanning:</b> BlackDuck SCA + Checkmarx SAST are enabled only when <code>lowcode-nocode=true</code> (individual toggles also apply). Solution Checker has no toggle — always mandatory.
-    &nbsp;|&nbsp; <b>Deployment settings:</b> <code>_reusable-deploy.yml</code> resolves <code>deployment-settings/{env}/{SolutionName}.json</code> first, falls back to <code>{env}/deployment-settings.json</code> for backward compatibility.
-    &nbsp;|&nbsp; <b>Export:</b> Sequential <code>max-parallel:1</code> with <code>git pull --rebase</code> before each commit prevents conflicts on the shared branch. Single PR created after all exports.
+    <b>Multi-solution:</b> All workflows accept a <code>solutions</code> input — <code>"all"</code> deploys every solution in <code>src/solutions/</code>; comma-separated names deploy a subset. Dependency order controlled by <code>.github/solutions-config.json</code>.
+    &nbsp;|&nbsp; <b>Two-repo split:</b> <code>deploy-dev.yml</code> and <code>rollback.yml</code> in GHA-Dynamics are thin wrappers. They read <code>vars.*</code> (inaccessible in reusable workflows) and delegate all logic to GHA-Core.
+    &nbsp;|&nbsp; <b>Artifact flow:</b> Build → GHA artifact upload (<code>solution-{name}-{run#}</code>) → Deploy downloads from GHA. JFrog receives uploads in build and gets tagged after Prod — but is NOT the download source.
+    &nbsp;|&nbsp; <b>Solution backup:</b> <code>export-solution@v1</code> (not <code>backup-environment@v1</code>). Artifact: <code>backup-{solution}-{env}-v{run#}</code>. Rollback re-imports this ZIP via <code>import-solution@v1</code>.
+    &nbsp;|&nbsp; <b>Blocking check:</b> Warn-only — pipeline never fails from async ops count. OAuth failure still fails fast (credential error).
+    &nbsp;|&nbsp; <b>Job summaries:</b> Each build and deploy job uploads a JSON artifact. <code>pipeline-summary</code> job downloads all with pattern <code>job-summary-*</code> and renders consolidated report.
+    &nbsp;|&nbsp; <b>Gate pattern:</b> Lightweight gate job with <code>environment:</code> (no matrix) before each deploy matrix — ONE approval covers all N solutions.
   </div>
 </div>
 
@@ -808,32 +888,35 @@
     <div class="var-card">
       <div class="var-card-head" style="background:#fef2f2;border-bottom:1px solid #fecaca;">
         <span class="badge-head bh-secret">[S] GitHub Secrets</span>
-        Power Platform, Security Scans &amp; JFrog Auth
+        Power Platform, Security Scans, JFrog Auth
       </div>
       <div class="var-card-body">
-        <div class="var-row"><span class="var-name">PP_APP_ID</span><span class="var-desc">Azure AD App Registration Client ID for SPN auth</span></div>
-        <div class="var-row"><span class="var-name">PP_CLIENT_SECRET</span><span class="var-desc">Client secret for the SPN — rotate every 24 months</span></div>
-        <div class="var-row"><span class="var-name">PP_TENANT_ID</span><span class="var-desc">Azure AD Tenant ID</span></div>
-        <div class="var-row"><span class="var-name">JFROG_URL</span><span class="var-desc">JFrog Artifactory server URL (e.g. https://myco.jfrog.io)</span></div>
-        <div class="var-row"><span class="var-name">JFROG_ACCESS_TOKEN</span><span class="var-desc">JFrog identity token or API key — preferred over user/pass</span></div>
-        <div class="var-row"><span class="var-name">BLACKDUCK_URL</span><span class="var-desc">BlackDuck server URL <span class="var-new">NEW</span></span></div>
-        <div class="var-row"><span class="var-name">BLACKDUCK_API_TOKEN</span><span class="var-desc">BlackDuck API token for SCA scanning <span class="var-new">NEW</span></span></div>
-        <div class="var-row"><span class="var-name">CHECKMARX_BASE_URI</span><span class="var-desc">Checkmarx AST server base URI <span class="var-new">NEW</span></span></div>
-        <div class="var-row"><span class="var-name">CHECKMARX_CLIENT_ID</span><span class="var-desc">Checkmarx OIDC client ID <span class="var-new">NEW</span></span></div>
-        <div class="var-row"><span class="var-name">CHECKMARX_CLIENT_SECRET</span><span class="var-desc">Checkmarx OIDC client secret <span class="var-new">NEW</span></span></div>
-        <div class="var-row"><span class="var-name">CHECKMARX_TENANT</span><span class="var-desc">Checkmarx tenant name <span class="var-new">NEW</span></span></div>
-        <div class="var-row"><span class="var-name">GITHUB_TOKEN</span><span class="var-desc">Auto-provided by GitHub Actions. Used for git push, gh pr create</span></div>
+        <div class="var-row"><span class="var-name">APP_ID</span><span class="var-desc">Azure AD App Registration Client ID for SPN auth (all PP environments)</span></div>
+        <div class="var-row"><span class="var-name">CLIENT_SECRET</span><span class="var-desc">Client secret for the SPN — rotate every 24 months</span></div>
+        <div class="var-row"><span class="var-name">TENANT_ID</span><span class="var-desc">Azure AD Tenant ID</span></div>
+        <div class="var-row"><span class="var-name">JFROG_API_KEY</span><span class="var-desc">JFrog Artifactory API key — used in build for upload and post-Prod tagging</span></div>
+        <div class="var-row"><span class="var-name">BLACKDUCK_URL</span><span class="var-desc">BlackDuck server URL (lowcode-nocode only)</span></div>
+        <div class="var-row"><span class="var-name">BLACKDUCK_API_TOKEN</span><span class="var-desc">BlackDuck API token for SCA scanning</span></div>
+        <div class="var-row"><span class="var-name">CHECKMARX_BASE_URI</span><span class="var-desc">Checkmarx AST server base URI</span></div>
+        <div class="var-row"><span class="var-name">CHECKMARX_CLIENT_ID</span><span class="var-desc">Checkmarx OIDC client ID</span></div>
+        <div class="var-row"><span class="var-name">CHECKMARX_CLIENT_SECRET</span><span class="var-desc">Checkmarx OIDC client secret</span></div>
+        <div class="var-row"><span class="var-name">CHECKMARX_TENANT</span><span class="var-desc">Checkmarx tenant name</span></div>
+        <div class="var-row"><span class="var-name">GHA_CORE_PAT</span><span class="var-desc">PAT with read access to GHA-Core repo — required for workflow_call cross-repo</span></div>
+        <div class="var-row"><span class="var-name">GITHUB_TOKEN</span><span class="var-desc">Auto-provided by GitHub Actions. Used for git push, gh pr create, artifact upload/download</span></div>
       </div>
     </div>
 
     <!-- REPO VARIABLES -->
     <div class="var-card">
       <div class="var-card-head" style="background:#eff6ff;border-bottom:1px solid #bfdbfe;">
-        <span class="badge-head bh-var">[V] Repository Variables</span>
+        <span class="badge-head bh-var">[V] Repository Variables (GHA-Dynamics only)</span>
         Non-sensitive Config
       </div>
       <div class="var-card-body">
-        <div class="var-row"><span class="var-name">PP_SOLUTION_NAME</span><span class="var-desc">Default solution unique name — used as fallback for single-solution repos when solutions input = "all" and no src/solutions/ dir exists</span><span class="var-example">MyCoreSolution</span></div>
+        <div style="padding:6px 14px;font-size:9.5px;color:#64748b;border-bottom:1px solid #f0f2f8;background:#f8fafc;">
+          ⚠️ These are read in GHA-Dynamics wrappers and passed as explicit string inputs to GHA-Core. They cannot be read directly inside GHA-Core reusable workflows.
+        </div>
+        <div class="var-row"><span class="var-name">PP_SOLUTION_NAME</span><span class="var-desc">Fallback solution name — used when solutions="all" and no src/solutions/ dir exists</span><span class="var-example">MyCoreSolution</span></div>
         <div class="var-row"><span class="var-name">PP_SDBX_URL</span><span class="var-desc">Sandbox/developer source environment URL (export source)</span></div>
         <div class="var-row"><span class="var-name">PP_DEV_URL</span><span class="var-desc">Dev environment URL</span></div>
         <div class="var-row"><span class="var-name">PP_INTG_URL</span><span class="var-desc">Integration environment URL</span></div>
@@ -841,31 +924,37 @@
         <div class="var-row"><span class="var-name">PP_PERF_URL</span><span class="var-desc">Performance environment URL</span></div>
         <div class="var-row"><span class="var-name">PP_PROD_URL</span><span class="var-desc">Production environment URL</span></div>
         <div class="var-row"><span class="var-name">PP_CHECKER_GEO</span><span class="var-desc">Solution Checker geography</span><span class="var-example">UnitedStates</span></div>
+        <div class="var-row"><span class="var-name">PP_CHECKER_ERROR_LEVEL</span><span class="var-desc">Minimum severity that fails Solution Checker</span><span class="var-example">HighIssue</span></div>
         <div class="var-row"><span class="var-name">PP_DATA_SCHEMA_FILE</span><span class="var-desc">Path to Config Migration Tool schema XML (single-solution repos)</span><span class="var-example">config/data-schema.xml</span></div>
-        <div class="var-row"><span class="var-name">PP_VERSION_CHECK_SOLUTIONS</span><span class="var-desc">Comma-separated list of solution names to include in version compare</span><span class="var-example">SolutionA,SolutionB</span></div>
-        <div class="var-row"><span class="var-name">JFROG_REPO</span><span class="var-desc">Target JFrog repository name</span><span class="var-example">powerplatform-artifacts</span></div>
+        <div class="var-row"><span class="var-name">PP_VERSION_CHECK_SOLUTIONS</span><span class="var-desc">Comma-separated solution names for version compare</span><span class="var-example">SolutionA,SolutionB</span></div>
+        <div class="var-row"><span class="var-name">JFROG_URL</span><span class="var-desc">JFrog Artifactory base URL</span><span class="var-example">https://myco.jfrog.io</span></div>
+        <div class="var-row"><span class="var-name">JFROG_REPO</span><span class="var-desc">Target JFrog repository name</span><span class="var-example">powerplatform-solutions</span></div>
       </div>
     </div>
 
-    <!-- WORKFLOW INPUTS — COMMON -->
+    <!-- WORKFLOW INPUTS -->
     <div class="var-card">
       <div class="var-card-head" style="background:#f0fdf4;border-bottom:1px solid #bbf7d0;">
         <span class="badge-head bh-input">[I] Workflow Dispatch Inputs</span>
         Per-Run Overrides
       </div>
       <div class="var-card-body">
-        <div class="var-row"><span class="var-name">solutions</span><span class="var-desc"><span class="var-new">NEW</span> Solutions to build/deploy. "all" = every solution in src/solutions/. Comma-separated subset: "CoreSolution, ExtA". Single-solution repos: leave as "all".</span><span class="var-example">all</span></div>
-        <div class="var-row"><span class="var-name">lowcode-nocode</span><span class="var-desc"><span class="var-new">NEW</span> Master security scan toggle. When 'true', BlackDuck and Checkmarx are evaluated per their own toggles. When 'false' (or absent — e.g. on PR triggers), both scans are disabled regardless of individual toggles.</span><span class="var-example">false</span></div>
-        <div class="var-row"><span class="var-name">enable-blackduck</span><span class="var-desc"><span class="var-new">NEW</span> Enable BlackDuck SCA scan. Only active when lowcode-nocode is also 'true'. Default: true.</span></div>
-        <div class="var-row"><span class="var-name">enable-checkmarx</span><span class="var-desc"><span class="var-new">NEW</span> Enable Checkmarx SAST scan. Only active when lowcode-nocode is also 'true'. Default: true.</span></div>
+        <div class="var-row"><span class="var-name">solutions</span><span class="var-desc">"all" = every solution in src/solutions/. Comma-separated subset: "CoreSolution, ExtA".</span><span class="var-example">all</span></div>
+        <div class="var-row"><span class="var-name">lowcode-nocode</span><span class="var-desc">Master security scan toggle. 'true' enables BlackDuck+Checkmarx per individual toggles. 'false' or absent = both scans disabled.</span><span class="var-example">false</span></div>
+        <div class="var-row"><span class="var-name">enable-blackduck</span><span class="var-desc">Enable BlackDuck SCA scan — only active when lowcode-nocode='true'</span></div>
+        <div class="var-row"><span class="var-name">enable-checkmarx</span><span class="var-desc">Enable Checkmarx SAST scan — only active when lowcode-nocode='true'</span></div>
         <div class="var-row"><span class="var-name">target-environments</span><span class="var-desc">Pipeline scope: all | dev | dev-intg | dev-intg-uat</span></div>
-        <div class="var-row"><span class="var-name">enable-backup</span><span class="var-desc">Backup each environment before deploying (boolean)</span></div>
-        <div class="var-row"><span class="var-name">enable-blocking-check</span><span class="var-desc">Run in-progress job check (warn-only) before deploy</span></div>
-        <div class="var-row"><span class="var-name">enable-version-compare</span><span class="var-desc">Compare versions across envs using PP_VERSION_CHECK_SOLUTIONS</span></div>
+        <div class="var-row"><span class="var-name">enable-backup</span><span class="var-desc">Export solution backup before deploying (export-solution@v1, solution-scoped)</span></div>
+        <div class="var-row"><span class="var-name">enable-blocking-check</span><span class="var-desc">Run in-progress async ops check — warn-only, never blocks pipeline</span></div>
+        <div class="var-row"><span class="var-name">enable-version-compare</span><span class="var-desc">Compare solution version vs previous environment — warn on mismatch</span></div>
         <div class="var-row"><span class="var-name">mock-deploy</span><span class="var-desc">Dry run — skips all import/upgrade steps across ALL environments</span></div>
-        <div class="var-row"><span class="var-name">trigger-upgrade</span><span class="var-desc">Use holding-solution upgrade pattern vs in-place update</span></div>
+        <div class="var-row"><span class="var-name">trigger-upgrade</span><span class="var-desc">false = in-place Update; true = Phase 1 holding import + Phase 2 apply-upgrade</span></div>
         <div class="var-row"><span class="var-name">import-config-data</span><span class="var-desc">Run import-data after solution import</span></div>
-        <div class="var-row"><span class="var-name">branch-name</span><span class="var-desc">Export branch name override. Auto-generated as export/{solution-list}-{date} if not provided.</span></div>
+        <div class="var-row"><span class="var-name">solution-name</span><span class="var-desc">Rollback only: name of the solution to roll back</span><span class="var-example">CoreSolution</span></div>
+        <div class="var-row"><span class="var-name">run-number</span><span class="var-desc">Rollback only: run# of the deployment to roll back FROM (finds backup-{solution}-{env}-v{run#})</span><span class="var-example">42</span></div>
+        <div class="var-row"><span class="var-name">confirm-rollback</span><span class="var-desc">Rollback only: must type "CONFIRM" exactly to proceed — safeguard against accidental rollback</span></div>
+        <div class="var-row"><span class="var-name">target-environment</span><span class="var-desc">Rollback only: environment to roll back (Dev/Intg/UAT/Perf/Prod — type: choice in rollback.yml)</span></div>
+        <div class="var-row"><span class="var-name">branch-name</span><span class="var-desc">Export only: export branch name override. Auto-generated as export/{solution-list}-{date} if not provided.</span></div>
       </div>
     </div>
 
@@ -876,13 +965,16 @@
         Runtime Values
       </div>
       <div class="var-card-body">
-        <div class="var-row"><span class="var-name">jobs.setup.outputs.matrix</span><span class="var-desc"><span class="var-new">NEW</span> JSON matrix string: {"solution":["CoreSolution","ExtA"]} — consumed by build and deploy jobs via fromJSON()</span></div>
-        <div class="var-row"><span class="var-name">jobs.setup.outputs.solution-list</span><span class="var-desc"><span class="var-new">NEW</span> Human-readable list: "CoreSolution, ExtA, ExtB" — shown in summaries and PR body</span></div>
-        <div class="var-row"><span class="var-name">jobs.setup.outputs.solution-count</span><span class="var-desc"><span class="var-new">NEW</span> Integer count of solutions being processed — shown in pipeline summary</span></div>
-        <div class="var-row"><span class="var-name">jobs.setup.outputs.branch-name</span><span class="var-desc"><span class="var-new">NEW</span> Computed export branch name (export-solution.yml only) — shared by all sequential matrix instances</span></div>
-        <div class="var-row"><span class="var-name">steps.stamp-version.outputs.version</span><span class="var-desc">Stamped version string e.g. 1.0.42.0 — used in build summary</span></div>
-        <div class="var-row"><span class="var-name">steps.settings-file.outputs.exists</span><span class="var-desc"><span class="var-new">NEW</span> 'true' or 'false' — controls use-deployment-settings-file flag in import-solution</span></div>
-        <div class="var-row"><span class="var-name">steps.settings-file.outputs.path</span><span class="var-desc"><span class="var-new">NEW</span> Resolved path to deployment settings JSON — solution-specific or legacy fallback</span></div>
+        <div class="var-row"><span class="var-name">jobs.setup.outputs.matrix</span><span class="var-desc">JSON matrix string: {"solution":["CoreSolution","ExtA"]} — consumed by build and deploy jobs via fromJSON()</span></div>
+        <div class="var-row"><span class="var-name">jobs.setup.outputs.solution-list</span><span class="var-desc">Human-readable list: "CoreSolution, ExtA, ExtB" — shown in summaries and PR body</span></div>
+        <div class="var-row"><span class="var-name">jobs.setup.outputs.solution-count</span><span class="var-desc">Integer count of solutions being processed</span></div>
+        <div class="var-row"><span class="var-name">jobs.setup.outputs.branch-name</span><span class="var-desc">Computed export branch name (export-solution.yml only) — shared by all sequential matrix instances</span></div>
+        <div class="var-row"><span class="var-name">steps.stamp-version.outputs.version</span><span class="var-desc">Stamped version string e.g. 1.0.42.0 — used in build summary JSON</span></div>
+        <div class="var-row"><span class="var-name">steps.settings-file.outputs.exists</span><span class="var-desc">'true' or 'false' — controls use-deployment-settings-file flag in import-solution</span></div>
+        <div class="var-row"><span class="var-name">steps.settings-file.outputs.path</span><span class="var-desc">Resolved path to deployment settings JSON — solution-specific or legacy fallback</span></div>
+        <div class="var-row"><span class="var-name">steps.resolve-env.outputs.env-url</span><span class="var-desc">Rollback: resolved target environment URL</span></div>
+        <div class="var-row"><span class="var-name">steps.resolve-env.outputs.solution-type</span><span class="var-desc">Rollback: 'unmanaged' for Dev, 'managed' for all others</span></div>
+        <div class="var-row"><span class="var-name">steps.blocking-check.outputs.blocking-count</span><span class="var-desc">Count of in-flight async operations — used in deploy job summary; 0 = clear ✅, &gt;0 = warning ⚠️</span></div>
       </div>
     </div>
 
@@ -894,15 +986,15 @@
       </div>
       <div class="var-card-body">
         <div style="padding:8px 14px;font-size:10.5px;color:#4b5563;border-bottom:1px solid #f0f2f8;">
-          <strong>New multi-solution path (preferred):</strong><br>
+          <strong>Multi-solution path (preferred):</strong><br>
           <code>deployment-settings/{env}/{SolutionName}.json</code><br><br>
           <strong>Legacy single-solution fallback:</strong><br>
           <code>deployment-settings/{env}/deployment-settings.json</code><br><br>
-          <em>_reusable-deploy.yml checks the solution-specific path first, falls back to legacy if missing. Gracefully skips if neither exists.</em>
+          <em>_reusable-deploy.yml checks the solution-specific path first, falls back to legacy if missing. Gracefully skips if neither exists. Also used by _reusable-rollback.yml (optional).</em>
         </div>
         <div class="var-row"><span class="var-name">ConnectionReferences[].ConnectionId</span><span class="var-desc">Actual connection ID per env. Use token: <code>#{Dev_DataverseConnId}#</code></span></div>
         <div class="var-row"><span class="var-name">EnvironmentVariables[].Value</span><span class="var-desc">Env-specific values. Use token: <code>#{Dev_ApiEndpoint}#</code></span></div>
-        <div class="var-row"><span class="var-name">Token replacement</span><span class="var-desc">GitHub Actions replaces <code>#{TOKEN}#</code> with matching GitHub variable/secret of same name at deploy time</span></div>
+        <div class="var-row"><span class="var-name">Token replacement</span><span class="var-desc">GitHub Actions replaces <code>#{TOKEN}#</code> with matching GitHub variable/secret at deploy time</span></div>
       </div>
     </div>
 
@@ -910,21 +1002,19 @@
     <div class="var-card">
       <div class="var-card-head" style="background:#f0fdf4;border-bottom:1px solid #bbf7d0;">
         <span class="badge-head bh-file">[F] .github/solutions-config.json</span>
-        Multi-Solution Dependency Order <span class="var-new">NEW</span>
+        Multi-Solution Dependency Order
       </div>
       <div class="var-card-body">
         <div style="padding:8px 14px;font-size:10.5px;color:#4b5563;border-bottom:1px solid #f0f2f8;">
           Optional file. Without it, solutions are processed in alphabetical order. With it, you control the order for dependent solutions.
         </div>
         <div class="var-row"><span class="var-name">solutions[].name</span><span class="var-desc">Must match directory name under src/solutions/. Listed solutions deploy in order; unlisted ones append alphabetically.</span></div>
-        <div class="var-row"><span class="var-name">solutions[].description</span><span class="var-desc">Human-readable description. Optional — shown in workflow summaries.</span></div>
         <div style="padding:8px 14px;font-size:9.5px;color:#374151;font-family:monospace;background:#f8fafc;border-top:1px solid #f0f2f8;">
           Example:<br>
           { "solutions": [<br>
           &nbsp;&nbsp;{ "name": "CoreSolution" },<br>
           &nbsp;&nbsp;{ "name": "ExtensionA" },<br>
-          &nbsp;&nbsp;{ "name": "ExtensionB" },<br>
-          &nbsp;&nbsp;{ "name": "ExtensionC" }<br>
+          &nbsp;&nbsp;{ "name": "ExtensionB" }<br>
           ] }
         </div>
       </div>
@@ -948,152 +1038,98 @@
     <tbody>
       <tr>
         <td><strong>Power Platform SPN</strong><br><span style="font-size:9.5px;color:#6b7280">One shared SPN for all PP envs</span></td>
-        <td>All PAC CLI / powerplatform-actions calls (export, import, backup, who-am-i, publish, check-solution, etc.)</td>
+        <td>All PAC CLI / powerplatform-actions calls (export, import, who-am-i, publish, check-solution, backup export, etc.)</td>
         <td>Azure AD App Registration<br>Client Credentials flow</td>
         <td>System Administrator role on each Dataverse environment (Sandbox, Dev, Intg, UAT, Perf, Prod)</td>
-        <td><code>PP_APP_ID</code><br><code>PP_CLIENT_SECRET</code><br><code>PP_TENANT_ID</code></td>
+        <td><code>APP_ID</code><br><code>CLIENT_SECRET</code><br><code>TENANT_ID</code></td>
       </tr>
       <tr>
-        <td><strong>BlackDuck SCA</strong> <span style="font-size:9px;background:#10b981;color:#fff;padding:1px 4px;border-radius:4px;">NEW</span><br><span style="font-size:9.5px;color:#6b7280">When lowcode-nocode=true</span></td>
-        <td>Open-source composition analysis (SCA). Detects vulnerabilities in third-party components used in Power Platform solutions.</td>
+        <td><strong>JFrog Artifactory</strong><br><span style="font-size:9.5px;color:#6b7280">Build artifact traceability + post-Prod tag</span></td>
+        <td>Uploading solution ZIPs and Solution Checker SARIF in build. Tagging released version after Prod success. NOT used as deploy download source — GHA pipeline artifacts are.</td>
+        <td>JFrog API Key</td>
+        <td>Deploy permission on target repository (<code>JFROG_REPO</code>)</td>
+        <td><code>JFROG_API_KEY</code></td>
+      </tr>
+      <tr>
+        <td><strong>BlackDuck SCA</strong><br><span style="font-size:9.5px;color:#6b7280">When lowcode-nocode=true</span></td>
+        <td>Open-source composition analysis (SCA). Detects vulnerabilities in third-party components.</td>
         <td>BlackDuck API Token</td>
         <td>Project read/write on BlackDuck server; Scan initiator role</td>
         <td><code>BLACKDUCK_URL</code><br><code>BLACKDUCK_API_TOKEN</code></td>
       </tr>
       <tr>
-        <td><strong>Checkmarx AST (SAST)</strong> <span style="font-size:9px;background:#10b981;color:#fff;padding:1px 4px;border-radius:4px;">NEW</span><br><span style="font-size:9.5px;color:#6b7280">When lowcode-nocode=true</span></td>
-        <td>Static Application Security Testing (SAST). Analyzes solution source for security vulnerabilities in custom code (PCF controls, plugins, scripts).</td>
+        <td><strong>Checkmarx AST (SAST)</strong><br><span style="font-size:9.5px;color:#6b7280">When lowcode-nocode=true</span></td>
+        <td>Static Application Security Testing. Analyzes solution source for security vulnerabilities in custom code (PCF controls, plugins, scripts).</td>
         <td>OIDC Client Credentials</td>
         <td>Scan creator role on Checkmarx AST tenant; project access</td>
         <td><code>CHECKMARX_BASE_URI</code><br><code>CHECKMARX_CLIENT_ID</code><br><code>CHECKMARX_CLIENT_SECRET</code><br><code>CHECKMARX_TENANT</code></td>
       </tr>
       <tr>
-        <td><strong>Azure Key Vault</strong><br><span style="font-size:9.5px;color:#6b7280">For connection strings at deploy</span></td>
-        <td>Reading secrets at deploy time (e.g. connection IDs, API keys) used in deployment-settings token replacement</td>
-        <td>Azure AD App Registration or Managed Identity (OIDC preferred)</td>
-        <td>Key Vault Secrets User role on each Key Vault</td>
-        <td><code>AKV_CLIENT_ID</code><br><code>AKV_CLIENT_SECRET</code><br><code>AKV_TENANT_ID</code><br><code>AKV_URL</code></td>
-      </tr>
-      <tr>
-        <td><strong>JFrog Artifactory</strong><br><span style="font-size:9.5px;color:#6b7280">Build artifact + SARIF storage</span></td>
-        <td>Uploading solution ZIPs and Solution Checker SARIF reports to Artifactory for traceability and audit</td>
-        <td>JFrog Access Token (Identity Token)</td>
-        <td>Deploy permission on target repository (<code>JFROG_REPO</code>)</td>
-        <td><code>JFROG_URL</code><br><code>JFROG_ACCESS_TOKEN</code></td>
-      </tr>
-      <tr>
-        <td><strong>GitHub Actions</strong><br><span style="font-size:9.5px;color:#6b7280">Auto-provided by GitHub</span></td>
-        <td>git push, gh pr create, upload-artifact, download-artifact, GitHub Step Summaries</td>
-        <td>GITHUB_TOKEN (auto-injected per job)</td>
-        <td>Contents: write, Pull-requests: write (set in repo Settings → Actions → General)</td>
-        <td><code>GITHUB_TOKEN</code> (automatic)</td>
-      </tr>
-      <tr>
-        <td><strong>Dataverse Web API</strong><br><span style="font-size:9.5px;color:#6b7280">Direct API calls in bash steps</span></td>
+        <td><strong>Dataverse Web API</strong><br><span style="font-size:9.5px;color:#6b7280">Direct API calls in scripts</span></td>
         <td>blocking-check (asyncoperations query) and version-compare (solutions query) — uses same SPN as Power Platform</td>
         <td>OAuth2 client_credentials — token fetched inline via curl to <code>login.microsoftonline.com/{tenant}/oauth2/v2.0/token</code></td>
         <td>Same as Power Platform SPN (System Administrator)</td>
-        <td>Reuses <code>PP_APP_ID</code>, <code>PP_CLIENT_SECRET</code>, <code>PP_TENANT_ID</code></td>
+        <td>Reuses <code>APP_ID</code>, <code>CLIENT_SECRET</code>, <code>TENANT_ID</code></td>
+      </tr>
+      <tr>
+        <td><strong>GitHub Actions</strong><br><span style="font-size:9.5px;color:#6b7280">Auto-provided by GitHub</span></td>
+        <td>git push, gh pr create, upload-artifact, download-artifact (build→deploy artifacts, backup artifacts, job-summary artifacts), GitHub Step Summaries</td>
+        <td>GITHUB_TOKEN (auto-injected per job)</td>
+        <td>Contents: write, Pull-requests: write (set in repo Settings → Actions → General)</td>
+        <td><code>GITHUB_TOKEN</code> (automatic)</td>
       </tr>
     </tbody>
   </table>
 
   <!-- VARIABLE FLOW DIAGRAM -->
-  <h3 class="section-title">🔀 How Variables Flow Through the Pipeline</h3>
+  <h3 class="section-title">🔀 How Variables &amp; Artifacts Flow Through the Pipeline</h3>
   <div style="background:#fff;border:1px solid #e2e6ef;border-radius:10px;padding:14px;font-size:10.5px;color:#374151;line-height:1.8;">
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;">
       <div>
-        <div style="font-weight:700;color:#1e293b;margin-bottom:6px;">Solution selection (setup job):</div>
+        <div style="font-weight:700;color:#1e293b;margin-bottom:6px;">vars.* boundary handling:</div>
         <div style="font-family:monospace;background:#f8fafc;padding:10px;border-radius:6px;font-size:10px;border:1px solid #e2e6ef;">
-          inputs.solutions<br>
-          &nbsp;&nbsp;= "all"<br>
-          &nbsp;&nbsp;&nbsp;&nbsp;→ discover src/solutions/*<br>
-          &nbsp;&nbsp;&nbsp;&nbsp;→ apply solutions-config.json order<br>
-          &nbsp;&nbsp;= "CoreSolution, ExtA"<br>
-          &nbsp;&nbsp;&nbsp;&nbsp;→ validate names exist<br>
-          &nbsp;&nbsp;&nbsp;&nbsp;→ apply config order<br><br>
-          outputs: matrix, solution-list<br>
-          &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; solution-count
+          GHA-Dynamics wrapper reads:<br>
+          &nbsp;&nbsp;vars.PP_DEV_URL<br>
+          &nbsp;&nbsp;vars.PP_INTG_URL ... etc<br><br>
+          Forwards as string inputs:<br>
+          &nbsp;&nbsp;with:<br>
+          &nbsp;&nbsp;&nbsp;&nbsp;pp-dev-url: $&#123;&#123; vars.PP_DEV_URL &#125;&#125;<br>
+          &nbsp;&nbsp;&nbsp;&nbsp;pp-intg-url: $&#123;&#123; vars.PP_INTG_URL &#125;&#125;<br><br>
+          GHA-Core reusable receives:<br>
+          &nbsp;&nbsp;inputs.pp-dev-url (string)<br>
+          &nbsp;&nbsp;inputs.pp-intg-url (string)
         </div>
       </div>
       <div>
-        <div style="font-weight:700;color:#1e293b;margin-bottom:6px;">Security scan gate (build job):</div>
+        <div style="font-weight:700;color:#1e293b;margin-bottom:6px;">Build → Deploy artifact flow:</div>
         <div style="font-family:monospace;background:#f8fafc;padding:10px;border-radius:6px;font-size:10px;border:1px solid #e2e6ef;">
-          lowcode-nocode == 'true'<br>
-          &nbsp;&nbsp;AND enable-blackduck == 'true'<br>
-          &nbsp;&nbsp;→ BlackDuck SCA runs<br><br>
-          lowcode-nocode == 'true'<br>
-          &nbsp;&nbsp;AND enable-checkmarx == 'true'<br>
-          &nbsp;&nbsp;→ Checkmarx SAST runs<br><br>
-          [no if:] → Solution Checker<br>
-          &nbsp;&nbsp;ALWAYS runs (mandatory)
-        </div>
-      </div>
-      <div>
-        <div style="font-weight:700;color:#1e293b;margin-bottom:6px;">Cross-job artifact passing:</div>
-        <div style="font-family:monospace;background:#f8fafc;padding:10px;border-radius:6px;font-size:10px;border:1px solid #e2e6ef;">
-          Build job uploads:<br>
-          &nbsp;&nbsp;solution-{name}-{run#}<br><br>
-          Deploy jobs download:<br>
-          &nbsp;&nbsp;artifact-name:<br>
-          &nbsp;&nbsp;&nbsp;&nbsp;solution-{matrix.solution}-{run#}<br>
-          (deterministic — no needs.build<br>
+          Build job:<br>
+          &nbsp;&nbsp;upload-artifact@v4<br>
+          &nbsp;&nbsp;&nbsp;&nbsp;name: solution-{name}-{run#}<br>
+          &nbsp;&nbsp;JFrog upload (traceability)<br><br>
+          Deploy job (unconditional):<br>
+          &nbsp;&nbsp;download-artifact@v4<br>
+          &nbsp;&nbsp;&nbsp;&nbsp;name: solution-{name}-{run#}<br>
+          (Deterministic — no needs.*<br>
           &nbsp;output collection needed)<br><br>
-          Gate jobs:<br>
-          &nbsp;&nbsp;environment: Intg/UAT/Perf/Prod<br>
-          &nbsp;&nbsp;→ one approval = all N solutions
+          JFrog tag after Prod ✓
         </div>
       </div>
-    </div>
-  </div>
-
-  <!-- REPO STRUCTURE GUIDE -->
-  <h3 class="section-title">📁 Recommended Repository Structures</h3>
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
-    <div style="background:#fff;border:1px solid #e2e6ef;border-radius:10px;padding:14px;font-size:10.5px;">
-      <div style="font-weight:700;color:#1e293b;margin-bottom:8px;">Single-Solution Repo</div>
-      <div style="font-family:monospace;font-size:9.5px;color:#374151;line-height:1.7;">
-        repo/<br>
-        ├── src/solutions/<br>
-        │&nbsp;&nbsp;&nbsp;└── MySolution/&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;← solution source<br>
-        ├── deployment-settings/<br>
-        │&nbsp;&nbsp;&nbsp;├── dev/deployment-settings.json<br>
-        │&nbsp;&nbsp;&nbsp;├── intg/deployment-settings.json<br>
-        │&nbsp;&nbsp;&nbsp;└── prod/deployment-settings.json<br>
-        ├── config/<br>
-        │&nbsp;&nbsp;&nbsp;└── data-schema.xml&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;← optional<br>
-        └── .github/<br>
-        &nbsp;&nbsp;&nbsp;&nbsp;└── workflows/
-      </div>
-      <div style="margin-top:8px;font-size:9.5px;color:#6b7280;">
-        Set <code>PP_SOLUTION_NAME</code> = "MySolution".<br>
-        Use <code>solutions: "all"</code> — auto-discovers the single solution.
-      </div>
-    </div>
-    <div style="background:#fff;border:1px solid #e2e6ef;border-radius:10px;padding:14px;font-size:10.5px;">
-      <div style="font-weight:700;color:#1e293b;margin-bottom:8px;">Multi-Solution Repo</div>
-      <div style="font-family:monospace;font-size:9.5px;color:#374151;line-height:1.7;">
-        repo/<br>
-        ├── src/solutions/<br>
-        │&nbsp;&nbsp;&nbsp;├── CoreSolution/&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;← deploy first<br>
-        │&nbsp;&nbsp;&nbsp;├── ExtensionA/&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;← depends on Core<br>
-        │&nbsp;&nbsp;&nbsp;└── ExtensionB/&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;← depends on Core<br>
-        ├── deployment-settings/<br>
-        │&nbsp;&nbsp;&nbsp;├── dev/<br>
-        │&nbsp;&nbsp;&nbsp;│&nbsp;&nbsp;&nbsp;├── CoreSolution.json<br>
-        │&nbsp;&nbsp;&nbsp;│&nbsp;&nbsp;&nbsp;├── ExtensionA.json<br>
-        │&nbsp;&nbsp;&nbsp;│&nbsp;&nbsp;&nbsp;└── ExtensionB.json<br>
-        │&nbsp;&nbsp;&nbsp;└── prod/... (same pattern)<br>
-        ├── config/<br>
-        │&nbsp;&nbsp;&nbsp;├── CoreSolution/data-schema.xml<br>
-        │&nbsp;&nbsp;&nbsp;└── ExtensionA/data-schema.xml<br>
-        └── .github/<br>
-        &nbsp;&nbsp;&nbsp;&nbsp;├── solutions-config.json&nbsp;&nbsp;← order!<br>
-        &nbsp;&nbsp;&nbsp;&nbsp;└── workflows/
-      </div>
-      <div style="margin-top:8px;font-size:9.5px;color:#6b7280;">
-        Use <code>solutions: "all"</code> for full pipeline or<br>
-        <code>solutions: "CoreSolution, ExtensionA"</code> for subset.
+      <div>
+        <div style="font-weight:700;color:#1e293b;margin-bottom:6px;">Job summary aggregation:</div>
+        <div style="font-family:monospace;background:#f8fafc;padding:10px;border-radius:6px;font-size:10px;border:1px solid #e2e6ef;">
+          Each build job uploads:<br>
+          &nbsp;&nbsp;job-summary-build-{sol}-{run#}<br>
+          Each deploy job uploads:<br>
+          &nbsp;&nbsp;job-summary-deploy-{env}-{sol}-{run#}<br><br>
+          pipeline-summary job:<br>
+          &nbsp;&nbsp;download-artifact@v4<br>
+          &nbsp;&nbsp;&nbsp;&nbsp;pattern: job-summary-*<br>
+          &nbsp;&nbsp;&nbsp;&nbsp;merge-multiple: true<br>
+          &nbsp;&nbsp;&nbsp;&nbsp;path: job-summaries/<br>
+          &nbsp;&nbsp;Write-PipelineSummary.ps1<br>
+          &nbsp;&nbsp;&nbsp;&nbsp;-JobSummariesDir job-summaries/
+        </div>
       </div>
     </div>
   </div>

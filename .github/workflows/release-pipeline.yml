@@ -41,8 +41,11 @@
 #   max-parallel: 1 in all deploy jobs — Power Platform cannot process
 #   parallel solution imports without async conflicts.
 #
-# MANDATORY (non-mock runs):
-#   enable_jfrog_upload must be true.
+# ARTIFACT PROMOTION:
+#   Complete package (managed + unmanaged + checker report + config) is uploaded
+#   to JFrog Artifactory during build, AFTER Solution Checker passes.
+#   All deploy environments pull from JFrog. After Prod succeeds, the artifact
+#   is tagged with prodDeployed=true;deployedDate=<date>.
 #   Solution Checker always runs — there is no toggle.
 # =============================================================================
 
@@ -102,7 +105,7 @@ on:
         type: boolean
 
       enable_jfrog_upload:
-        description: 'Upload built solution ZIPs to JFrog Artifactory. Mandatory for non-mock runs.'
+        description: 'Upload build package to JFrog after Solution Checker passes. Mandatory for non-mock runs.'
         required: false
         default: true
         type: boolean
@@ -141,17 +144,25 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Checkout GHA-Core CI scripts
+        uses: actions/checkout@v4
+        with:
+          repository: YOUR_ORG/GHA-Core
+          ref: main
+          path: .ci
+          token: ${{ secrets.GHA_CORE_PAT }}
+
       - name: Resolve solution list
         id: resolve
         shell: pwsh
         run: |
-          & .github/scripts/Resolve-SolutionMatrix.ps1 `
+          & .ci/.github/scripts/Resolve-SolutionMatrix.ps1 `
             -InputSolutions '${{ inputs.solutions || 'all' }}' `
             -PpSolutionName '${{ vars.PP_SOLUTION_NAME }}'
 
   # ============================================================================
   # JOB 1 ─ Build (PARALLEL per solution)
-  # Pack managed + unmanaged ZIPs, stamp version, run Solution Checker,
+  # Pack managed + unmanaged ZIPs, read version, run Solution Checker,
   # upload to JFrog (step 12a inside _reusable-build.yml).
   # ============================================================================
   build:
@@ -161,13 +172,12 @@ jobs:
     strategy:
       matrix: ${{ fromJSON(needs.setup.outputs.matrix) }}
       fail-fast: false
-    uses: ./.github/workflows/_reusable-build.yml
+    uses: YOUR_ORG/GHA-Core/.github/workflows/_reusable-build.yml@main
     with:
       solution_name:          ${{ matrix.solution }}
       solution_source_folder: src/solutions/${{ matrix.solution }}
       checker_geo:            ${{ vars.PP_CHECKER_GEO || 'UnitedStates' }}
       checker_error_level:    ${{ inputs.checker_error_level || 'HighIssue' }}
-      build_version_strategy: run_number
       data_schema_file:       ${{ vars.PP_DATA_SCHEMA_FILE || '' }}
       source_environment_url: ${{ vars.PP_SDBX_URL || '' }}
       mock_deploy:            ${{ inputs.mock_deploy == true }}
@@ -189,8 +199,13 @@ jobs:
     steps:
       - name: Gate approved
         shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          Write-Host "✅ Dev gate approved for run #${{ github.run_number }}"
+          $approvals = gh api repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/approvals | ConvertFrom-Json
+          $approvers = ($approvals | ForEach-Object { $_.user.login }) -join ', '
+          if (-not $approvers) { $approvers = '${{ github.actor }}' }
+          Write-Host "✅ Dev gate approved for run #${{ github.run_number }} by $approvers"
           Write-Host "Solutions about to deploy: ${{ needs.setup.outputs.solution_list }}"
 
   # ============================================================================
@@ -204,7 +219,7 @@ jobs:
       matrix: ${{ fromJSON(needs.setup.outputs.matrix) }}
       max-parallel: 1
       fail-fast: false
-    uses: ./.github/workflows/_reusable-deploy.yml
+    uses: YOUR_ORG/GHA-Core/.github/workflows/_reusable-deploy.yml@main
     with:
       environment_name:                   Dev
       environment_url:                    ${{ vars.PP_DEV_URL }}
@@ -220,10 +235,6 @@ jobs:
       overwrite_unmanaged_customizations: true
       import_config_data:                 ${{ inputs.import_config_data == true }}
       deployment_settings_file:           deployment-settings/dev/${{ matrix.solution }}.json
-      jfrog_url:                          ${{ vars.JFROG_URL || '' }}
-      jfrog_repo:                         ${{ vars.JFROG_REPO || 'powerplatform-solutions' }}
-      build_run_number:                   ${{ github.run_number }}
-      build_run_attempt:                  ${{ github.run_attempt }}
     secrets: inherit
 
   # ============================================================================
@@ -238,8 +249,13 @@ jobs:
     steps:
       - name: Gate approved
         shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          Write-Host "✅ Intg gate approved for run #${{ github.run_number }}"
+          $approvals = gh api repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/approvals | ConvertFrom-Json
+          $approvers = ($approvals | ForEach-Object { $_.user.login }) -join ', '
+          if (-not $approvers) { $approvers = '${{ github.actor }}' }
+          Write-Host "✅ Intg gate approved for run #${{ github.run_number }} by $approvers"
           Write-Host "Solutions about to deploy: ${{ needs.setup.outputs.solution_list }}"
 
   # ============================================================================
@@ -253,7 +269,7 @@ jobs:
       matrix: ${{ fromJSON(needs.setup.outputs.matrix) }}
       max-parallel: 1
       fail-fast: false
-    uses: ./.github/workflows/_reusable-deploy.yml
+    uses: YOUR_ORG/GHA-Core/.github/workflows/_reusable-deploy.yml@main
     with:
       environment_name:                   Intg
       environment_url:                    ${{ vars.PP_INTG_URL }}
@@ -270,10 +286,6 @@ jobs:
       overwrite_unmanaged_customizations: true
       import_config_data:                 ${{ inputs.import_config_data == true }}
       deployment_settings_file:           deployment-settings/intg/${{ matrix.solution }}.json
-      jfrog_url:                          ${{ vars.JFROG_URL || '' }}
-      jfrog_repo:                         ${{ vars.JFROG_REPO || 'powerplatform-solutions' }}
-      build_run_number:                   ${{ github.run_number }}
-      build_run_attempt:                  ${{ github.run_attempt }}
     secrets: inherit
 
   # ============================================================================
@@ -288,8 +300,13 @@ jobs:
     steps:
       - name: Gate approved
         shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          Write-Host "✅ UAT gate approved for run #${{ github.run_number }}"
+          $approvals = gh api repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/approvals | ConvertFrom-Json
+          $approvers = ($approvals | ForEach-Object { $_.user.login }) -join ', '
+          if (-not $approvers) { $approvers = '${{ github.actor }}' }
+          Write-Host "✅ UAT gate approved for run #${{ github.run_number }} by $approvers"
           Write-Host "Solutions about to deploy: ${{ needs.setup.outputs.solution_list }}"
 
   # ============================================================================
@@ -303,7 +320,7 @@ jobs:
       matrix: ${{ fromJSON(needs.setup.outputs.matrix) }}
       max-parallel: 1
       fail-fast: false
-    uses: ./.github/workflows/_reusable-deploy.yml
+    uses: YOUR_ORG/GHA-Core/.github/workflows/_reusable-deploy.yml@main
     with:
       environment_name:                   UAT
       environment_url:                    ${{ vars.PP_UAT_URL }}
@@ -320,10 +337,6 @@ jobs:
       overwrite_unmanaged_customizations: false
       import_config_data:                 ${{ inputs.import_config_data == true }}
       deployment_settings_file:           deployment-settings/uat/${{ matrix.solution }}.json
-      jfrog_url:                          ${{ vars.JFROG_URL || '' }}
-      jfrog_repo:                         ${{ vars.JFROG_REPO || 'powerplatform-solutions' }}
-      build_run_number:                   ${{ github.run_number }}
-      build_run_attempt:                  ${{ github.run_attempt }}
     secrets: inherit
 
   # ============================================================================
@@ -338,8 +351,13 @@ jobs:
     steps:
       - name: Gate approved
         shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          Write-Host "✅ Perf gate approved for run #${{ github.run_number }}"
+          $approvals = gh api repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/approvals | ConvertFrom-Json
+          $approvers = ($approvals | ForEach-Object { $_.user.login }) -join ', '
+          if (-not $approvers) { $approvers = '${{ github.actor }}' }
+          Write-Host "✅ Perf gate approved for run #${{ github.run_number }} by $approvers"
           Write-Host "Solutions about to deploy: ${{ needs.setup.outputs.solution_list }}"
 
   # ============================================================================
@@ -353,7 +371,7 @@ jobs:
       matrix: ${{ fromJSON(needs.setup.outputs.matrix) }}
       max-parallel: 1
       fail-fast: false
-    uses: ./.github/workflows/_reusable-deploy.yml
+    uses: YOUR_ORG/GHA-Core/.github/workflows/_reusable-deploy.yml@main
     with:
       environment_name:                   Perf
       environment_url:                    ${{ vars.PP_PERF_URL }}
@@ -370,10 +388,6 @@ jobs:
       overwrite_unmanaged_customizations: false
       import_config_data:                 ${{ inputs.import_config_data == true }}
       deployment_settings_file:           deployment-settings/perf/${{ matrix.solution }}.json
-      jfrog_url:                          ${{ vars.JFROG_URL || '' }}
-      jfrog_repo:                         ${{ vars.JFROG_REPO || 'powerplatform-solutions' }}
-      build_run_number:                   ${{ github.run_number }}
-      build_run_attempt:                  ${{ github.run_attempt }}
     secrets: inherit
 
   # ============================================================================
@@ -391,8 +405,13 @@ jobs:
     steps:
       - name: Gate approved
         shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          Write-Host "✅ Prod gate approved for run #${{ github.run_number }}"
+          $approvals = gh api repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/approvals | ConvertFrom-Json
+          $approvers = ($approvals | ForEach-Object { $_.user.login }) -join ', '
+          if (-not $approvers) { $approvers = '${{ github.actor }}' }
+          Write-Host "✅ Prod gate approved for run #${{ github.run_number }} by $approvers"
           Write-Host "Solutions about to deploy: ${{ needs.setup.outputs.solution_list }}"
 
   # ============================================================================
@@ -406,7 +425,7 @@ jobs:
       matrix: ${{ fromJSON(needs.setup.outputs.matrix) }}
       max-parallel: 1
       fail-fast: false
-    uses: ./.github/workflows/_reusable-deploy.yml
+    uses: YOUR_ORG/GHA-Core/.github/workflows/_reusable-deploy.yml@main
     with:
       environment_name:                   Prod
       environment_url:                    ${{ vars.PP_PROD_URL }}
@@ -423,15 +442,12 @@ jobs:
       overwrite_unmanaged_customizations: false
       import_config_data:                 ${{ inputs.import_config_data == true }}
       deployment_settings_file:           deployment-settings/prod/${{ matrix.solution }}.json
-      jfrog_url:                          ${{ vars.JFROG_URL || '' }}
-      jfrog_repo:                         ${{ vars.JFROG_REPO || 'powerplatform-solutions' }}
-      build_run_number:                   ${{ github.run_number }}
-      build_run_attempt:                  ${{ github.run_attempt }}
     secrets: inherit
 
   # ============================================================================
-  # JOB 7 ─ JFrog Tag — Prod artifacts after successful Prod deploy
-  # Sets properties: pipeline=release, environment=prod, approved=true
+  # JOB 7 ─ JFrog Tag — mark Prod artifact as production-deployed
+  # Adds prodDeployed=true;deployedDate=<date> to the artifact already in
+  # Artifactory. The date is appended automatically by _reusable-jfrog.yml.
   # ============================================================================
   jfrog-tag-prod:
     name: "🏷️ JFrog Tag Prod | ${{ matrix.solution }}"
@@ -443,18 +459,24 @@ jobs:
     strategy:
       matrix: ${{ fromJSON(needs.setup.outputs.matrix) }}
       fail-fast: false
-    uses: ./.github/workflows/_reusable-jfrog.yml
+    uses: YOUR_ORG/GHA-Core/.github/workflows/_reusable-jfrog.yml@main
     with:
-      action:         tag
-      solution_name:  ${{ matrix.solution }}
-      jfrog_url:      ${{ vars.JFROG_URL || '' }}
-      jfrog_repo:     ${{ vars.JFROG_REPO || 'powerplatform-solutions' }}
-      tag_properties: "pipeline=release;environment=prod;approved=true;run=${{ github.run_number }}"
-      mock_deploy:    false
+      action:            tag
+      solution_name:     ${{ matrix.solution }}
+      jfrog_url:         ${{ vars.JFROG_URL || '' }}
+      jfrog_repo:        ${{ vars.JFROG_REPO || 'powerplatform-solutions' }}
+      build_run_number:  ${{ github.run_number }}
+      build_run_attempt: ${{ github.run_attempt }}
+      tag_properties:    "prodDeployed=true"
+      mock_deploy:       false
     secrets: inherit
 
   # ============================================================================
   # JOB 8 ─ Pipeline Summary (always runs)
+  # Downloads every job-summary-* artifact produced by build and deploy jobs,
+  # then renders a two-level summary:
+  #   1. High-level status table (all stages at a glance)
+  #   2. Per-job detail tables (versions, step outcomes, blocking-check state)
   # ============================================================================
   pipeline-summary:
     name: "📋 Pipeline Summary"
@@ -477,10 +499,29 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Checkout GHA-Core CI scripts
+        uses: actions/checkout@v4
+        with:
+          repository: YOUR_ORG/GHA-Core
+          ref: main
+          path: .ci
+          token: ${{ secrets.GHA_CORE_PAT }}
+
+      # Collect all job-summary JSON records emitted by build and deploy jobs.
+      # The merge-multiple option places each artifact into its own sub-folder
+      # under job-summaries/, avoiding filename collisions across solutions/envs.
+      - name: Download all job summary records
+        uses: actions/download-artifact@v4
+        with:
+          pattern: "job-summary-*"
+          path: job-summaries/
+          merge-multiple: true
+        continue-on-error: true   # missing artifacts (skipped jobs) are fine
+
       - name: Write pipeline summary
         shell: pwsh
         run: |
-          & .github/scripts/Write-PipelineSummary.ps1 `
+          & .ci/.github/scripts/Write-PipelineSummary.ps1 `
             -SolutionList     '${{ needs.setup.outputs.solution_list }}' `
             -SolutionCount    '${{ needs.setup.outputs.solution_count }}' `
             -RunNumber        '${{ github.run_number }}' `
@@ -497,4 +538,5 @@ jobs:
             -GatePerfResult   '${{ needs.gate-perf.result }}' `
             -DeployPerfResult '${{ needs.deploy-perf.result }}' `
             -GateProdResult   '${{ needs.gate-prod.result }}' `
-            -DeployProdResult '${{ needs.deploy-prod.result }}'
+            -DeployProdResult '${{ needs.deploy-prod.result }}' `
+            -JobSummariesDir  'job-summaries'
