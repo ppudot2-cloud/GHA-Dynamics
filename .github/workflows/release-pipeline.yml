@@ -147,7 +147,7 @@ jobs:
       - name: Checkout GHA-Core CI scripts
         uses: actions/checkout@v4
         with:
-          repository: YOUR_ORG/GHA-Core
+          repository: ppudot2-cloud/GHA-Core
           ref: main
           path: .ci
           token: ${{ secrets.GHA_CORE_PAT }}
@@ -172,7 +172,7 @@ jobs:
     strategy:
       matrix: ${{ fromJSON(needs.setup.outputs.matrix) }}
       fail-fast: false
-    uses: YOUR_ORG/GHA-Core/.github/workflows/_reusable-build.yml@main
+    uses: ppudot2-cloud/GHA-Core/.github/workflows/_reusable-build.yml@main
     with:
       solution_name:          ${{ matrix.solution }}
       solution_source_folder: src/solutions/${{ matrix.solution }}
@@ -219,7 +219,7 @@ jobs:
       matrix: ${{ fromJSON(needs.setup.outputs.matrix) }}
       max-parallel: 1
       fail-fast: false
-    uses: YOUR_ORG/GHA-Core/.github/workflows/_reusable-deploy.yml@main
+    uses: ppudot2-cloud/GHA-Core/.github/workflows/_reusable-deploy.yml@main
     with:
       environment_name:                   Dev
       environment_url:                    ${{ vars.PP_DEV_URL }}
@@ -269,7 +269,7 @@ jobs:
       matrix: ${{ fromJSON(needs.setup.outputs.matrix) }}
       max-parallel: 1
       fail-fast: false
-    uses: YOUR_ORG/GHA-Core/.github/workflows/_reusable-deploy.yml@main
+    uses: ppudot2-cloud/GHA-Core/.github/workflows/_reusable-deploy.yml@main
     with:
       environment_name:                   Intg
       environment_url:                    ${{ vars.PP_INTG_URL }}
@@ -320,7 +320,7 @@ jobs:
       matrix: ${{ fromJSON(needs.setup.outputs.matrix) }}
       max-parallel: 1
       fail-fast: false
-    uses: YOUR_ORG/GHA-Core/.github/workflows/_reusable-deploy.yml@main
+    uses: ppudot2-cloud/GHA-Core/.github/workflows/_reusable-deploy.yml@main
     with:
       environment_name:                   UAT
       environment_url:                    ${{ vars.PP_UAT_URL }}
@@ -371,7 +371,7 @@ jobs:
       matrix: ${{ fromJSON(needs.setup.outputs.matrix) }}
       max-parallel: 1
       fail-fast: false
-    uses: YOUR_ORG/GHA-Core/.github/workflows/_reusable-deploy.yml@main
+    uses: ppudot2-cloud/GHA-Core/.github/workflows/_reusable-deploy.yml@main
     with:
       environment_name:                   Perf
       environment_url:                    ${{ vars.PP_PERF_URL }}
@@ -425,7 +425,7 @@ jobs:
       matrix: ${{ fromJSON(needs.setup.outputs.matrix) }}
       max-parallel: 1
       fail-fast: false
-    uses: YOUR_ORG/GHA-Core/.github/workflows/_reusable-deploy.yml@main
+    uses: ppudot2-cloud/GHA-Core/.github/workflows/_reusable-deploy.yml@main
     with:
       environment_name:                   Prod
       environment_url:                    ${{ vars.PP_PROD_URL }}
@@ -459,7 +459,7 @@ jobs:
     strategy:
       matrix: ${{ fromJSON(needs.setup.outputs.matrix) }}
       fail-fast: false
-    uses: YOUR_ORG/GHA-Core/.github/workflows/_reusable-jfrog.yml@main
+    uses: ppudot2-cloud/GHA-Core/.github/workflows/_reusable-jfrog.yml@main
     with:
       action:            tag
       solution_name:     ${{ matrix.solution }}
@@ -502,7 +502,7 @@ jobs:
       - name: Checkout GHA-Core CI scripts
         uses: actions/checkout@v4
         with:
-          repository: YOUR_ORG/GHA-Core
+          repository: ppudot2-cloud/GHA-Core
           ref: main
           path: .ci
           token: ${{ secrets.GHA_CORE_PAT }}
