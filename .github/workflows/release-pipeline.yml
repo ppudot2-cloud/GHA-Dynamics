@@ -68,23 +68,34 @@ on:
         required: false
         default: 'all'
 
+      # ── Safety / observability toggles (all opt-in, off by default) ─────────
+      # Turn these on when you need the extra safety checks for a specific run.
       enable_backup:
-        description: 'Backup each environment before deploying (rollback point)'
+        description: 'Backup each environment before deploying (required for rollback.yml to work)'
         required: false
-        default: true
+        default: false
         type: boolean
 
       enable_blocking_check:
-        description: 'Abort if environment has in-progress async operations'
+        description: 'Warn when an environment has in-progress async operations before importing'
         required: false
-        default: true
+        default: false
         type: boolean
 
       enable_version_compare:
-        description: 'Compare solution version vs previous environment before deploying'
+        description: 'Compare solution version against the previously deployed version'
         required: false
-        default: true
+        default: false
         type: boolean
+
+      base_solutions:
+        description: >
+          Comma-separated list of base solution unique names to version-check
+          between environments (e.g. "nfBase,nfCustomizations,nfShared").
+          Defaults to the PP_BASE_SOLUTIONS repo variable if set.
+          Only used when enable_version_compare is true.
+        required: false
+        default: ''
 
       mock_deploy:
         description: 'Dry run — run all checks but skip actual solution imports and Artifactory uploads'
@@ -104,11 +115,7 @@ on:
         default: false
         type: boolean
 
-      enable_jfrog_upload:
-        description: 'Upload build package to JFrog after Solution Checker passes. Mandatory for non-mock runs.'
-        required: false
-        default: true
-        type: boolean
+      # enable_jfrog_upload removed — JFrog upload is always mandatory in non-mock builds.
 
       checker_error_level:
         description: 'Minimum severity that fails Solution Checker'
@@ -181,7 +188,6 @@ jobs:
       data_schema_file:       ${{ vars.PP_DATA_SCHEMA_FILE || '' }}
       source_environment_url: ${{ vars.PP_SDBX_URL || '' }}
       mock_deploy:            ${{ inputs.mock_deploy == true }}
-      enable_jfrog_upload:    ${{ inputs.enable_jfrog_upload != false }}
       jfrog_url:              ${{ vars.JFROG_URL || '' }}
       jfrog_repo:             ${{ vars.JFROG_REPO || 'powerplatform-solutions' }}
     secrets: inherit
@@ -227,9 +233,10 @@ jobs:
       solution_type:                      unmanaged
       artifact_name:                      solution-${{ matrix.solution }}-${{ github.run_number }}
       solution_version:                   ${{ needs.build.outputs.solution_version }}
-      enable_backup:                      ${{ inputs.enable_backup != false }}
-      enable_blocking_check:              ${{ inputs.enable_blocking_check != false }}
-      enable_version_compare:             false
+      enable_backup:                      ${{ inputs.enable_backup == true }}
+      enable_blocking_check:              ${{ inputs.enable_blocking_check == true }}
+      enable_version_compare:             ${{ inputs.enable_version_compare == true }}
+      base_solutions:                     ${{ inputs.base_solutions || vars.PP_BASE_SOLUTIONS || '' }}
       mock_deploy:                        ${{ inputs.mock_deploy == true }}
       trigger_upgrade:                    false
       overwrite_unmanaged_customizations: true
@@ -277,9 +284,10 @@ jobs:
       solution_type:                      managed
       artifact_name:                      solution-${{ matrix.solution }}-${{ github.run_number }}
       solution_version:                   ${{ needs.build.outputs.solution_version }}
-      enable_backup:                      ${{ inputs.enable_backup != false }}
-      enable_blocking_check:              ${{ inputs.enable_blocking_check != false }}
-      enable_version_compare:             ${{ inputs.enable_version_compare != false }}
+      enable_backup:                      ${{ inputs.enable_backup == true }}
+      enable_blocking_check:              ${{ inputs.enable_blocking_check == true }}
+      enable_version_compare:             ${{ inputs.enable_version_compare == true }}
+      base_solutions:                     ${{ inputs.base_solutions || vars.PP_BASE_SOLUTIONS || '' }}
       previous_environment_url:           ${{ vars.PP_DEV_URL }}
       mock_deploy:                        ${{ inputs.mock_deploy == true }}
       trigger_upgrade:                    ${{ inputs.trigger_upgrade == true }}
@@ -328,9 +336,10 @@ jobs:
       solution_type:                      managed
       artifact_name:                      solution-${{ matrix.solution }}-${{ github.run_number }}
       solution_version:                   ${{ needs.build.outputs.solution_version }}
-      enable_backup:                      ${{ inputs.enable_backup != false }}
-      enable_blocking_check:              ${{ inputs.enable_blocking_check != false }}
-      enable_version_compare:             ${{ inputs.enable_version_compare != false }}
+      enable_backup:                      ${{ inputs.enable_backup == true }}
+      enable_blocking_check:              ${{ inputs.enable_blocking_check == true }}
+      enable_version_compare:             ${{ inputs.enable_version_compare == true }}
+      base_solutions:                     ${{ inputs.base_solutions || vars.PP_BASE_SOLUTIONS || '' }}
       previous_environment_url:           ${{ vars.PP_INTG_URL }}
       mock_deploy:                        ${{ inputs.mock_deploy == true }}
       trigger_upgrade:                    ${{ inputs.trigger_upgrade == true }}
@@ -379,9 +388,10 @@ jobs:
       solution_type:                      managed
       artifact_name:                      solution-${{ matrix.solution }}-${{ github.run_number }}
       solution_version:                   ${{ needs.build.outputs.solution_version }}
-      enable_backup:                      ${{ inputs.enable_backup != false }}
-      enable_blocking_check:              ${{ inputs.enable_blocking_check != false }}
-      enable_version_compare:             ${{ inputs.enable_version_compare != false }}
+      enable_backup:                      ${{ inputs.enable_backup == true }}
+      enable_blocking_check:              ${{ inputs.enable_blocking_check == true }}
+      enable_version_compare:             ${{ inputs.enable_version_compare == true }}
+      base_solutions:                     ${{ inputs.base_solutions || vars.PP_BASE_SOLUTIONS || '' }}
       previous_environment_url:           ${{ vars.PP_UAT_URL }}
       mock_deploy:                        ${{ inputs.mock_deploy == true }}
       trigger_upgrade:                    ${{ inputs.trigger_upgrade == true }}
@@ -433,9 +443,10 @@ jobs:
       solution_type:                      managed
       artifact_name:                      solution-${{ matrix.solution }}-${{ github.run_number }}
       solution_version:                   ${{ needs.build.outputs.solution_version }}
-      enable_backup:                      ${{ inputs.enable_backup != false }}
-      enable_blocking_check:              ${{ inputs.enable_blocking_check != false }}
-      enable_version_compare:             ${{ inputs.enable_version_compare != false }}
+      enable_backup:                      ${{ inputs.enable_backup == true }}
+      enable_blocking_check:              ${{ inputs.enable_blocking_check == true }}
+      enable_version_compare:             ${{ inputs.enable_version_compare == true }}
+      base_solutions:                     ${{ inputs.base_solutions || vars.PP_BASE_SOLUTIONS || '' }}
       previous_environment_url:           ${{ vars.PP_PERF_URL }}
       mock_deploy:                        ${{ inputs.mock_deploy == true }}
       trigger_upgrade:                    ${{ inputs.trigger_upgrade == true }}
@@ -454,7 +465,6 @@ jobs:
     needs: [setup, deploy-prod]
     if: >
       needs.deploy-prod.result == 'success' &&
-      inputs.enable_jfrog_upload != false &&
       inputs.mock_deploy != true
     strategy:
       matrix: ${{ fromJSON(needs.setup.outputs.matrix) }}

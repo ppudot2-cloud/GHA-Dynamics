@@ -31,9 +31,9 @@ on:
         default: false
         type: boolean
       enable-blocking-check:
-        description: 'Check for in-progress async operations before deploying'
+        description: 'Warn on in-progress async operations before importing'
         required: false
-        default: true
+        default: false
         type: boolean
       mock-deploy:
         description: 'Dry run only — skip actual import'
@@ -54,7 +54,7 @@ jobs:
       # ── User inputs ────────────────────────────────────────────────────────
       solutions:              ${{ inputs.solutions || 'all' }}
       enable-backup:          ${{ inputs.enable-backup == true }}
-      enable-blocking-check:  ${{ inputs.enable-blocking-check != false }}
+      enable-blocking-check:  ${{ inputs.enable-blocking-check == true }}
       mock-deploy:            ${{ inputs.mock-deploy == true }}
       import-config-data:     ${{ inputs.import-config-data == true }}
       # ── Repository variables (read here — not accessible inside GHA-Core) ──

@@ -1,0 +1,66 @@
+# =============================================================================
+# PROJECT VARIABLES — GHA-Dynamics (project-specific)
+# =============================================================================
+# These variables are specific to this project and supplement the global
+# variables defined in GHA-Core/.github/config/global-vars.yml.
+#
+# GOVERNANCE RULES:
+#   • Variables listed in global-vars.yml → protected_keys CANNOT appear here.
+#   • Merge-Variables.ps1 will exit 1 with a clear error if a violation is found.
+#   • All other global defaults can be overridden here.
+#
+# SENSITIVE VALUES:
+#   Do NOT store secrets (tokens, passwords, connection strings) here.
+#   Secrets live exclusively in Azure Key Vault. This file is source-controlled
+#   and visible to anyone with repo access.
+#
+# PROJECT-LEVEL AZURE IDENTITY (set as GitHub Variables, NOT in this file):
+#   These are non-sensitive resource identifiers — store them in GitHub repository
+#   Variables (Settings → Secrets and variables → Actions → Variables):
+#
+#   AZURE_CLIENT_ID       — App Registration Client ID for this project's SPN
+#   AZURE_TENANT_ID       — Azure AD Tenant ID for this project
+#   AZURE_SUBSCRIPTION_ID — Azure Subscription ID
+#   AZURE_KEY_VAULT_NAME  — Name of this project's Azure Key Vault
+#
+#   Each project has its own Key Vault and App Registration. This lets you rotate
+#   credentials and scope access independently per project.
+#
+# HOW ENVIRONMENT URLS ARE USED:
+#   These URLs are passed as inputs to the reusable workflows. The thin wrapper
+#   (release-pipeline.yml, deploy-dev.yml, etc.) reads these values either from
+#   this file (via the variable merge step) or from GitHub repository variables
+#   (vars.*) and forwards them as explicit `with:` inputs to GHA-Core.
+# =============================================================================
+
+variables:
+  # ── Power Platform environment URLs ────────────────────────────────────────
+  # Replace with your actual Dataverse environment URLs.
+  PP_DEV_URL:  "https://YOUR-ORG-dev.crm.dynamics.com"
+  PP_INTG_URL: "https://YOUR-ORG-intg.crm.dynamics.com"
+  PP_UAT_URL:  "https://YOUR-ORG-uat.crm.dynamics.com"
+  PP_PERF_URL: "https://YOUR-ORG-perf.crm.dynamics.com"
+  PP_PROD_URL: "https://YOUR-ORG-prod.crm.dynamics.com"
+  PP_SDBX_URL: "https://YOUR-ORG-sdbx.crm.dynamics.com"
+
+  # ── Project solution ────────────────────────────────────────────────────────
+  PP_SOLUTION_NAME:     "YourSolutionName"
+  PP_DATA_SCHEMA_FILE:  "config/data-schema.xml"   # leave blank to skip data export
+
+  # ── Base solutions for version-compare (used when enable_version_compare=true) ─
+  # Comma-separated list of solution unique names that are prerequisites / base
+  # layers deployed before the project solution. The version-compare step checks
+  # that each base solution is at least as advanced in the previous environment
+  # as it is in the target environment (prevents deploying on top of an outdated
+  # foundation).
+  # Example: "nfBase,nfCustomizations,nfShared"
+  # Leave empty to skip base-solution checks (only the current solution is checked).
+  PP_BASE_SOLUTIONS:    ""
+
+  # ── JFrog — project-level override allowed (repo is protected, URL is not) ─
+  JFROG_URL: "https://YOUR-COMPANY.jfrog.io/artifactory"
+
+  # ── Deployment behaviour overrides (non-protected globals) ─────────────────
+  # Uncomment and adjust only if this project genuinely needs different defaults.
+  # SOLUTION_IMPORT_MAX_WAIT_MINUTES: "90"   # longer timeout for large solutions
+  # MOCK_DEPLOY: "false"                     # override for testing

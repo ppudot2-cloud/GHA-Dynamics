@@ -3,428 +3,474 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Power Platform CI/CD — Architecture &amp; Workflow Relationships v3</title>
+<title>Power Platform CI/CD — Architecture &amp; Workflow Relationships</title>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f0f4fa; color: #1a1d2e; font-size: 13px; }
 
-  /* ── TABS ─────────────────────────────────────────────────────────────── */
-  .tab-bar { display: flex; gap: 4px; padding: 16px 20px 0; background: #fff; border-bottom: 2px solid #e2e6ef; position: sticky; top: 0; z-index: 50; }
-  .tab-btn { padding: 8px 20px; border: none; border-radius: 6px 6px 0 0; background: #eef0f6; color: #555; font-size: 12px; font-weight: 600; cursor: pointer; letter-spacing: .3px; transition: background .15s; }
-  .tab-btn.active { background: #2563eb; color: #fff; }
-  .tab-panel { display: none; padding: 20px; }
+  /* ── PAGE HEADER ─────────────────────────────────────────────────────── */
+  .page-header { background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 100%); color: #fff; padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; }
+  .ph-left { display: flex; align-items: center; gap: 14px; }
+  .ph-icon { font-size: 28px; }
+  .ph-title { font-size: 17px; font-weight: 700; color: #f1f5f9; letter-spacing: -.2px; }
+  .ph-sub { font-size: 11px; color: #94a3b8; margin-top: 2px; }
+  .ph-badges { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .ph-badge { font-size: 10px; font-weight: 600; padding: 3px 10px; border-radius: 12px; }
+  .phb-blue  { background: rgba(59,130,246,.25); color: #93c5fd; border: 1px solid rgba(59,130,246,.4); }
+  .phb-green { background: rgba(34,197,94,.2); color: #86efac; border: 1px solid rgba(34,197,94,.35); }
+  .phb-amber { background: rgba(245,158,11,.2); color: #fcd34d; border: 1px solid rgba(245,158,11,.35); }
+
+  /* ── TAB BAR ──────────────────────────────────────────────────────────── */
+  .tab-bar { display: flex; gap: 2px; padding: 0 20px; background: #fff; border-bottom: 2px solid #e2e6ef; position: sticky; top: 0; z-index: 60; box-shadow: 0 2px 8px rgba(0,0,0,.06); }
+  .tab-btn { padding: 12px 20px; border: none; background: none; color: #64748b; font-size: 12px; font-weight: 600; cursor: pointer; letter-spacing: .3px; border-bottom: 3px solid transparent; margin-bottom: -2px; transition: color .15s, border-color .15s; white-space: nowrap; }
+  .tab-btn:hover { color: #2563eb; }
+  .tab-btn.active { color: #2563eb; border-bottom-color: #2563eb; }
+  .tab-panel { display: none; padding: 20px 20px 32px; }
   .tab-panel.active { display: block; }
 
-  /* ── PAGE HEADING ─────────────────────────────────────────────────────── */
-  .page-title { font-size: 16px; font-weight: 700; color: #1e293b; margin-bottom: 4px; }
-  .page-sub { font-size: 11px; color: #64748b; margin-bottom: 20px; }
+  /* ── PAGE HEADINGS ───────────────────────────────────────────────────── */
+  .panel-title { font-size: 15px; font-weight: 700; color: #1e293b; }
+  .panel-sub   { font-size: 11px; color: #64748b; margin-top: 2px; margin-bottom: 20px; }
+  h2.sec { font-size: 13px; font-weight: 700; color: #1e293b; margin: 24px 0 12px; padding-bottom: 7px; border-bottom: 2px solid #e2e6ef; display: flex; align-items: center; gap: 8px; }
+  h3.sub { font-size: 11.5px; font-weight: 700; color: #334155; margin: 14px 0 8px; }
 
-  /* ── REPO SECTIONS ────────────────────────────────────────────────────── */
-  .repo-section { margin-bottom: 24px; }
-  .repo-label { display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px; border-radius: 20px; font-size: 11px; font-weight: 700; letter-spacing: .3px; margin-bottom: 12px; }
+  /* ── REPO LABELS ──────────────────────────────────────────────────────── */
+  .repo-label { display: inline-flex; align-items: center; gap: 8px; padding: 6px 16px; border-radius: 20px; font-size: 11px; font-weight: 700; letter-spacing: .3px; margin-bottom: 14px; }
   .repo-dynamics { background: #eff6ff; color: #1d4ed8; border: 1.5px solid #93c5fd; }
   .repo-core     { background: #f0fdf4; color: #15803d; border: 1.5px solid #86efac; }
 
-  /* ── WORKFLOW CARDS ───────────────────────────────────────────────────── */
-  .wf-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 18px; margin-bottom: 24px; }
-  .wf-card { background: #fff; border: 1.5px solid #e2e6ef; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,.06); }
+  /* ── WORKFLOW GRID + CARDS ───────────────────────────────────────────── */
+  .wf-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 16px; margin-bottom: 24px; }
+  .wf-card { background: #fff; border: 1.5px solid #e2e6ef; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 6px rgba(0,0,0,.06); transition: box-shadow .15s; }
+  .wf-card:hover { box-shadow: 0 4px 18px rgba(0,0,0,.1); }
   .wf-card.thin-wrapper { border-style: dashed; }
+  .wf-card.full-width { grid-column: 1 / -1; }
   .wf-card-head { padding: 12px 16px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid #e2e6ef; }
-  .wf-card-head .wf-title { font-size: 12px; font-weight: 700; color: #1e293b; }
-  .wf-card-head .wf-trigger { font-size: 9.5px; background: #f1f5f9; color: #475569; padding: 2px 7px; border-radius: 8px; margin-left: auto; }
-  .wf-card-head .wf-wrapper { font-size: 9.5px; background: #dbeafe; color: #1e40af; padding: 2px 7px; border-radius: 8px; }
-  .wf-card-body { padding: 12px 16px; font-size: 10.5px; color: #374151; line-height: 1.6; }
-  .wf-icon { font-size: 20px; }
+  .wf-icon { font-size: 20px; flex-shrink: 0; }
+  .wf-title { font-size: 12px; font-weight: 700; color: #1e293b; flex: 1; }
+  .wf-tag { font-size: 9px; padding: 2px 7px; border-radius: 8px; font-weight: 600; white-space: nowrap; }
+  .tag-trigger { background: #f1f5f9; color: #475569; }
+  .tag-wrapper { background: #dbeafe; color: #1e40af; }
+  .tag-new     { background: #dcfce7; color: #15803d; }
+  .wf-card-body { padding: 12px 16px; font-size: 10.5px; color: #374151; line-height: 1.65; }
 
-  /* ── DELEGATES-TO CALLOUT ─────────────────────────────────────────────── */
-  .delegates { display: flex; align-items: center; gap: 6px; padding: 6px 10px; background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 6px; font-size: 10px; color: #0c4a6e; margin-top: 8px; }
+  /* ── DELEGATES CALLOUT ───────────────────────────────────────────────── */
+  .delegates { display: flex; align-items: flex-start; gap: 6px; padding: 7px 10px; background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 7px; font-size: 10px; color: #0c4a6e; margin: 8px 0; }
   .delegates code { font-size: 9.5px; background: #e0f2fe; padding: 1px 4px; border-radius: 3px; }
 
-  /* ── JOB DAG ──────────────────────────────────────────────────────────── */
-  .dag { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
-  .dag-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-  .dag-job { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border-radius: 8px; font-size: 10px; font-weight: 600; border: 1.5px solid transparent; white-space: nowrap; }
-  .dag-job.j-setup  { background: #cffafe; border-color: #22d3ee; color: #164e63; }
-  .dag-job.j-build  { background: #dcfce7; border-color: #4ade80; color: #14532d; }
-  .dag-job.j-gate   { background: #fef9c3; border-color: #eab308; color: #713f12; }
-  .dag-job.j-deploy { background: #f3e8ff; border-color: #c084fc; color: #4a044e; }
-  .dag-job.j-export { background: #e0f2fe; border-color: #38bdf8; color: #0c4a6e; }
-  .dag-job.j-pr     { background: #f0fdf4; border-color: #4ade80; color: #14532d; }
-  .dag-job.j-sum    { background: #f8fafc; border-color: #94a3b8; color: #334155; }
-  .dag-job.j-sec    { background: #fff1f2; border-color: #fb7185; color: #881337; }
-  .dag-job.j-rollbk { background: #dbeafe; border-color: #60a5fa; color: #1e3a8a; }
-  .dag-arrow { color: #9ca3af; font-size: 13px; }
-  .dag-label { font-size: 9px; color: #6b7280; font-style: italic; }
-  .dag-parallel { display: flex; flex-direction: column; gap: 3px; padding: 4px 8px; background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px; }
-  .dag-parallel-head { font-size: 8.5px; color: #6b7280; font-weight: 600; text-transform: uppercase; margin-bottom: 2px; }
+  /* ── DAG STEPS ───────────────────────────────────────────────────────── */
+  .dag { display: flex; flex-direction: column; gap: 5px; margin-top: 10px; }
+  .dag-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .dag-step { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border-radius: 8px; font-size: 9.5px; font-weight: 600; border: 1.5px solid transparent; white-space: nowrap; line-height: 1.35; }
+  .dag-step small { font-weight: 400; font-size: 8px; display: block; margin-top: 1px; opacity: .85; }
+  .ds-setup  { background: #cffafe; border-color: #22d3ee; color: #164e63; }
+  .ds-build  { background: #dcfce7; border-color: #4ade80; color: #14532d; }
+  .ds-gate   { background: #fef9c3; border-color: #eab308; color: #713f12; }
+  .ds-deploy { background: #f3e8ff; border-color: #c084fc; color: #4a044e; }
+  .ds-export { background: #e0f2fe; border-color: #38bdf8; color: #0c4a6e; }
+  .ds-pr     { background: #f0fdf4; border-color: #4ade80; color: #14532d; }
+  .ds-sum    { background: #f8fafc; border-color: #94a3b8; color: #334155; }
+  .ds-sec    { background: #fff1f2; border-color: #fb7185; color: #881337; }
+  .ds-rollbk { background: #dbeafe; border-color: #60a5fa; color: #1e3a8a; }
+  .ds-jfrog  { background: #fef3c7; border-color: #f59e0b; color: #78350f; }
+  .ds-backup { background: #fce7f3; border-color: #f472b6; color: #831843; }
+  .ds-warn   { background: #fff7ed; border-color: #fb923c; color: #7c2d12; }
+  .dag-arrow { color: #9ca3af; font-size: 13px; flex-shrink: 0; }
+  .dag-label { font-size: 8.5px; color: #6b7280; font-style: italic; }
+  .dag-parallel { display: flex; flex-direction: column; gap: 3px; padding: 5px 9px; background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px; }
+  .dag-parallel-head { font-size: 8px; color: #6b7280; font-weight: 700; text-transform: uppercase; letter-spacing: .3px; margin-bottom: 2px; }
 
-  /* ── SECTION HEADERS ──────────────────────────────────────────────────── */
-  h2.sec { font-size: 14px; font-weight: 700; color: #1e293b; margin: 24px 0 12px; padding-bottom: 6px; border-bottom: 2px solid #e2e6ef; display: flex; align-items: center; gap: 8px; }
-  h3.sub { font-size: 12px; font-weight: 700; color: #334155; margin: 16px 0 8px; }
-
-  /* ── MATRIX TABLE ─────────────────────────────────────────────────────── */
-  .mtable { width: 100%; border-collapse: collapse; font-size: 10.5px; margin-bottom: 16px; }
-  .mtable th { background: #f1f5f9; padding: 7px 12px; text-align: left; font-weight: 700; color: #374151; border-bottom: 2px solid #e2e6ef; }
-  .mtable td { padding: 7px 12px; border-bottom: 1px solid #f0f2f8; color: #374151; vertical-align: top; line-height: 1.5; }
-  .mtable tr:hover td { background: #f8f9fc; }
-  .mtable code { font-size: 9.5px; background: #f1f5f9; padding: 1px 4px; border-radius: 3px; color: #1e40af; }
-  .mtable .yes  { color: #15803d; font-weight: 700; }
-  .mtable .no   { color: #9ca3af; }
-  .mtable .cond { color: #b45309; font-weight: 600; }
-  .mtable .core { color: #1d4ed8; font-style: italic; font-size: 9.5px; }
-
-  /* ── CALLOUT BOXES ────────────────────────────────────────────────────── */
-  .callout { border-radius: 8px; padding: 12px 16px; font-size: 10.5px; line-height: 1.65; margin-bottom: 14px; }
+  /* ── CALLOUT BOXES ───────────────────────────────────────────────────── */
+  .callout { border-radius: 10px; padding: 12px 16px; font-size: 10.5px; line-height: 1.7; margin-bottom: 14px; }
   .callout-blue  { background: #eff6ff; border-left: 4px solid #3b82f6; color: #1e3a8a; }
   .callout-green { background: #f0fdf4; border-left: 4px solid #22c55e; color: #14532d; }
   .callout-amber { background: #fffbeb; border-left: 4px solid #f59e0b; color: #78350f; }
   .callout-red   { background: #fff1f2; border-left: 4px solid #f43f5e; color: #881337; }
   .callout b { font-weight: 700; }
   .callout code { font-size: 9.5px; background: rgba(0,0,0,.07); padding: 1px 4px; border-radius: 3px; }
+  .callout ul { margin-left: 16px; margin-top: 6px; }
+  .callout li { margin-bottom: 5px; }
 
-  /* ── SECURITY TOGGLE MATRIX ───────────────────────────────────────────── */
+  /* ── DECISION MATRIX ─────────────────────────────────────────────────── */
+  .mtable { width: 100%; border-collapse: collapse; font-size: 10.5px; margin-bottom: 16px; }
+  .mtable th { background: #f1f5f9; padding: 8px 12px; text-align: left; font-weight: 700; color: #374151; border-bottom: 2px solid #e2e6ef; font-size: 10px; }
+  .mtable td { padding: 7px 12px; border-bottom: 1px solid #f0f2f8; color: #374151; vertical-align: top; line-height: 1.5; }
+  .mtable tr:nth-child(even) td { background: #fafbfd; }
+  .mtable tr:hover td { background: #f1f5f9; }
+  .mtable code { font-size: 9.5px; background: #f1f5f9; padding: 1px 4px; border-radius: 3px; color: #1e40af; }
+  .yes  { color: #15803d; font-weight: 700; }
+  .no   { color: #9ca3af; }
+  .cond { color: #b45309; font-weight: 600; }
+  .core { color: #1d4ed8; font-style: italic; font-size: 9.5px; }
+
+  /* ── SECURITY SCAN MATRIX ─────────────────────────────────────────────── */
   .scan-matrix { border: 1.5px solid #fda4af; border-radius: 10px; overflow: hidden; margin-bottom: 16px; }
   .scan-matrix-head { background: #fff1f2; padding: 10px 14px; font-size: 11px; font-weight: 700; color: #881337; border-bottom: 1px solid #fda4af; }
-  .scan-row { display: grid; grid-template-columns: 160px 200px 1fr; gap: 0; font-size: 10.5px; border-bottom: 1px solid #fee2e2; }
+  .scan-row { display: grid; grid-template-columns: 155px 210px 1fr; font-size: 10.5px; border-bottom: 1px solid #fee2e2; }
   .scan-row:last-child { border-bottom: none; }
   .scan-row.head { background: #fff8f8; font-weight: 700; color: #374151; }
   .scan-cell { padding: 7px 12px; border-right: 1px solid #fee2e2; }
   .scan-cell:last-child { border-right: none; }
-  .run { color: #15803d; font-weight: 700; }
-  .skip { color: #9ca3af; }
+  .scan-run  { color: #15803d; font-weight: 700; }
+  .scan-skip { color: #9ca3af; }
 
-  /* ── STRUCTURE DIAGRAM ────────────────────────────────────────────────── */
-  .struct-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-  .struct-box { background: #fff; border: 1.5px solid #e2e6ef; border-radius: 10px; padding: 14px; font-size: 10.5px; }
+  /* ── SCAN TYPE CARDS ──────────────────────────────────────────────────── */
+  .scan-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 20px; }
+  .scan-card { border: 1.5px solid #fda4af; border-radius: 10px; overflow: hidden; }
+  .scan-card.mandatory { border-color: #eab308; }
+  .scan-card-head { padding: 10px 14px; font-size: 11.5px; font-weight: 700; border-bottom: 1px solid inherit; }
+  .scan-card-body { padding: 11px 14px; font-size: 10.5px; color: #374151; line-height: 1.65; }
+  .scan-card-body strong { color: #1e293b; }
+
+  /* ── STRUCT GRID ─────────────────────────────────────────────────────── */
+  .struct-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
+  .struct-box { background: #fff; border: 1.5px solid #e2e6ef; border-radius: 10px; padding: 14px; }
   .struct-box h4 { font-size: 11px; font-weight: 700; color: #1e293b; margin-bottom: 10px; padding-bottom: 6px; border-bottom: 1px solid #e2e6ef; display: flex; align-items: center; gap: 8px; }
-  .struct-box pre { font-size: 9.5px; font-family: 'SFMono-Regular', Consolas, monospace; color: #374151; line-height: 1.7; white-space: pre-wrap; }
-  .struct-note { margin-top: 8px; font-size: 9.5px; color: #6b7280; border-top: 1px solid #e2e6ef; padding-top: 8px; line-height: 1.5; }
+  .struct-box pre { font-size: 9.5px; font-family: 'SFMono-Regular', Consolas, monospace; color: #374151; line-height: 1.75; white-space: pre-wrap; }
+  .struct-note { margin-top: 10px; font-size: 9.5px; color: #6b7280; border-top: 1px solid #e2e6ef; padding-top: 8px; line-height: 1.55; }
 
   /* ── REPO BADGE ───────────────────────────────────────────────────────── */
   .repo-badge { display: inline-block; font-size: 8.5px; font-weight: 700; padding: 1px 6px; border-radius: 8px; vertical-align: middle; }
   .rb-dynamics { background: #dbeafe; color: #1e40af; }
   .rb-core     { background: #dcfce7; color: #15803d; }
+
+  /* ── SETTINGS TABLE ──────────────────────────────────────────────────── */
+  .settings-resolve { background: #fff; border: 1.5px solid #e2e6ef; border-radius: 10px; padding: 14px; margin-bottom: 16px; font-size: 10.5px; }
+  .settings-resolve strong { font-weight: 700; color: #1e293b; }
+  .code-block { font-family: 'SFMono-Regular', Consolas, monospace; font-size: 9.5px; background: #f8fafc; padding: 12px; border-radius: 6px; margin-top: 8px; line-height: 1.9; border: 1px solid #e2e6ef; color: #374151; }
 </style>
 </head>
 <body>
 
+<!-- ── PAGE HEADER ──────────────────────────────────────────────────────── -->
+<div class="page-header">
+  <div class="ph-left">
+    <div class="ph-icon">🏛️</div>
+    <div>
+      <div class="ph-title">Power Platform CI/CD — Architecture &amp; Workflow Relationships</div>
+      <div class="ph-sub">Job DAG, reusable workflow relationships, multi-solution matrix, security toggles, and two-repository split</div>
+    </div>
+  </div>
+  <div class="ph-badges">
+    <span class="ph-badge phb-blue">📦 GHA-Dynamics — caller / project repo</span>
+    <span class="ph-badge phb-green">♻️ GHA-Core — reusable logic</span>
+    <span class="ph-badge phb-amber">v3 — rollback + deploy-dev added</span>
+  </div>
+</div>
+
+<!-- ── TAB BAR ──────────────────────────────────────────────────────────── -->
 <div class="tab-bar">
   <button class="tab-btn active" onclick="showTab('arch',this)">🏛️ Workflow Architecture</button>
   <button class="tab-btn" onclick="showTab('matrix',this)">⚡ Multi-Solution Matrix</button>
   <button class="tab-btn" onclick="showTab('security',this)">🔒 Security Scan Toggles</button>
-  <button class="tab-btn" onclick="showTab('settings',this)">📁 Settings &amp; Structure</button>
+  <button class="tab-btn" onclick="showTab('settings',this)">📁 Structure &amp; Settings</button>
 </div>
 
 <!-- ═══════════════════════════════════════════════════════════════════════
      TAB 1 — WORKFLOW ARCHITECTURE
      ═══════════════════════════════════════════════════════════════════════ -->
 <div id="arch" class="tab-panel active">
-  <div class="page-title">Power Platform CI/CD — Workflow Architecture v3</div>
-  <div class="page-sub">Job DAG, reusable workflow relationships, and two-repository split (GHA-Dynamics caller + GHA-Core reusable logic)</div>
+  <div class="panel-title">Workflow Architecture — Job DAGs &amp; Reusable Workflow Relationships</div>
+  <div class="panel-sub">Two-repository split: GHA-Dynamics (thin wrappers + pipeline triggers) → GHA-Core (all reusable logic)</div>
 
-  <!-- ── GHA-DYNAMICS section ──────────────────────────────────────────── -->
-  <div class="repo-section">
-    <div class="repo-label repo-dynamics">📦 GHA-Dynamics (Project Repo) — thin wrappers &amp; pipeline triggers</div>
-    <div class="wf-grid">
+  <!-- ── GHA-DYNAMICS ──────────────────────────────────────────────────── -->
+  <div class="repo-label repo-dynamics">📦 GHA-Dynamics (Project Repo) — thin wrappers &amp; pipeline triggers</div>
+  <div class="wf-grid">
 
-      <!-- export-solution.yml -->
-      <div class="wf-card">
-        <div class="wf-card-head" style="background:#e0f2fe;">
-          <span class="wf-icon">📤</span>
-          <span class="wf-title">export-solution.yml</span>
-          <span class="wf-trigger">workflow_dispatch</span>
-        </div>
-        <div class="wf-card-body">
-          <div>Exports solutions from Sandbox, unpacks source, and creates a single PR. Full logic lives here (no delegation).</div>
-          <div class="dag">
-            <div class="dag-row">
-              <div class="dag-job j-setup">🔍 setup<br><span style="font-size:8px;font-weight:400">discovers solutions · outputs: matrix, branch-name</span></div>
-              <div class="dag-arrow">→</div>
+    <!-- export-solution.yml -->
+    <div class="wf-card">
+      <div class="wf-card-head" style="background:#e0f2fe;">
+        <span class="wf-icon">📤</span>
+        <span class="wf-title">export-solution.yml</span>
+        <span class="wf-tag tag-trigger">workflow_dispatch</span>
+      </div>
+      <div class="wf-card-body">
+        <div>Exports solutions from Sandbox, unpacks source, and creates a single PR. Full logic lives here — no delegation to GHA-Core.</div>
+        <div class="dag">
+          <div class="dag-row">
+            <div class="dag-step ds-setup">🔍 setup<small>discovers solutions · outputs: matrix, branch-name, solution-count</small></div>
+            <div class="dag-arrow">→</div>
+          </div>
+          <div class="dag-row">
+            <div class="dag-parallel">
+              <div class="dag-parallel-head">matrix × N solutions · max-parallel: 1</div>
+              <div class="dag-step ds-export">📤 export [{matrix.solution}]<small>who-am-i → publish → export → unpack → export-data → git pull --rebase → commit+push</small></div>
             </div>
-            <div class="dag-row">
-              <div class="dag-parallel">
-                <div class="dag-parallel-head">matrix × N solutions · max-parallel: 1</div>
-                <div class="dag-job j-export">📤 export [{matrix.solution}]<br><span style="font-size:8px;font-weight:400">who-am-i → publish → export → unpack → export-data → git pull --rebase → commit+push</span></div>
-              </div>
-              <div class="dag-arrow">→</div>
-              <div class="dag-job j-pr">🔀 create-pr<br><span style="font-size:8px;font-weight:400">one PR for all solutions<br>needs: setup, export</span></div>
-            </div>
+            <div class="dag-arrow">→</div>
+            <div class="dag-step ds-pr">🔀 create-pr<small>one PR for all solutions<br>needs: setup, export</small></div>
           </div>
         </div>
       </div>
-
-      <!-- deploy-dev.yml (thin wrapper) -->
-      <div class="wf-card thin-wrapper">
-        <div class="wf-card-head" style="background:#f3e8ff;">
-          <span class="wf-icon">🚀</span>
-          <span class="wf-title">deploy-dev.yml</span>
-          <span class="wf-wrapper">thin wrapper</span>
-          <span class="wf-trigger">workflow_dispatch</span>
-        </div>
-        <div class="wf-card-body">
-          <div>Manual deploy to Dev only. Reads <code>vars.*</code> (inaccessible in GHA-Core), then delegates all logic.</div>
-          <div class="delegates">
-            📤 Reads <code>vars.PP_DEV_URL</code>, <code>vars.PP_CHECKER_GEO</code>, etc. → forwards to <code>GHA-Core/_reusable-deploy-dev.yml</code>
-          </div>
-          <div class="dag" style="margin-top:8px;">
-            <div class="dag-row">
-              <div class="dag-job j-deploy" style="font-size:9px;background:#e0e7ff;border-color:#818cf8;color:#1e1b4b;">deploy-dev job<br><span style="font-weight:400">uses: GHA-Core/_reusable-deploy-dev.yml@main<br>with: vars.PP_DEV_URL, etc.<br>secrets: inherit</span></div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- release-pipeline.yml -->
-      <div class="wf-card" style="grid-column: 1 / -1;">
-        <div class="wf-card-head" style="background:#dcfce7;">
-          <span class="wf-icon">🏭</span>
-          <span class="wf-title">release-pipeline.yml</span>
-          <span class="wf-trigger">push to main · workflow_dispatch</span>
-        </div>
-        <div class="wf-card-body">
-          <div>Full release pipeline. Reads <code>vars.*</code>, passes URLs to GHA-Core reusable workflows. Each deploy call is a separate <code>uses:</code> invocation.</div>
-          <div class="dag" style="margin-top:12px;">
-
-            <div class="dag-row">
-              <div class="dag-job j-setup" style="padding:6px 12px;">🔍 setup<br><span style="font-size:8px;font-weight:400">outputs: matrix, solution-list, solution-count</span></div>
-              <div class="dag-arrow">→</div>
-            </div>
-
-            <div class="dag-row">
-              <div class="dag-parallel">
-                <div class="dag-parallel-head">parallel × N · fail-fast: false → GHA-Core/_reusable-build.yml</div>
-                <div class="dag-job j-build">🏗️ build [{matrix.solution}]<br><span style="font-size:8px;font-weight:400">stamp → pack → scans* → check-solution → JFrog upload → GHA artifact upload → job-summary artifact</span></div>
-              </div>
-              <div class="dag-arrow">→</div>
-              <div class="dag-parallel">
-                <div class="dag-parallel-head">sequential × N · max-parallel:1 → GHA-Core/_reusable-deploy.yml</div>
-                <div class="dag-job j-deploy">🚀 deploy/Dev [{matrix.solution}]<br><span style="font-size:8px;font-weight:400">GHA artifact download → who-am-i → backup? → blocking⚠️ → import → publish → job-summary artifact</span></div>
-              </div>
-              <div class="dag-arrow">→</div>
-              <div class="dag-job j-gate" style="padding:6px 12px;">🔐 gate-intg<br><span style="font-size:8px;font-weight:400">environment: Intg<br>ONE approval → all N</span></div>
-              <div class="dag-arrow">→</div>
-            </div>
-
-            <div class="dag-row" style="margin-left:20px;">
-              <div class="dag-parallel">
-                <div class="dag-parallel-head">sequential × N → GHA-Core/_reusable-deploy.yml</div>
-                <div class="dag-job j-deploy">🚀 deploy/Intg [{matrix.solution}]<br><span style="font-size:8px;font-weight:400">→ job-summary artifact</span></div>
-              </div>
-              <div class="dag-arrow">→</div>
-              <div class="dag-job j-gate">🔐 gate-uat</div>
-              <div class="dag-arrow">→</div>
-              <div class="dag-parallel">
-                <div class="dag-parallel-head">sequential × N</div>
-                <div class="dag-job j-deploy">🚀 deploy/UAT [{matrix.solution}]<br><span style="font-size:8px;font-weight:400">→ job-summary artifact</span></div>
-              </div>
-              <div class="dag-arrow">→</div>
-            </div>
-
-            <div class="dag-row" style="margin-left:20px;">
-              <div class="dag-job j-gate">🔐 gate-perf</div>
-              <div class="dag-arrow">→</div>
-              <div class="dag-parallel">
-                <div class="dag-parallel-head">sequential × N</div>
-                <div class="dag-job j-deploy">🚀 deploy/Perf [{matrix.solution}]<br><span style="font-size:8px;font-weight:400">→ job-summary artifact</span></div>
-              </div>
-              <div class="dag-arrow">→</div>
-              <div class="dag-job j-gate">🔐 gate-prod<br><span style="font-size:8px;font-weight:400">environment: Prod + 5min wait</span></div>
-              <div class="dag-arrow">→</div>
-              <div class="dag-parallel">
-                <div class="dag-parallel-head">sequential × N → JFrog tag after success</div>
-                <div class="dag-job j-deploy">🚀 deploy/Prod [{matrix.solution}]<br><span style="font-size:8px;font-weight:400">→ JFrog tag → job-summary artifact</span></div>
-              </div>
-              <div class="dag-arrow">→</div>
-              <div class="dag-job j-sum">📋 pipeline-summary<br><span style="font-size:8px;font-weight:400">download job-summary-* → consolidated report</span></div>
-            </div>
-
-            <div class="dag-row" style="margin-top:6px;font-size:9px;color:#6b7280;">
-              <span>* Security scans only run when <code style="background:#f1f5f9;padding:1px 3px;border-radius:2px;">lowcode-nocode == 'true'</code> + individual toggle enabled</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- rollback.yml (thin wrapper) -->
-      <div class="wf-card thin-wrapper">
-        <div class="wf-card-head" style="background:#dbeafe;">
-          <span class="wf-icon">↩️</span>
-          <span class="wf-title">rollback.yml</span>
-          <span class="wf-wrapper">thin wrapper</span>
-          <span class="wf-trigger">workflow_dispatch</span>
-        </div>
-        <div class="wf-card-body">
-          <div>Solution-scoped rollback. Exposes <code>type: choice</code> for environment (only valid on <code>workflow_dispatch</code>), reads <code>vars.*</code>, then delegates.</div>
-          <div class="delegates">
-            📤 Reads <code>vars.PP_DEV_URL</code>, <code>vars.PP_PROD_URL</code>, etc. → forwards to <code>GHA-Core/_reusable-rollback.yml</code>
-          </div>
-          <div style="margin-top:8px;font-size:9.5px;color:#374151;">
-            <strong>Inputs:</strong> target-environment (choice), solution-name, run-number, deployment-settings-file, confirm-rollback (must type "CONFIRM")
-          </div>
-        </div>
-      </div>
-
     </div>
+
+    <!-- deploy-dev.yml -->
+    <div class="wf-card thin-wrapper">
+      <div class="wf-card-head" style="background:#fef9c3;">
+        <span class="wf-icon">🚀</span>
+        <span class="wf-title">deploy-dev.yml</span>
+        <span class="wf-tag tag-wrapper">thin wrapper</span>
+        <span class="wf-tag tag-trigger" style="margin-left:4px;">workflow_dispatch</span>
+      </div>
+      <div class="wf-card-body">
+        <div>Manual ad-hoc deploy to Dev only. Reads <code>vars.*</code> (inaccessible in GHA-Core), then delegates all logic.</div>
+        <div class="delegates">
+          📤 Reads <code>vars.PP_DEV_URL</code>, <code>vars.PP_CHECKER_GEO</code>, <code>vars.JFROG_URL</code>, etc. → forwards to <code>GHA-Core/_reusable-deploy-dev.yml@main</code>
+        </div>
+        <div class="dag" style="margin-top:8px;">
+          <div class="dag-row">
+            <div class="dag-step ds-deploy" style="font-size:9px;background:#e0e7ff;border-color:#818cf8;color:#1e1b4b;">deploy-dev job<small>uses: GHA-Core/_reusable-deploy-dev.yml@main<br>with: vars.PP_DEV_URL, vars.PP_CHECKER_GEO, ...<br>secrets: inherit</small></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- rollback.yml -->
+    <div class="wf-card thin-wrapper">
+      <div class="wf-card-head" style="background:#dbeafe;">
+        <span class="wf-icon">↩️</span>
+        <span class="wf-title">rollback.yml</span>
+        <span class="wf-tag tag-wrapper">thin wrapper</span>
+        <span class="wf-tag tag-trigger" style="margin-left:4px;">workflow_dispatch</span>
+      </div>
+      <div class="wf-card-body">
+        <div>Solution-scoped rollback. Exposes <code>type: choice</code> for environment (only valid on <code>workflow_dispatch</code>), reads <code>vars.*</code>, then delegates.</div>
+        <div class="delegates">
+          📤 Reads <code>vars.PP_DEV_URL</code> … <code>vars.PP_PROD_URL</code> → forwards to <code>GHA-Core/_reusable-rollback.yml@main</code>
+        </div>
+        <div style="margin-top:8px;font-size:9.5px;color:#374151;">
+          <strong>Inputs exposed:</strong> target-environment (choice), solution-name, run-number, deployment-settings-file, confirm-rollback (must type "CONFIRM")
+        </div>
+      </div>
+    </div>
+
+    <!-- release-pipeline.yml — full width -->
+    <div class="wf-card full-width">
+      <div class="wf-card-head" style="background:#dcfce7;">
+        <span class="wf-icon">🏭</span>
+        <span class="wf-title">release-pipeline.yml</span>
+        <span class="wf-tag tag-trigger">push to main · workflow_dispatch</span>
+      </div>
+      <div class="wf-card-body">
+        <div>Full release pipeline. Reads <code>vars.*</code>, passes URLs as string inputs to GHA-Core reusable workflows. Each deploy stage is a separate <code>uses:</code> invocation.</div>
+        <div class="dag" style="margin-top:12px;">
+
+          <div class="dag-row">
+            <div class="dag-step ds-setup">🔍 setup<small>outputs: matrix, solution-list, solution-count</small></div>
+            <div class="dag-arrow">→</div>
+            <div class="dag-label">fans out to build matrix →</div>
+          </div>
+
+          <div class="dag-row" style="margin-top:4px;">
+            <div class="dag-parallel">
+              <div class="dag-parallel-head">parallel × N · fail-fast: false → GHA-Core/_reusable-build.yml</div>
+              <div class="dag-step ds-build">🏗️ build [{matrix.solution}]<small>validate → stamp → pack ×2 → BlackDuck* → Checkmarx* → check-solution 🔴 → export-data → JFrog upload → GHA artifact upload → job-summary artifact</small></div>
+            </div>
+            <div class="dag-arrow">→</div>
+            <div class="dag-parallel">
+              <div class="dag-parallel-head">sequential × N · max-parallel:1 → GHA-Core/_reusable-deploy.yml</div>
+              <div class="dag-step ds-deploy">🚀 deploy/Dev [{matrix.solution}]<small>download GHA artifact → who-am-i → backup? → blocking⚠️ → settings-file → import (unmanaged) → publish → activate → data? → job-summary artifact</small></div>
+            </div>
+            <div class="dag-arrow">→</div>
+            <div class="dag-step ds-gate">🔐 gate-intg<small>environment: Intg<br>ONE approval → all N solutions</small></div>
+            <div class="dag-arrow">→</div>
+            <div class="dag-parallel">
+              <div class="dag-parallel-head">sequential × N → GHA-Core/_reusable-deploy.yml</div>
+              <div class="dag-step ds-deploy">🚀 deploy/Intg [{matrix.solution}]<small>backup? → blocking⚠️ → version-compare? → settings-file → import (managed) → delete_upgrade? → publish → activate → data? → job-summary artifact</small></div>
+            </div>
+            <div class="dag-arrow">→</div>
+            <div class="dag-step ds-gate">🔐 gate-uat</div>
+          </div>
+
+          <div class="dag-row" style="margin-top:4px;margin-left:20px;">
+            <div class="dag-parallel">
+              <div class="dag-parallel-head">sequential × N</div>
+              <div class="dag-step ds-deploy">🚀 deploy/UAT [{matrix.solution}]<small>→ version-compare? → import (managed) → job-summary artifact</small></div>
+            </div>
+            <div class="dag-arrow">→</div>
+            <div class="dag-step ds-gate">🔐 gate-perf</div>
+            <div class="dag-arrow">→</div>
+            <div class="dag-parallel">
+              <div class="dag-parallel-head">sequential × N</div>
+              <div class="dag-step ds-deploy">🚀 deploy/Perf [{matrix.solution}]<small>→ version-compare? → import (managed) → job-summary artifact</small></div>
+            </div>
+            <div class="dag-arrow">→</div>
+            <div class="dag-step ds-gate">🔐 gate-prod<small>environment: Prod + 5min wait</small></div>
+            <div class="dag-arrow">→</div>
+            <div class="dag-parallel">
+              <div class="dag-parallel-head">sequential × N → JFrog tag after Prod success</div>
+              <div class="dag-step ds-deploy">🚀 deploy/Prod [{matrix.solution}]<small>→ version-compare? → import (managed) → JFrog tag → job-summary artifact</small></div>
+            </div>
+            <div class="dag-arrow">→</div>
+            <div class="dag-step ds-sum">📋 pipeline-summary<small>if: always()<br>download job-summary-* → consolidated report</small></div>
+          </div>
+
+          <div class="dag-row" style="margin-top:6px;font-size:9px;color:#6b7280;">
+            <span>* Security scans only run when <code style="background:#f1f5f9;padding:1px 3px;border-radius:2px;">lowcode-nocode == 'true'</code> + individual toggle enabled. Solution Checker (🔴) is MANDATORY — no toggle.</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
   </div>
 
-  <!-- ── GHA-CORE section ───────────────────────────────────────────────── -->
-  <div class="repo-section">
-    <div class="repo-label repo-core">♻️ GHA-Core (Shared Repo) — all reusable workflow logic</div>
-    <div class="wf-grid">
+  <!-- ── GHA-CORE ──────────────────────────────────────────────────────── -->
+  <div class="repo-label repo-core">♻️ GHA-Core (Shared Repo) — all reusable workflow logic</div>
+  <div class="wf-grid">
 
-      <!-- _reusable-build.yml -->
-      <div class="wf-card">
-        <div class="wf-card-head" style="background:#f0fdf4;">
-          <span class="wf-icon">♻️</span>
-          <span class="wf-title">_reusable-build.yml</span>
-          <span class="wf-trigger">workflow_call</span>
+    <!-- _reusable-build.yml -->
+    <div class="wf-card">
+      <div class="wf-card-head" style="background:#f0fdf4;">
+        <span class="wf-icon">♻️</span>
+        <span class="wf-title">_reusable-build.yml</span>
+        <span class="wf-tag tag-trigger">workflow_call</span>
+      </div>
+      <div class="wf-card-body">
+        <div style="margin-bottom:8px;">Called by: <code>release-pipeline.yml</code> and <code>_reusable-deploy-dev.yml</code> via matrix strategy.</div>
+        <div class="dag">
+          <div class="dag-row" style="flex-wrap:wrap;gap:4px;">
+            <div class="dag-step ds-build" style="font-size:9px;">✅ validate-inputs<small>all errors at once</small></div><div class="dag-arrow">→</div>
+            <div class="dag-step ds-build" style="font-size:9px;">actions-install</div><div class="dag-arrow">→</div>
+            <div class="dag-step ds-build" style="font-size:9px;">stamp version</div><div class="dag-arrow">→</div>
+            <div class="dag-step ds-build" style="font-size:9px;">pack ×2<small>unmanaged + managed</small></div><div class="dag-arrow">→</div>
+            <div class="dag-step ds-sec" style="font-size:9px;">BlackDuck SCA*</div><div class="dag-arrow">→</div>
+            <div class="dag-step ds-sec" style="font-size:9px;">Checkmarx SAST*</div><div class="dag-arrow">→</div>
+            <div class="dag-step ds-gate" style="font-size:9px;">check-solution 🔴<small>MANDATORY — no toggle</small></div><div class="dag-arrow">→</div>
+            <div class="dag-step ds-export" style="font-size:9px;">export-data?<small>if schema file</small></div><div class="dag-arrow">→</div>
+            <div class="dag-step ds-jfrog" style="font-size:9px;">JFrog upload<small>always runs</small></div><div class="dag-arrow">→</div>
+            <div class="dag-step ds-build" style="font-size:9px;">GHA upload-artifact<small>solution-{name}-{run#}</small></div><div class="dag-arrow">→</div>
+            <div class="dag-step ds-sum" style="font-size:9px;">job-summary artifact<small>job-summary-build-{sol}-{run#}</small></div>
+          </div>
         </div>
-        <div class="wf-card-body">
-          <div>Called by: <code>release-pipeline.yml</code> and <code>_reusable-deploy-dev.yml</code> via matrix strategy.</div>
-          <div class="dag" style="margin-top:8px;">
-            <div class="dag-row" style="flex-wrap:wrap;gap:5px;">
-              <div class="dag-job j-build" style="font-size:9px;">✅ validate-inputs<br><span style="font-weight:400">(all errors at once)</span></div><div class="dag-arrow">→</div>
-              <div class="dag-job j-build" style="font-size:9px;">actions-install</div><div class="dag-arrow">→</div>
-              <div class="dag-job j-build" style="font-size:9px;">stamp version</div><div class="dag-arrow">→</div>
-              <div class="dag-job j-build" style="font-size:9px;">pack ×2</div><div class="dag-arrow">→</div>
-              <div class="dag-job j-sec" style="font-size:9px;">BlackDuck*</div><div class="dag-arrow">→</div>
-              <div class="dag-job j-sec" style="font-size:9px;">Checkmarx*</div><div class="dag-arrow">→</div>
-              <div class="dag-job j-build" style="font-size:9px;background:#fef9c3;border-color:#facc15;color:#713f12;">check-solution 🔴</div><div class="dag-arrow">→</div>
-              <div class="dag-job j-build" style="font-size:9px;">export-data?</div><div class="dag-arrow">→</div>
-              <div class="dag-job j-build" style="font-size:9px;background:#fef3c7;">JFrog upload</div><div class="dag-arrow">→</div>
-              <div class="dag-job j-build" style="font-size:9px;">GHA upload-artifact</div><div class="dag-arrow">→</div>
-              <div class="dag-job j-sum" style="font-size:9px;">job-summary artifact</div>
-            </div>
-          </div>
-          <div style="margin-top:8px;font-size:9.5px;color:#6b7280;">
-            🔴 = check-solution: mandatory, no toggle.<br>
-            * = lowcode-nocode gated.<br>
-            Job-summary: JSON artifact <code>job-summary-build-{solution}-{run#}</code> uploaded for consolidated report.<br>
-            Artifact: <code>solution-{name}-{run#}</code> uploaded to GHA (primary source for deploy jobs).
-          </div>
+        <div style="margin-top:10px;font-size:9.5px;color:#6b7280;line-height:1.6;">
+          🔴 check-solution: mandatory, no toggle.<br>
+          * BlackDuck + Checkmarx: <code>lowcode-nocode</code> gated.<br>
+          GHA artifact (<code>solution-{name}-{run#}</code>): PRIMARY source for deploy jobs.<br>
+          JFrog: upload for traceability only — NOT download source for deploy.
         </div>
       </div>
-
-      <!-- _reusable-deploy.yml -->
-      <div class="wf-card">
-        <div class="wf-card-head" style="background:#f5f3ff;">
-          <span class="wf-icon">♻️</span>
-          <span class="wf-title">_reusable-deploy.yml</span>
-          <span class="wf-trigger">workflow_call</span>
-        </div>
-        <div class="wf-card-body">
-          <div>Called by all deploy stages (Dev, Intg, UAT, Perf, Prod) with <code>secrets: inherit</code>.</div>
-          <div class="dag" style="margin-top:8px;">
-            <div class="dag-row" style="flex-wrap:wrap;gap:5px;">
-              <div class="dag-job j-deploy" style="font-size:9px;">download GHA artifact<br><span style="font-weight:400">(primary source)</span></div><div class="dag-arrow">→</div>
-              <div class="dag-job j-deploy" style="font-size:9px;">install + who-am-i</div><div class="dag-arrow">→</div>
-              <div class="dag-job j-deploy" style="font-size:9px;background:#fce7f3;border-color:#f472b6;color:#831843;">export-solution backup?<br><span style="font-weight:400">(solution-scoped)</span></div><div class="dag-arrow">→</div>
-              <div class="dag-job j-deploy" style="font-size:9px;background:#fff7ed;border-color:#fb923c;color:#7c2d12;">blocking-check ⚠️<br><span style="font-weight:400">(warn-only)</span></div><div class="dag-arrow">→</div>
-              <div class="dag-job j-deploy" style="font-size:9px;">version-compare?</div><div class="dag-arrow">→</div>
-              <div class="dag-job j-setup" style="font-size:9px;">settings-file resolve</div><div class="dag-arrow">→</div>
-              <div class="dag-job j-deploy" style="font-size:9px;">import-solution</div><div class="dag-arrow">→</div>
-              <div class="dag-job j-deploy" style="font-size:9px;">publish + activate</div><div class="dag-arrow">→</div>
-              <div class="dag-job j-deploy" style="font-size:9px;">import-data?</div><div class="dag-arrow">→</div>
-              <div class="dag-job j-sum" style="font-size:9px;">job-summary artifact</div>
-            </div>
-          </div>
-          <div style="margin-top:8px;font-size:9.5px;color:#6b7280;">
-            Backup = <code>export-solution@v1</code> (solution-scoped, not environment restore).<br>
-            Backup artifact: <code>backup-{solution}-{env}-v{run#}</code> retained 30 days.<br>
-            Blocking check = warn-only — pipeline always continues.<br>
-            Job-summary: JSON artifact <code>job-summary-deploy-{env}-{solution}-{run#}</code>.
-          </div>
-        </div>
-      </div>
-
-      <!-- _reusable-deploy-dev.yml (new) -->
-      <div class="wf-card">
-        <div class="wf-card-head" style="background:#fef9c3;">
-          <span class="wf-icon">♻️</span>
-          <span class="wf-title">_reusable-deploy-dev.yml <span style="font-size:9px;background:#16a34a;color:#fff;padding:1px 5px;border-radius:6px;">NEW</span></span>
-          <span class="wf-trigger">workflow_call</span>
-        </div>
-        <div class="wf-card-body">
-          <div>Called by: <code>deploy-dev.yml</code> (thin wrapper). Contains all ad-hoc Dev deploy logic extracted from GHA-Dynamics.</div>
-          <div class="dag" style="margin-top:8px;">
-            <div class="dag-row">
-              <div class="dag-job j-setup">🔍 setup<br><span style="font-size:8px;font-weight:400">Python resolver: src/solutions/ → pp-solution-name fallback</span></div>
-              <div class="dag-arrow">→</div>
-            </div>
-            <div class="dag-row">
-              <div class="dag-parallel">
-                <div class="dag-parallel-head">parallel × N · fail-fast: false → _reusable-build.yml</div>
-                <div class="dag-job j-build">🏗️ build [{matrix.solution}]</div>
-              </div>
-              <div class="dag-arrow">→</div>
-              <div class="dag-parallel">
-                <div class="dag-parallel-head">sequential × N · max-parallel:1 → _reusable-deploy.yml</div>
-                <div class="dag-job j-deploy">🚀 Dev [unmanaged] [{matrix.solution}]</div>
-              </div>
-              <div class="dag-arrow">→</div>
-              <div class="dag-job j-sum">📋 summary</div>
-            </div>
-          </div>
-          <div style="margin-top:8px;font-size:9.5px;color:#6b7280;">
-            <code>actions/checkout</code> without explicit <code>repository:</code> checks out the CALLER repo (GHA-Dynamics) — correct behaviour for discovering <code>src/solutions/</code>.
-          </div>
-        </div>
-      </div>
-
-      <!-- _reusable-rollback.yml (new) -->
-      <div class="wf-card">
-        <div class="wf-card-head" style="background:#dbeafe;">
-          <span class="wf-icon">♻️</span>
-          <span class="wf-title">_reusable-rollback.yml <span style="font-size:9px;background:#16a34a;color:#fff;padding:1px 5px;border-radius:6px;">NEW</span></span>
-          <span class="wf-trigger">workflow_call</span>
-        </div>
-        <div class="wf-card-body">
-          <div>Called by: <code>rollback.yml</code> (thin wrapper). Solution-scoped rollback via re-importing a backup ZIP.</div>
-          <div class="dag" style="margin-top:8px;">
-            <div class="dag-row" style="flex-wrap:wrap;gap:5px;">
-              <div class="dag-job j-rollbk" style="font-size:9px;">CONFIRM guard</div><div class="dag-arrow">→</div>
-              <div class="dag-job j-rollbk" style="font-size:9px;">resolve env URL<br><span style="font-weight:400">(Dev=unmanaged, others=managed)</span></div><div class="dag-arrow">→</div>
-              <div class="dag-job j-rollbk" style="font-size:9px;">download backup artifact<br><span style="font-weight:400">backup-{sol}-{env}-v{run#}</span></div><div class="dag-arrow">→</div>
-              <div class="dag-job j-rollbk" style="font-size:9px;">locate ZIP</div><div class="dag-arrow">→</div>
-              <div class="dag-job j-rollbk" style="font-size:9px;">checkout caller repo<br><span style="font-weight:400">(for settings files)</span></div><div class="dag-arrow">→</div>
-              <div class="dag-job j-rollbk" style="font-size:9px;">install + who-am-i</div><div class="dag-arrow">→</div>
-              <div class="dag-job j-rollbk" style="font-size:9px;">import-solution<br><span style="font-weight:400">(managed or unmanaged)</span></div><div class="dag-arrow">→</div>
-              <div class="dag-job j-rollbk" style="font-size:9px;">publish<br><span style="font-weight:400">(Dev only)</span></div><div class="dag-arrow">→</div>
-              <div class="dag-job j-sum" style="font-size:9px;">rollback summary</div>
-            </div>
-          </div>
-          <div style="margin-top:8px;font-size:9.5px;color:#6b7280;">
-            <code>environment: $&#123;&#123; inputs.target-environment &#125;&#125;</code> — still triggers approval gates.<br>
-            <code>type: string</code> (not choice — choice only valid on <code>workflow_dispatch</code>).<br>
-            ⚠️ Caveat: upgrade/holding-pattern component deletions are NOT restored; full env restore required in that case.
-          </div>
-        </div>
-      </div>
-
     </div>
+
+    <!-- _reusable-deploy.yml -->
+    <div class="wf-card">
+      <div class="wf-card-head" style="background:#f5f3ff;">
+        <span class="wf-icon">♻️</span>
+        <span class="wf-title">_reusable-deploy.yml</span>
+        <span class="wf-tag tag-trigger">workflow_call</span>
+      </div>
+      <div class="wf-card-body">
+        <div style="margin-bottom:8px;">Called by all deploy stages (Dev, Intg, UAT, Perf, Prod) in <code>release-pipeline.yml</code> and <code>_reusable-deploy-dev.yml</code>. Always <code>secrets: inherit</code>.</div>
+        <div class="dag">
+          <div class="dag-row" style="flex-wrap:wrap;gap:4px;">
+            <div class="dag-step ds-build" style="font-size:9px;">download GHA artifact<small>PRIMARY source</small></div><div class="dag-arrow">→</div>
+            <div class="dag-step ds-deploy" style="font-size:9px;">actions-install + who-am-i</div><div class="dag-arrow">→</div>
+            <div class="dag-step ds-backup" style="font-size:9px;">export-solution backup?<small>solution-scoped · toggle</small></div><div class="dag-arrow">→</div>
+            <div class="dag-step ds-warn" style="font-size:9px;">blocking-check ⚠️<small>warn-only</small></div><div class="dag-arrow">→</div>
+            <div class="dag-step ds-deploy" style="font-size:9px;">version-compare?<small>toggle</small></div><div class="dag-arrow">→</div>
+            <div class="dag-step ds-setup" style="font-size:9px;">settings-file resolve</div><div class="dag-arrow">→</div>
+            <div class="dag-step ds-deploy" style="font-size:9px;">import-solution<small>managed or unmanaged</small></div><div class="dag-arrow">→</div>
+            <div class="dag-step ds-deploy" style="font-size:9px;">delete_upgrade?<small>on failure · c-o-e</small></div><div class="dag-arrow">→</div>
+            <div class="dag-step ds-deploy" style="font-size:9px;">publish + activate</div><div class="dag-arrow">→</div>
+            <div class="dag-step ds-export" style="font-size:9px;">import-data?<small>toggle</small></div><div class="dag-arrow">→</div>
+            <div class="dag-step ds-sum" style="font-size:9px;">job-summary artifact<small>job-summary-deploy-{env}-{sol}-{run#}</small></div>
+          </div>
+        </div>
+        <div style="margin-top:10px;font-size:9.5px;color:#6b7280;line-height:1.6;">
+          Backup: <code>export-solution@v1</code> (solution-scoped, not environment restore).<br>
+          Backup artifact: <code>backup-{solution}-{env}-v{run#}</code> retained 30 days.<br>
+          Blocking check: warn-only — pipeline always continues.<br>
+          Version compare: warns on mismatch vs previous environment, never blocks.
+        </div>
+      </div>
+    </div>
+
+    <!-- _reusable-deploy-dev.yml -->
+    <div class="wf-card">
+      <div class="wf-card-head" style="background:#fef9c3;">
+        <span class="wf-icon">♻️</span>
+        <span class="wf-title">_reusable-deploy-dev.yml <span class="wf-tag tag-new" style="font-size:9px;">NEW</span></span>
+        <span class="wf-tag tag-trigger">workflow_call</span>
+      </div>
+      <div class="wf-card-body">
+        <div style="margin-bottom:8px;">Called by: <code>deploy-dev.yml</code> (thin wrapper in GHA-Dynamics). Contains all ad-hoc Dev deploy logic. Itself calls <code>_reusable-build.yml</code> and <code>_reusable-deploy.yml</code>.</div>
+        <div class="dag">
+          <div class="dag-row">
+            <div class="dag-step ds-setup">🔍 setup<small>Python resolver: src/solutions/ → pp-solution-name fallback</small></div>
+            <div class="dag-arrow">→</div>
+          </div>
+          <div class="dag-row" style="margin-top:4px;">
+            <div class="dag-parallel">
+              <div class="dag-parallel-head">parallel × N · fail-fast: false → _reusable-build.yml</div>
+              <div class="dag-step ds-build">🏗️ build [{matrix.solution}]</div>
+            </div>
+            <div class="dag-arrow">→</div>
+            <div class="dag-parallel">
+              <div class="dag-parallel-head">sequential × N · max-parallel:1 → _reusable-deploy.yml</div>
+              <div class="dag-step ds-deploy">🚀 Dev [unmanaged] [{matrix.solution}]</div>
+            </div>
+            <div class="dag-arrow">→</div>
+            <div class="dag-step ds-sum">📋 pipeline-summary</div>
+          </div>
+        </div>
+        <div style="margin-top:10px;font-size:9.5px;color:#6b7280;line-height:1.6;">
+          <code>actions/checkout</code> without explicit <code>repository:</code> checks out the CALLER repo (GHA-Dynamics) — correct for discovering <code>src/solutions/</code>.
+        </div>
+      </div>
+    </div>
+
+    <!-- _reusable-rollback.yml -->
+    <div class="wf-card">
+      <div class="wf-card-head" style="background:#dbeafe;">
+        <span class="wf-icon">♻️</span>
+        <span class="wf-title">_reusable-rollback.yml <span class="wf-tag tag-new" style="font-size:9px;">NEW</span></span>
+        <span class="wf-tag tag-trigger">workflow_call</span>
+      </div>
+      <div class="wf-card-body">
+        <div style="margin-bottom:8px;">Called by: <code>rollback.yml</code> (thin wrapper). Solution-scoped rollback via re-importing a pre-deploy backup ZIP.</div>
+        <div class="dag">
+          <div class="dag-row" style="flex-wrap:wrap;gap:4px;">
+            <div class="dag-step ds-rollbk" style="font-size:9px;">CONFIRM guard<small>abort if != 'CONFIRM'</small></div><div class="dag-arrow">→</div>
+            <div class="dag-step ds-rollbk" style="font-size:9px;">resolve env URL<small>Dev=unmanaged · others=managed</small></div><div class="dag-arrow">→</div>
+            <div class="dag-step ds-rollbk" style="font-size:9px;">download backup artifact<small>backup-{sol}-{env}-v{run#}</small></div><div class="dag-arrow">→</div>
+            <div class="dag-step ds-rollbk" style="font-size:9px;">locate ZIP</div><div class="dag-arrow">→</div>
+            <div class="dag-step ds-rollbk" style="font-size:9px;">checkout caller repo<small>for settings files</small></div><div class="dag-arrow">→</div>
+            <div class="dag-step ds-rollbk" style="font-size:9px;">install + who-am-i</div><div class="dag-arrow">→</div>
+            <div class="dag-step ds-rollbk" style="font-size:9px;">import-solution<small>managed or unmanaged</small></div><div class="dag-arrow">→</div>
+            <div class="dag-step ds-rollbk" style="font-size:9px;">publish<small>Dev only</small></div><div class="dag-arrow">→</div>
+            <div class="dag-step ds-sum" style="font-size:9px;">rollback summary</div>
+          </div>
+        </div>
+        <div style="margin-top:10px;font-size:9.5px;color:#6b7280;line-height:1.6;">
+          <code>environment: inputs.target-environment</code> — still triggers approval gates for UAT/Perf/Prod.<br>
+          <code>type: string</code> (not choice — <code>type: choice</code> only valid on <code>workflow_dispatch</code>).<br>
+          ⚠️ Caveat: upgrade/holding-pattern component deletions are NOT restored; full env restore required in that case.
+        </div>
+      </div>
+    </div>
+
   </div>
 
   <div class="callout callout-blue">
     <b>Key design decisions:</b>
-    <br>• <b>Thin wrapper + vars.* boundary</b> — <code>vars.*</code> (repository variables) cannot cross repository boundaries in reusable <code>workflow_call</code>. GHA-Dynamics wrappers read their own <code>vars.*</code> and pass them as explicit string inputs to GHA-Core. All CI/CD logic lives in GHA-Core; wrappers only expose UI and forward variables.
-    <br>• <b>GHA pipeline artifacts as primary deploy source</b> — build jobs upload to <code>actions/upload-artifact@v4</code> (<code>solution-{name}-{run#}</code>). Deploy jobs download via <code>actions/download-artifact@v4</code>. JFrog still receives uploads in build (for traceability) and is tagged after Prod success, but is NOT used as the deploy-time download source.
-    <br>• <b>Solution-scoped backup</b> — backup uses <code>export-solution@v1</code> instead of <code>backup-environment@v1</code>. Scope: one solution, not the full environment. Artifact naming: <code>backup-{solution}-{env}-v{run#}</code>, retained 30 days. Rollback re-imports this ZIP via <code>import-solution@v1</code>.
-    <br>• <b>Warn-only blocking check</b> — <code>Invoke-BlockingCheck.ps1</code> emits <code>::warning::</code> annotations when async ops are in flight, but never <code>exit 1</code>. Pipeline always continues. Blocking count is output so downstream summary can display it.
-    <br>• <b>Per-job JSON summaries</b> — each build and deploy job uploads a JSON record artifact (<code>job-summary-*</code>). The final <code>pipeline-summary</code> job downloads all records (pattern: <code>job-summary-*</code>, merge-multiple: true) and renders a consolidated table via <code>Write-PipelineSummary.ps1</code>.
-    <br>• <b>Gate jobs separate from deploy matrix</b> — a lightweight job with <code>environment: Intg</code> (no matrix) is placed BEFORE the deploy matrix job. This means <em>one approval covers all N solutions</em>. Without this pattern, GitHub would require N approvals for an N-solution matrix.
-    <br>• <b>Parallel build, sequential deploy</b> — build jobs fan out in parallel; deploy jobs use <code>max-parallel: 1</code> to prevent Dataverse async conflicts when multiple solutions import simultaneously.
+    <ul>
+      <li><b>Thin wrapper + vars.* boundary</b> — <code>vars.*</code> cannot cross repository boundaries in <code>workflow_call</code>. GHA-Dynamics wrappers read their own <code>vars.*</code> and pass them as explicit string inputs to GHA-Core. All CI/CD logic lives in GHA-Core; wrappers only expose UI and forward variables.</li>
+      <li><b>GHA pipeline artifacts as primary deploy source</b> — build jobs upload to <code>actions/upload-artifact@v4</code> (<code>solution-{name}-{run#}</code>). Deploy jobs download via <code>actions/download-artifact@v4</code>. JFrog receives uploads in build (for traceability) and is tagged after Prod success, but is NOT used as the deploy-time download source.</li>
+      <li><b>Solution-scoped backup</b> — backup uses <code>export-solution@v1</code>, not <code>backup-environment@v1</code>. Scope: one solution, not the full environment. Artifact naming: <code>backup-{solution}-{env}-v{run#}</code>, retained 30 days. Rollback re-imports this ZIP via <code>import-solution@v1</code>.</li>
+      <li><b>Warn-only blocking check</b> — <code>Invoke-BlockingCheck.ps1</code> emits <code>::warning::</code> annotations when async ops are in flight, but never <code>exit 1</code>. Pipeline always continues. OAuth failure still exits 1 (auth broken — correct to fail).</li>
+      <li><b>Per-job JSON summaries</b> — each build and deploy job uploads a JSON record artifact (<code>job-summary-*</code>). The final <code>pipeline-summary</code> job downloads all records (pattern match, merge-multiple: true) and renders a consolidated table via <code>Write-PipelineSummary.ps1</code>.</li>
+      <li><b>Gate jobs separate from deploy matrix</b> — a lightweight job with <code>environment: Intg</code> (no matrix) is placed BEFORE the deploy matrix job. This means ONE approval covers all N solutions. Without this pattern, GitHub would require N approvals for an N-solution matrix.</li>
+      <li><b>Parallel build, sequential deploy</b> — build jobs fan out in parallel; deploy jobs use <code>max-parallel: 1</code> to prevent Dataverse async conflicts when multiple solutions import simultaneously.</li>
+    </ul>
   </div>
-
 </div>
 
 <!-- ═══════════════════════════════════════════════════════════════════════
      TAB 2 — MULTI-SOLUTION MATRIX
      ═══════════════════════════════════════════════════════════════════════ -->
 <div id="matrix" class="tab-panel">
-  <div class="page-title">Multi-Solution Matrix — How It Works</div>
-  <div class="page-sub">Solution discovery, matrix generation, deployment ordering, and per-job summaries</div>
+  <div class="panel-title">Multi-Solution Matrix — Solution Discovery, Ordering &amp; Per-Job Summaries</div>
+  <div class="panel-sub">How the setup job resolves the solution matrix, how solutions-config.json controls dependency ordering, and how job summaries aggregate across jobs</div>
 
-  <h2 class="sec">⚡ Solution Selection via <code>solutions</code> Input</h2>
+  <h2 class="sec">⚡ Solution Selection via <code style="font-size:12px;background:#f1f5f9;padding:1px 6px;border-radius:4px;">solutions</code> Input</h2>
 
   <table class="mtable">
     <thead>
@@ -457,7 +503,7 @@
       <tr>
         <td><code>"CoreSolution, ExtA"</code></td>
         <td>Multi-solution</td>
-        <td>Validates both names. Applies config order (CoreSolution first).</td>
+        <td>Validates both names. Applies config order (CoreSolution first if in config).</td>
         <td><code>{"solution":["CoreSolution","ExtA"]}</code></td>
       </tr>
     </tbody>
@@ -478,22 +524,24 @@
           <tr><td>1. Parse config</td><td>Read <code>solutions</code> array from <code>.github/solutions-config.json</code></td></tr>
           <tr><td>2. Filter selected</td><td>Keep only entries that are in the user's requested solutions set</td></tr>
           <tr><td>3. Append unlisted</td><td>Solutions in the requested set but NOT in config are appended alphabetically</td></tr>
-          <tr><td>4. Output matrix</td><td>Final ordered array becomes the job matrix</td></tr>
+          <tr><td>4. Output matrix</td><td>Final ordered array becomes the job matrix consumed by build and deploy jobs</td></tr>
         </tbody>
       </table>
     </div>
     <div>
       <h3 class="sub">Example scenario</h3>
-      <div style="background:#f8fafc;border:1px solid #e2e6ef;border-radius:8px;padding:12px;font-family:monospace;font-size:9.5px;line-height:1.7;">
-        Config order: Core → ExtA → ExtB → ExtC<br><br>
-        User selects: "ExtA, ExtC, Core"<br><br>
-        Validation: all 3 exist ✓<br><br>
-        After config order applied:<br>
-        &nbsp;&nbsp;1. CoreSolution &nbsp;(in config, position 1)<br>
-        &nbsp;&nbsp;2. ExtensionA &nbsp;&nbsp;&nbsp;(in config, position 2)<br>
-        &nbsp;&nbsp;3. ExtensionC &nbsp;&nbsp;&nbsp;(in config, position 4)<br><br>
-        ExtensionB skipped (not selected)
-      </div>
+      <div class="code-block">Config order: Core → ExtA → ExtB → ExtC
+
+User selects: "ExtA, ExtC, Core"
+
+Validation: all 3 exist ✓
+
+After config order applied:
+  1. CoreSolution   (in config, position 1)
+  2. ExtensionA     (in config, position 2)
+  3. ExtensionC     (in config, position 4)
+
+ExtensionB skipped (not selected)</div>
     </div>
   </div>
 
@@ -502,11 +550,11 @@
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
     <div class="callout callout-green" style="margin-bottom:0;">
       <b>Why not use GITHUB_STEP_SUMMARY directly?</b><br>
-      <code>GITHUB_STEP_SUMMARY</code> is write-only and job-scoped. No job can read another job's summary content. To aggregate across all N build and M deploy jobs, each job writes a JSON record to a file and uploads it as a named artifact (<code>job-summary-{type}-{solution}-{run#}</code>).
+      <code>GITHUB_STEP_SUMMARY</code> is write-only and job-scoped. No job can read another job's summary content. To aggregate across all N build and M deploy jobs, each job writes a JSON record and uploads it as a named artifact (<code>job-summary-{type}-{solution}-{run#}</code>).
     </div>
     <div class="callout callout-blue" style="margin-bottom:0;">
       <b>Consolidated pipeline-summary job:</b><br>
-      After all deploy stages complete, the <code>pipeline-summary</code> job downloads all <code>job-summary-*</code> artifacts (pattern match, merge-multiple: true), then calls <code>Write-PipelineSummary.ps1 -JobSummariesDir job-summaries/</code> which reads the JSON records and renders Build Details + Deployment Details tables.
+      After all deploy stages complete, the <code>pipeline-summary</code> job (if: always()) downloads all <code>job-summary-*</code> artifacts (pattern match, merge-multiple: true), then calls <code>Write-PipelineSummary.ps1 -JobSummariesDir job-summaries/</code> to render Build Details + Deployment Details tables to GITHUB_STEP_SUMMARY.
     </div>
   </div>
 
@@ -529,55 +577,56 @@
       <tr><td>Parallel build</td><td class="no">—</td><td class="yes">✓</td><td class="yes">✓</td><td class="no">—</td></tr>
       <tr><td>Sequential deploy (max-parallel:1)</td><td class="yes">✓ (export)</td><td class="yes">✓</td><td class="yes">✓</td><td class="no">—</td></tr>
       <tr><td>Gate jobs (separate approval)</td><td class="no">—</td><td class="no">— (Dev only)</td><td class="yes">✓ (Intg/UAT/Perf/Prod)</td><td class="yes">✓ (environment: target-env)</td></tr>
-      <tr><td>BlackDuck SCA + Checkmarx SAST</td><td class="no">—</td><td class="cond">In build step</td><td class="cond">In _reusable-build.yml</td><td class="no">—</td></tr>
+      <tr><td>BlackDuck SCA + Checkmarx SAST</td><td class="no">—</td><td class="cond">In build step (if lowcode-nocode)</td><td class="cond">In _reusable-build.yml (if lowcode-nocode)</td><td class="no">—</td></tr>
       <tr><td>Solution Checker (mandatory)</td><td class="no">—</td><td class="yes">✓</td><td class="yes">✓</td><td class="no">—</td></tr>
       <tr><td>JFrog artifact upload</td><td class="no">—</td><td class="yes">✓ (in build)</td><td class="yes">✓ (build + tag after Prod)</td><td class="no">—</td></tr>
       <tr><td>GHA pipeline artifact (deploy source)</td><td class="no">—</td><td class="yes">✓</td><td class="yes">✓</td><td class="no">— (downloads backup artifact)</td></tr>
       <tr><td>Solution-scoped backup</td><td class="no">—</td><td class="cond">If enable-backup</td><td class="cond">If enable-backup</td><td class="no">— (rollback IS the restore)</td></tr>
       <tr><td>Blocking check (warn-only)</td><td class="no">—</td><td class="cond">If enable-blocking-check</td><td class="cond">If enable-blocking-check</td><td class="no">—</td></tr>
+      <tr><td>Version compare (warn-only)</td><td class="no">—</td><td class="no">— (Dev only, no previous env)</td><td class="cond">If enable-version-compare (Intg→UAT→Perf→Prod)</td><td class="no">—</td></tr>
       <tr><td>Per-job summary artifacts</td><td class="no">—</td><td class="yes">✓</td><td class="yes">✓</td><td class="no">—</td></tr>
-      <tr><td>Consolidated pipeline summary</td><td class="no">—</td><td class="no">—</td><td class="yes">✓ (pipeline-summary job)</td><td class="no">—</td></tr>
+      <tr><td>Consolidated pipeline summary</td><td class="no">—</td><td class="yes">✓ (pipeline-summary job)</td><td class="yes">✓ (pipeline-summary job)</td><td class="no">—</td></tr>
       <tr><td>deployment-settings fallback</td><td class="no">—</td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓ (optional)</td></tr>
+      <tr><td>trigger-upgrade (managed holding)</td><td class="no">—</td><td class="no">— (Dev=unmanaged)</td><td class="yes">✓ (Intg/UAT/Perf/Prod)</td><td class="no">—</td></tr>
       <tr><td>git pull --rebase</td><td class="yes">✓</td><td class="no">—</td><td class="no">—</td><td class="no">—</td></tr>
       <tr><td>Single PR for all solutions</td><td class="yes">✓</td><td class="no">—</td><td class="no">—</td><td class="no">—</td></tr>
     </tbody>
   </table>
-
 </div>
 
 <!-- ═══════════════════════════════════════════════════════════════════════
      TAB 3 — SECURITY SCAN TOGGLES
      ═══════════════════════════════════════════════════════════════════════ -->
 <div id="security" class="tab-panel">
-  <div class="page-title">Security Scan Toggle Logic</div>
-  <div class="page-sub">How lowcode-nocode master flag, individual toggles, and Solution Checker interact</div>
+  <div class="panel-title">Security Scan Toggle Logic</div>
+  <div class="panel-sub">How the lowcode-nocode master flag, individual toggles, and Solution Checker interact in _reusable-build.yml</div>
 
   <h2 class="sec">🔒 Three-Level Scan Model</h2>
 
-  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:20px;">
-    <div style="background:#fff1f2;border:1.5px solid #fda4af;border-radius:10px;padding:14px;">
-      <div style="font-size:12px;font-weight:700;color:#881337;margin-bottom:8px;">🔵 BlackDuck SCA</div>
-      <div style="font-size:10.5px;color:#374151;line-height:1.65;">
-        <strong>What:</strong> Open-source composition analysis. Finds known CVEs in third-party components.<br><br>
+  <div class="scan-cards">
+    <div class="scan-card">
+      <div class="scan-card-head" style="background:#fff1f2;color:#881337;border-bottom:1px solid #fda4af;">🔵 BlackDuck SCA</div>
+      <div class="scan-card-body">
+        <strong>What:</strong> Open-source composition analysis (SCA). Finds known CVEs in third-party components and dependencies.<br><br>
         <strong>When:</strong> <code>lowcode-nocode == 'true'</code> AND <code>enable-blackduck == 'true'</code><br><br>
-        <strong>Default:</strong> enable-blackduck = true (but disabled by lowcode-nocode master toggle)<br><br>
+        <strong>Default:</strong> enable-blackduck = true, but gated by lowcode-nocode master toggle<br><br>
         <strong>Action:</strong> <code>synopsys-sig/detect-action@v1.3.1</code>
       </div>
     </div>
-    <div style="background:#fff1f2;border:1.5px solid #fda4af;border-radius:10px;padding:14px;">
-      <div style="font-size:12px;font-weight:700;color:#881337;margin-bottom:8px;">🔴 Checkmarx SAST</div>
-      <div style="font-size:10.5px;color:#374151;line-height:1.65;">
-        <strong>What:</strong> Static application security testing. Finds vulnerabilities in custom code (plugins, PCF controls, scripts).<br><br>
+    <div class="scan-card">
+      <div class="scan-card-head" style="background:#fff1f2;color:#881337;border-bottom:1px solid #fda4af;">🔴 Checkmarx SAST</div>
+      <div class="scan-card-body">
+        <strong>What:</strong> Static Application Security Testing (SAST). Finds vulnerabilities in custom code — plugins, PCF controls, JavaScript/TypeScript.<br><br>
         <strong>When:</strong> <code>lowcode-nocode == 'true'</code> AND <code>enable-checkmarx == 'true'</code><br><br>
-        <strong>Default:</strong> enable-checkmarx = true (but disabled by master toggle)<br><br>
+        <strong>Default:</strong> enable-checkmarx = true, but gated by master toggle<br><br>
         <strong>Action:</strong> <code>checkmarx/ast-github-action@main</code>
       </div>
     </div>
-    <div style="background:#fef9c3;border:1.5px solid #eab308;border-radius:10px;padding:14px;">
-      <div style="font-size:12px;font-weight:700;color:#713f12;margin-bottom:8px;">🔴 Solution Checker<br><span style="font-size:10px;color:#ef4444;">ALWAYS ON</span></div>
-      <div style="font-size:10.5px;color:#374151;line-height:1.65;">
-        <strong>What:</strong> Power Apps Solution Checker. Validates platform-specific rules, patterns, and best practices.<br><br>
-        <strong>When:</strong> ALWAYS — no <code>if:</code> condition. Cannot be disabled by any toggle.<br><br>
+    <div class="scan-card mandatory">
+      <div class="scan-card-head" style="background:#fef9c3;color:#713f12;border-bottom:1px solid #eab308;">🔴 Solution Checker <span style="font-size:10px;font-weight:700;color:#ef4444;margin-left:6px;">ALWAYS ON</span></div>
+      <div class="scan-card-body">
+        <strong>What:</strong> Power Apps Solution Checker. Validates platform-specific rules, patterns, and best practices against a Power Apps environment.<br><br>
+        <strong>When:</strong> ALWAYS — no <code>if:</code> condition. Cannot be disabled by any toggle or flag.<br><br>
         <strong>Blocks pipeline:</strong> Yes — <code>fail-on-analysis-error: true</code><br><br>
         <strong>Action:</strong> <code>check-solution@v1</code>
       </div>
@@ -596,41 +645,39 @@
     <div class="scan-row">
       <div class="scan-cell"><code>'false'</code> (default)</div>
       <div class="scan-cell">any value</div>
-      <div class="scan-cell"><span class="skip">⏭ BlackDuck SKIPPED &nbsp;&nbsp; ⏭ Checkmarx SKIPPED &nbsp;&nbsp;</span> <span class="run">✓ Solution Checker RUNS</span></div>
+      <div class="scan-cell"><span class="scan-skip">⏭ BlackDuck SKIPPED &nbsp;&nbsp; ⏭ Checkmarx SKIPPED &nbsp;&nbsp;</span> <span class="scan-run">✓ Solution Checker RUNS</span></div>
     </div>
     <div class="scan-row">
       <div class="scan-cell"><em>not set</em> (PR trigger)</div>
-      <div class="scan-cell">inputs are empty</div>
-      <div class="scan-cell"><span class="skip">⏭ BlackDuck SKIPPED &nbsp;&nbsp; ⏭ Checkmarx SKIPPED &nbsp;&nbsp;</span> <span class="run">✓ Solution Checker RUNS</span></div>
+      <div class="scan-cell">inputs are empty strings</div>
+      <div class="scan-cell"><span class="scan-skip">⏭ BlackDuck SKIPPED &nbsp;&nbsp; ⏭ Checkmarx SKIPPED &nbsp;&nbsp;</span> <span class="scan-run">✓ Solution Checker RUNS</span></div>
     </div>
     <div class="scan-row">
       <div class="scan-cell"><code>'true'</code></div>
       <div class="scan-cell">both = 'false'</div>
-      <div class="scan-cell"><span class="skip">⏭ BlackDuck SKIPPED &nbsp;&nbsp; ⏭ Checkmarx SKIPPED &nbsp;&nbsp;</span> <span class="run">✓ Solution Checker RUNS</span></div>
+      <div class="scan-cell"><span class="scan-skip">⏭ BlackDuck SKIPPED &nbsp;&nbsp; ⏭ Checkmarx SKIPPED &nbsp;&nbsp;</span> <span class="scan-run">✓ Solution Checker RUNS</span></div>
     </div>
     <div class="scan-row">
       <div class="scan-cell"><code>'true'</code></div>
       <div class="scan-cell">blackduck='true', checkmarx='false'</div>
-      <div class="scan-cell"><span class="run">✓ BlackDuck RUNS &nbsp;&nbsp;</span> <span class="skip">⏭ Checkmarx SKIPPED &nbsp;&nbsp;</span> <span class="run">✓ Solution Checker RUNS</span></div>
+      <div class="scan-cell"><span class="scan-run">✓ BlackDuck RUNS &nbsp;&nbsp;</span> <span class="scan-skip">⏭ Checkmarx SKIPPED &nbsp;&nbsp;</span> <span class="scan-run">✓ Solution Checker RUNS</span></div>
     </div>
     <div class="scan-row">
       <div class="scan-cell"><code>'true'</code></div>
       <div class="scan-cell">blackduck='false', checkmarx='true'</div>
-      <div class="scan-cell"><span class="skip">⏭ BlackDuck SKIPPED &nbsp;&nbsp;</span> <span class="run">✓ Checkmarx RUNS &nbsp;&nbsp;</span> <span class="run">✓ Solution Checker RUNS</span></div>
+      <div class="scan-cell"><span class="scan-skip">⏭ BlackDuck SKIPPED &nbsp;&nbsp;</span> <span class="scan-run">✓ Checkmarx RUNS &nbsp;&nbsp;</span> <span class="scan-run">✓ Solution Checker RUNS</span></div>
     </div>
     <div class="scan-row" style="background:#f0fdf4;">
       <div class="scan-cell"><code>'true'</code></div>
       <div class="scan-cell">both = 'true'</div>
-      <div class="scan-cell"><span class="run">✓ BlackDuck RUNS &nbsp;&nbsp; ✓ Checkmarx RUNS &nbsp;&nbsp; ✓ Solution Checker RUNS</span></div>
+      <div class="scan-cell"><span class="scan-run">✓ BlackDuck RUNS &nbsp;&nbsp; ✓ Checkmarx RUNS &nbsp;&nbsp; ✓ Solution Checker RUNS</span></div>
     </div>
   </div>
 
   <h2 class="sec">🔐 Required Secrets for Security Scans</h2>
 
   <table class="mtable">
-    <thead>
-      <tr><th>Secret</th><th>Scan</th><th>Description</th></tr>
-    </thead>
+    <thead><tr><th>Secret</th><th>Scan</th><th>Description</th></tr></thead>
     <tbody>
       <tr><td><code>BLACKDUCK_URL</code></td><td>BlackDuck SCA</td><td>BlackDuck server URL</td></tr>
       <tr><td><code>BLACKDUCK_API_TOKEN</code></td><td>BlackDuck SCA</td><td>BlackDuck API token for authentication</td></tr>
@@ -642,25 +689,24 @@
   </table>
 
   <div class="callout callout-blue">
-    <b>Note on PR triggers:</b> When a PR triggers the workflow, all three inputs (<code>lowcode-nocode</code>, <code>enable-blackduck</code>, <code>enable-checkmarx</code>) are empty strings. The condition <code>inputs.lowcode-nocode == 'true'</code> evaluates to false, so BlackDuck and Checkmarx are automatically skipped. Solution Checker still runs since it has no condition.
+    <b>Note on PR triggers:</b> When a PR triggers the workflow, all three inputs (<code>lowcode-nocode</code>, <code>enable-blackduck</code>, <code>enable-checkmarx</code>) are empty strings. The condition <code>inputs.lowcode-nocode == 'true'</code> evaluates to false, so BlackDuck and Checkmarx are automatically skipped. Solution Checker still runs since it has no <code>if:</code> condition.
   </div>
-
 </div>
 
 <!-- ═══════════════════════════════════════════════════════════════════════
-     TAB 4 — SETTINGS & STRUCTURE
+     TAB 4 — STRUCTURE & SETTINGS
      ═══════════════════════════════════════════════════════════════════════ -->
 <div id="settings" class="tab-panel">
-  <div class="page-title">Repository Structure &amp; Settings Files</div>
-  <div class="page-sub">Two-repo split (GHA-Dynamics + GHA-Core), deployment settings resolution, and environment gate setup</div>
+  <div class="panel-title">Repository Structure &amp; Settings Files</div>
+  <div class="panel-sub">Two-repo split (GHA-Dynamics + GHA-Core), deployment settings resolution logic, and GitHub Environment gate setup</div>
 
   <h2 class="sec">📁 Two-Repository Architecture</h2>
 
   <div class="callout callout-amber">
-    <b>Why two repos?</b> GitHub Actions reusable workflows (<code>workflow_call</code>) cannot read <code>vars.*</code> (repository variables) from the calling repository. The thin wrapper pattern solves this: GHA-Dynamics wrappers read their own <code>vars.*</code> and pass them as explicit string inputs. All reusable logic that needs no variable access lives in GHA-Core.
+    <b>Why two repos?</b> GitHub Actions reusable workflows (<code>workflow_call</code>) cannot read <code>vars.*</code> (repository variables) from the calling repository. The thin wrapper pattern solves this: GHA-Dynamics wrappers read their own <code>vars.*</code> and pass them as explicit string inputs. All reusable logic that needs no variable access lives in GHA-Core and can be shared across multiple project repos.
   </div>
 
-  <div class="struct-grid" style="margin-bottom:20px;">
+  <div class="struct-grid">
     <div class="struct-box">
       <h4><span class="repo-badge rb-dynamics">GHA-Dynamics</span> Project Repository — thin wrappers &amp; pipeline triggers</h4>
       <pre>
@@ -673,9 +719,9 @@ GHA-Dynamics/
 │       └── ExtensionB/
 ├── deployment-settings/
 │   ├── dev/
-│   │   ├── CoreSolution.json      ← solution-specific
+│   │   ├── CoreSolution.json      ← solution-specific (preferred)
 │   │   ├── ExtensionA.json
-│   │   └── ExtensionB.json
+│   │   └── deployment-settings.json  ← legacy fallback
 │   ├── intg/ (same pattern)
 │   ├── uat/  (same pattern)
 │   ├── perf/ (same pattern)
@@ -683,15 +729,15 @@ GHA-Dynamics/
 ├── config/
 │   └── data-schema.xml
 └── .github/
-    ├── solutions-config.json      ← ordering
+    ├── solutions-config.json      ← dependency ordering
     └── workflows/
         ├── release-pipeline.yml   ← full logic (reads vars, calls GHA-Core)
-        ├── export-solution.yml    ← full logic (lives here)
+        ├── export-solution.yml    ← full logic (lives entirely here)
         ├── deploy-dev.yml         ← THIN WRAPPER → GHA-Core
         └── rollback.yml           ← THIN WRAPPER → GHA-Core
       </pre>
       <div class="struct-note">
-        <code>vars.*</code> read here and forwarded as string inputs to GHA-Core.<br>
+        <code>vars.*</code> read here and forwarded as explicit string inputs to GHA-Core.<br>
         <code>secrets: inherit</code> passes all secrets through automatically.<br>
         <code>YOUR_ORG</code> in <code>uses:</code> must match your GitHub org name.
       </div>
@@ -724,25 +770,28 @@ GHA-Core/
   <div class="callout callout-green">
     <b>Multi-solution path (preferred):</b> <code>deployment-settings/{env}/{SolutionName}.json</code><br>
     <b>Legacy fallback:</b> <code>deployment-settings/{env}/deployment-settings.json</code><br>
-    <b>Graceful skip:</b> If neither exists, the deploy proceeds without deployment settings.
+    <b>Graceful skip:</b> If neither exists, the deploy proceeds without deployment settings (no error).
   </div>
 
-  <div style="background:#fff;border:1.5px solid #e2e6ef;border-radius:10px;padding:14px;font-size:10.5px;margin-bottom:16px;">
+  <div class="settings-resolve">
     <strong>Resolution logic in _reusable-deploy.yml (bash step <code>settings-file</code>):</strong>
-    <div style="font-family:monospace;font-size:9.5px;background:#f8fafc;padding:12px;border-radius:6px;margin-top:8px;line-height:1.8;border:1px solid #e2e6ef;">
-      REQUESTED = inputs.deployment-settings-file<br>
-      &nbsp;&nbsp;# e.g. "deployment-settings/dev/CoreSolution.json"<br><br>
-      if REQUESTED != "" AND file exists:<br>
-      &nbsp;&nbsp;→ output.path = REQUESTED, output.exists = true<br><br>
-      elif REQUESTED != "" AND file NOT found:<br>
-      &nbsp;&nbsp;LEGACY = dirname(REQUESTED) + "/deployment-settings.json"<br>
-      &nbsp;&nbsp;if LEGACY exists:<br>
-      &nbsp;&nbsp;&nbsp;&nbsp;→ output.path = LEGACY, output.exists = true<br>
-      &nbsp;&nbsp;else:<br>
-      &nbsp;&nbsp;&nbsp;&nbsp;→ output.exists = false<br><br>
-      # Import step uses:<br>
-      use-deployment-settings-file: steps.settings-file.outputs.exists == 'true'<br>
-      deployment-settings-file:     steps.settings-file.outputs.path || ''
+    <div class="code-block">
+REQUESTED = inputs.deployment-settings-file
+  # e.g. "deployment-settings/dev/CoreSolution.json"
+
+if REQUESTED != "" AND file exists:
+  → output.path = REQUESTED, output.exists = true
+
+elif REQUESTED != "" AND file NOT found:
+  LEGACY = dirname(REQUESTED) + "/deployment-settings.json"
+  if LEGACY exists:
+    → output.path = LEGACY, output.exists = true
+  else:
+    → output.exists = false
+
+# Import step uses:
+use-deployment-settings-file: steps.settings-file.outputs.exists == 'true'
+deployment-settings-file:     steps.settings-file.outputs.path || ''
     </div>
   </div>
 
@@ -762,13 +811,13 @@ GHA-Core/
         <td><code>Dev</code></td>
         <td>deploy-Dev matrix job</td>
         <td>Required reviewers: Dev Lead</td>
-        <td>In <code>_reusable-deploy-dev.yml</code>: environment is on the matrix deploy job. In <code>release-pipeline.yml</code>: also on the deploy matrix (no separate gate for Dev).</td>
+        <td>In <code>_reusable-deploy-dev.yml</code>: environment on the matrix deploy job. In <code>release-pipeline.yml</code>: also on the deploy matrix (no separate gate for Dev).</td>
       </tr>
       <tr>
         <td><code>Intg</code></td>
         <td>gate-intg (lightweight job)</td>
         <td>Required reviewers: Integration Lead</td>
-        <td>Gate job is separate from deploy matrix — one approval covers all N solutions. deploy-Intg matrix has NO <code>environment:</code> declaration.</td>
+        <td>Gate job is separate from deploy matrix — one approval covers all N solutions. deploy-Intg matrix job has NO <code>environment:</code> declaration.</td>
       </tr>
       <tr>
         <td><code>UAT</code></td>
@@ -786,13 +835,13 @@ GHA-Core/
         <td><code>Prod</code></td>
         <td>gate-prod (lightweight job)</td>
         <td>Required reviewers: Release Manager + 5 min wait timer</td>
-        <td>Most restrictive gate. deploy-Prod matrix has NO <code>environment:</code> declaration.</td>
+        <td>Most restrictive gate. deploy-Prod matrix job has NO <code>environment:</code> declaration.</td>
       </tr>
       <tr>
         <td><code>Dev / Intg / UAT / Perf / Prod</code></td>
         <td><code>_reusable-rollback.yml</code></td>
         <td>Same rules as above — rollback inherits them</td>
-        <td><code>environment: $&#123;&#123; inputs.target-environment &#125;&#125;</code> in the rollback job means rolling back to Prod still requires Prod approvals.</td>
+        <td><code>environment: inputs.target-environment</code> in the rollback job means rolling back to Prod still requires Prod approvals.</td>
       </tr>
     </tbody>
   </table>
