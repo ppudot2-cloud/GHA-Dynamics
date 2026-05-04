@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Entity xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <Name LocalizedName="Support Ticket" OriginalName="Support Ticket">new_Ticket</Name>
+  <EntityInfo>
+    <entity Name="new_Ticket">
+      <LocalizedNames>
+        <LocalizedName description="Support Ticket" languagecode="1033" />
+      </LocalizedNames>
+      <LocalizedCollectionNames>
+        <LocalizedCollectionName description="Support Tickets" languagecode="1033" />
+      </LocalizedCollectionNames>
+      <Descriptions>
+        <Description description="IT support ticket. Tracks issue details, priority, assigned agent, SLA breach status, and resolution notes." languagecode="1033" />
+      </Descriptions>
+      <attributes>
+        <attribute PhysicalName="new_TicketId">
+          <Type>primarykey</Type>
+          <Name>new_TicketId</Name>
+          <LogicalName>new_ticketid</LogicalName>
+        </attribute>
+        <attribute PhysicalName="new_Title">
+          <Type>nvarchar</Type>
+          <Name>new_Title</Name>
+          <LogicalName>new_title</LogicalName>
+          <MaxLength>300</MaxLength>
+        </attribute>
+        <attribute PhysicalName="new_Description">
+          <Type>memo</Type>
+          <Name>new_Description</Name>
+          <LogicalName>new_description</LogicalName>
+          <MaxLength>4000</MaxLength>
+        </attribute>
+        <attribute PhysicalName="new_Priority">
+          <Type>picklist</Type>
+          <Name>new_Priority</Name>
+          <LogicalName>new_priority</LogicalName>
+          <!-- 100000000=Low, 100000001=Medium, 100000002=High, 100000003=Critical -->
+        </attribute>
+        <attribute PhysicalName="new_Status">
+          <Type>picklist</Type>
+          <Name>new_Status</Name>
+          <LogicalName>new_status</LogicalName>
+          <!-- 100000000=Open, 100000001=In Progress, 100000002=Pending User, 100000003=Resolved, 100000004=Closed -->
+        </attribute>
+        <attribute PhysicalName="new_Category">
+          <Type>picklist</Type>
+          <Name>new_Category</Name>
+          <LogicalName>new_category</LogicalName>
+          <!-- 100000000=Hardware, 100000001=Software, 100000002=Network, 100000003=Access, 100000004=Other -->
+        </attribute>
+        <attribute PhysicalName="new_AssignedAgentId">
+          <Type>lookup</Type>
+          <Name>new_AssignedAgentId</Name>
+          <LogicalName>new_assignedagentid</LogicalName>
+          <LookupStyle>single</LookupStyle>
+          <LookupTypes>
+            <LookupType>systemuser</LookupType>
+          </LookupTypes>
+        </attribute>
+        <attribute PhysicalName="new_ReportedById">
+          <Type>lookup</Type>
+          <Name>new_ReportedById</Name>
+          <LogicalName>new_reportedbyid</LogicalName>
+          <LookupStyle>single</LookupStyle>
+          <LookupTypes>
+            <LookupType>contact</LookupType>
+          </LookupTypes>
+        </attribute>
+        <attribute PhysicalName="new_SlaBreached">
+          <Type>bit</Type>
+          <Name>new_SlaBreached</Name>
+          <LogicalName>new_slabreached</LogicalName>
+        </attribute>
+        <attribute PhysicalName="new_ResolutionNotes">
+          <Type>memo</Type>
+          <Name>new_ResolutionNotes</Name>
+          <LogicalName>new_resolutionnotes</LogicalName>
+          <MaxLength>4000</MaxLength>
+        </attribute>
+      </attributes>
+    </entity>
+  </EntityInfo>
+</Entity>

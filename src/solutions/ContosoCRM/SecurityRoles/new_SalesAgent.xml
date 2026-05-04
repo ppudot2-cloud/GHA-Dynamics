@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Role id="00000000-0000-0000-0000-000000000010"
+      name="Sales Agent"
+      description="Read/write access to Opportunities and Leads. Read-only access to Accounts and Contacts."
+      ismanaged="0">
+  <RolePrivileges>
+    <RolePrivilege name="prvCreatenew_Opportunity" level="Local" />
+    <RolePrivilege name="prvReadnew_Opportunity"   level="Local" />
+    <RolePrivilege name="prvWritenew_Opportunity"  level="Local" />
+    <RolePrivilege name="prvDeletenew_Opportunity" level="Local" />
+    <RolePrivilege name="prvCreatenew_Lead"        level="Local" />
+    <RolePrivilege name="prvReadnew_Lead"          level="Local" />
+    <RolePrivilege name="prvWritenew_Lead"         level="Local" />
+    <RolePrivilege name="prvDeletenew_Lead"        level="Local" />
+    <RolePrivilege name="prvReadAccount"           level="Global" />
+    <RolePrivilege name="prvReadContact"           level="Global" />
+  </RolePrivileges>
+</Role>

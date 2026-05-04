@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Configuration Migration Tool schema for ContosoCRM -->
+<!-- Exports seed data: Lead sources and Opportunity stage reference records -->
+<entities>
+  <entity name="new_lead" displayname="Lead" etc="10001" primaryidfield="new_leadid" primarynamefield="new_fullname" disableplugins="false">
+    <fields>
+      <field displayname="Lead ID"   name="new_leadid"   type="guid"     primaryKey="true" />
+      <field displayname="Full Name" name="new_fullname" type="nvarchar" />
+      <field displayname="Company"   name="new_company"  type="nvarchar" />
+      <field displayname="Source"    name="new_source"   type="picklist" />
+      <field displayname="Status"    name="new_status"   type="picklist" />
+    </fields>
+    <filter>
+      <!-- Only export demo/seed leads (those tagged with Source=Event for reference data) -->
+      <condition attribute="new_source" operator="eq" value="100000002" />
+    </filter>
+  </entity>
+</entities>

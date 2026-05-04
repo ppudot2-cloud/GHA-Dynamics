@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Role id="00000000-0000-0000-0000-000000000020"
+      name="Support Agent"
+      description="Read/write access to Support Tickets. Can update status and resolution notes. Cannot delete tickets."
+      ismanaged="0">
+  <RolePrivileges>
+    <RolePrivilege name="prvCreatenew_Ticket"  level="Local" />
+    <RolePrivilege name="prvReadnew_Ticket"    level="Local" />
+    <RolePrivilege name="prvWritenew_Ticket"   level="Local" />
+    <RolePrivilege name="prvReadSystemUser"    level="Global" />
+    <RolePrivilege name="prvReadContact"       level="Global" />
+    <RolePrivilege name="prvWriteContact"      level="Global" />
+  </RolePrivileges>
+</Role>

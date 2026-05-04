@@ -1,0 +1,18 @@
+{
+  "EnvironmentVariables": [
+    { "SchemaName": "new_CrmApiBaseUrl",         "Value": "https://crm-api-uat.contoso.com/v2" },
+    { "SchemaName": "new_MaxOpportunityAgeDays",  "Value": "90" }
+  ],
+  "ConnectionReferences": [
+    {
+      "LogicalName": "new_SharedDataverse_CRM",
+      "ConnectionId": "#{UAT_DataverseConnectionId}#",
+      "ConnectorId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+    },
+    {
+      "LogicalName": "new_SharedOffice365_CRM",
+      "ConnectionId": "#{UAT_Office365ConnectionId}#",
+      "ConnectorId": "/providers/Microsoft.PowerApps/apis/shared_office365"
+    }
+  ]
+}

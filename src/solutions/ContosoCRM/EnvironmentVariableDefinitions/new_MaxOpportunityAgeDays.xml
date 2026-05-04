@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<EnvironmentVariableDefinition SchemaName="new_MaxOpportunityAgeDays"
+                                Type="100000000"
+                                DisplayName="Max Opportunity Age (Days)"
+                                Description="Number of days before an open Opportunity is flagged as stale and escalated. Default is 90."
+                                DefaultValue="90"
+                                IsRequired="false" />

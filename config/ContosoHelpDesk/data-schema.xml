@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Configuration Migration Tool schema for ContosoHelpDesk -->
+<!-- Exports seed data: sample tickets used for smoke-test validation -->
+<entities>
+  <entity name="new_ticket" displayname="Support Ticket" etc="10002" primaryidfield="new_ticketid" primarynamefield="new_title" disableplugins="false">
+    <fields>
+      <field displayname="Ticket ID"    name="new_ticketid"    type="guid"     primaryKey="true" />
+      <field displayname="Title"        name="new_title"       type="nvarchar" />
+      <field displayname="Priority"     name="new_priority"    type="picklist" />
+      <field displayname="Status"       name="new_status"      type="picklist" />
+      <field displayname="Category"     name="new_category"    type="picklist" />
+      <field displayname="SLA Breached" name="new_slabreached" type="bit" />
+    </fields>
+    <filter>
+      <!-- Only export closed tickets used as reference/test data -->
+      <condition attribute="new_status" operator="eq" value="100000004" />
+    </filter>
+  </entity>
+</entities>

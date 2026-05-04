@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<EnvironmentVariableDefinition SchemaName="new_SlaResponseHours"
+                                Type="100000000"
+                                DisplayName="SLA Response Time (Hours)"
+                                Description="Number of hours within which a support ticket must receive a first response. Used by the SLA breach automation. Default is 4 hours."
+                                DefaultValue="4"
+                                IsRequired="true" />

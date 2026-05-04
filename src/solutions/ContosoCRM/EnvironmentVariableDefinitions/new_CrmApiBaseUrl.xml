@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<EnvironmentVariableDefinition SchemaName="new_CrmApiBaseUrl"
+                                Type="100000001"
+                                DisplayName="CRM API Base URL"
+                                Description="Base URL of the external CRM API used for data sync. Differs per environment (dev/test/prod). Example: https://crm-api.contoso.com/v2"
+                                DefaultValue="https://crm-api.contoso.com/v2"
+                                IsRequired="true" />

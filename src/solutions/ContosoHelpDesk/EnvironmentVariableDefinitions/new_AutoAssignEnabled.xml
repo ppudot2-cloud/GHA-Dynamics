@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<EnvironmentVariableDefinition SchemaName="new_AutoAssignEnabled"
+                                Type="100000002"
+                                DisplayName="Auto-Assign Tickets Enabled"
+                                Description="When true, new tickets are automatically assigned to the agent with the fewest open tickets. Set to false in lower environments to prevent noise during testing."
+                                DefaultValue="true"
+                                IsRequired="false" />

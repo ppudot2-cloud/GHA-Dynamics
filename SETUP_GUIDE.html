@@ -1,0 +1,1212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Power Platform Enterprise CI/CD — Complete Setup Guide</title>
+<style>
+  :root {
+    --blue:    #0078d4;
+    --darkblue:#004578;
+    --green:   #107c10;
+    --orange:  #d83b01;
+    --purple:  #5c2d91;
+    --yellow:  #fff4ce;
+    --red-bg:  #fde7e9;
+    --green-bg:#dff6dd;
+    --blue-bg: #eff6fc;
+    --gray:    #f3f2f1;
+    --border:  #e0e0e0;
+    --text:    #201f1e;
+    --muted:   #605e5c;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+    font-size: 15px; line-height: 1.7; color: var(--text);
+    background: #fafafa;
+  }
+  /* ── Hero ── */
+  .hero {
+    background: linear-gradient(135deg, #004578 0%, #0078d4 60%, #5c2d91 100%);
+    color: white; padding: 48px 40px 40px;
+  }
+  .hero h1 { font-size: 2rem; font-weight: 700; margin-bottom: 8px; }
+  .hero p  { font-size: 1.05rem; opacity: .85; max-width: 720px; }
+  .hero .badge {
+    display: inline-block; background: rgba(255,255,255,.2);
+    border: 1px solid rgba(255,255,255,.4);
+    border-radius: 20px; padding: 3px 12px;
+    font-size: .8rem; margin-right: 8px; margin-top: 14px;
+  }
+  /* ── Layout ── */
+  .container { display: flex; max-width: 1200px; margin: 0 auto; }
+  /* ── Sidebar TOC ── */
+  .toc {
+    width: 270px; min-width: 270px; padding: 28px 20px;
+    position: sticky; top: 0; height: 100vh; overflow-y: auto;
+    background: white; border-right: 1px solid var(--border);
+  }
+  .toc h3 { font-size: .75rem; text-transform: uppercase; letter-spacing: 1px;
+            color: var(--muted); margin-bottom: 12px; }
+  .toc ol { padding-left: 0; list-style: none; }
+  .toc li { margin-bottom: 2px; }
+  .toc a {
+    display: block; padding: 5px 10px; border-radius: 4px;
+    color: var(--text); text-decoration: none; font-size: .875rem;
+    transition: background .15s;
+  }
+  .toc a:hover, .toc a.active { background: var(--blue-bg); color: var(--blue); }
+  .toc .toc-sub a { padding-left: 22px; font-size: .82rem; color: var(--muted); }
+  /* ── Main content ── */
+  .content { flex: 1; padding: 36px 44px 80px; max-width: 880px; }
+  /* ── Section ── */
+  .section {
+    background: white; border-radius: 8px; border: 1px solid var(--border);
+    margin-bottom: 32px; overflow: hidden;
+  }
+  .section-header {
+    display: flex; align-items: center; gap: 14px;
+    padding: 18px 24px; border-bottom: 1px solid var(--border);
+    background: var(--gray);
+  }
+  .section-num {
+    width: 36px; height: 36px; border-radius: 50%;
+    background: var(--blue); color: white;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 1rem; flex-shrink: 0;
+  }
+  .section-header h2 { font-size: 1.15rem; font-weight: 700; }
+  .section-header .subtitle { font-size: .85rem; color: var(--muted); }
+  .section-body { padding: 24px; }
+  /* ── Steps ── */
+  .steps { counter-reset: step; }
+  .step {
+    display: flex; gap: 16px; margin-bottom: 20px;
+    padding-bottom: 20px; border-bottom: 1px dashed var(--border);
+  }
+  .step:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+  .step-num {
+    counter-increment: step;
+    width: 28px; height: 28px; border-radius: 50%;
+    background: var(--darkblue); color: white;
+    display: flex; align-items: center; justify-content: center;
+    font-size: .8rem; font-weight: 700; flex-shrink: 0; margin-top: 2px;
+  }
+  .step-num::before { content: counter(step); }
+  .step-body { flex: 1; }
+  .step-body strong { display: block; font-size: .95rem; margin-bottom: 4px; color: var(--darkblue); }
+  .step-body p { color: #3b3a39; font-size: .9rem; }
+  /* ── Nav path ── */
+  .nav-path {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: #f8f8f8; border: 1px solid var(--border);
+    border-radius: 5px; padding: 6px 12px;
+    font-size: .82rem; font-family: monospace;
+    margin: 8px 0; flex-wrap: wrap;
+  }
+  .nav-path .arrow { color: var(--muted); }
+  .nav-path .step-name { background: white; border: 1px solid #d0d0d0;
+    border-radius: 3px; padding: 1px 7px; color: var(--blue); font-weight: 600; }
+  /* ── Code blocks ── */
+  .code-block {
+    background: #1e1e1e; color: #d4d4d4; border-radius: 6px;
+    padding: 14px 18px; font-family: "Cascadia Code", "Consolas", monospace;
+    font-size: .83rem; overflow-x: auto; margin: 10px 0; line-height: 1.6;
+  }
+  .code-block .comment { color: #6a9955; }
+  .code-block .key     { color: #9cdcfe; }
+  .code-block .val     { color: #ce9178; }
+  .code-block .kw      { color: #569cd6; }
+  /* ── Value boxes ── */
+  .value-table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: .875rem; }
+  .value-table th {
+    background: var(--darkblue); color: white;
+    padding: 8px 12px; text-align: left; font-weight: 600;
+  }
+  .value-table td { padding: 8px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  .value-table tr:nth-child(even) td { background: var(--gray); }
+  .value-table .name  { font-family: monospace; font-weight: 600; color: var(--purple); white-space: nowrap; }
+  .value-table .desc  { color: var(--muted); font-size: .82rem; }
+  .value-table .req   { color: var(--orange); font-weight: 700; font-size: .75rem; }
+  .value-table .opt   { color: var(--green);  font-weight: 700; font-size: .75rem; }
+  /* ── Callout boxes ── */
+  .callout {
+    border-left: 4px solid; border-radius: 0 6px 6px 0;
+    padding: 12px 16px; margin: 14px 0; font-size: .875rem;
+  }
+  .callout-warn  { border-color: #d83b01; background: #fde7e9; }
+  .callout-info  { border-color: #0078d4; background: var(--blue-bg); }
+  .callout-tip   { border-color: #107c10; background: var(--green-bg); }
+  .callout-note  { border-color: #8a8886; background: var(--gray); }
+  .callout-title { font-weight: 700; margin-bottom: 4px; font-size: .85rem; }
+  .callout-warn  .callout-title { color: #d83b01; }
+  .callout-info  .callout-title { color: #0078d4; }
+  .callout-tip   .callout-title { color: #107c10; }
+  /* ── Checklist ── */
+  .checklist { list-style: none; padding: 0; }
+  .checklist li {
+    display: flex; align-items: flex-start; gap: 10px;
+    padding: 6px 0; font-size: .875rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .checklist li:last-child { border-bottom: none; }
+  .checklist .check {
+    width: 18px; height: 18px; border-radius: 3px;
+    border: 2px solid var(--border); flex-shrink: 0; margin-top: 1px;
+  }
+  /* ── Screenshot placeholder ── */
+  .screenshot {
+    border: 2px dashed var(--border); border-radius: 6px;
+    padding: 16px; margin: 12px 0; text-align: center;
+    color: var(--muted); font-size: .82rem; background: var(--gray);
+  }
+  .screenshot .label { font-weight: 600; color: var(--blue); margin-bottom: 4px; }
+  /* ── Tags ── */
+  .tag {
+    display: inline-block; border-radius: 3px; padding: 1px 7px;
+    font-size: .75rem; font-weight: 600; margin: 0 2px;
+  }
+  .tag-secret  { background: #fde7e9; color: var(--orange); border: 1px solid #f1707b; }
+  .tag-var     { background: #e7f3fe; color: var(--blue);   border: 1px solid #a9d4f5; }
+  .tag-env     { background: #dff6dd; color: var(--green);  border: 1px solid #9ed89b; }
+  /* ── Progress bar ── */
+  .progress-header {
+    display: flex; align-items: center; gap: 10px;
+    margin-bottom: 24px; padding: 16px 20px;
+    background: white; border-radius: 8px; border: 1px solid var(--border);
+  }
+  .progress-item {
+    display: flex; flex-direction: column; align-items: center;
+    gap: 4px; flex: 1;
+  }
+  .progress-dot {
+    width: 32px; height: 32px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: .75rem; font-weight: 700;
+  }
+  .progress-dot.azure  { background: #0078d4; color: white; }
+  .progress-dot.pp     { background: #742774; color: white; }
+  .progress-dot.jfrog  { background: #40be46; color: white; }
+  .progress-dot.github { background: #24292f; color: white; }
+  .progress-dot.repo   { background: #d83b01; color: white; }
+  .progress-dot.verify { background: #107c10; color: white; }
+  .progress-label { font-size: .72rem; color: var(--muted); text-align: center; }
+  .progress-line { flex: 1; height: 2px; background: var(--border); margin-top: -20px; }
+  /* ── Folder tree ── */
+  .tree {
+    font-family: monospace; font-size: .85rem; line-height: 1.8;
+    background: #1e1e1e; color: #d4d4d4; border-radius: 6px;
+    padding: 16px 20px; margin: 10px 0; overflow-x: auto;
+  }
+  .tree .folder { color: #dcdcaa; }
+  .tree .file   { color: #9cdcfe; }
+  .tree .comment{ color: #6a9955; }
+  /* ── Secret copy box ── */
+  .copy-box {
+    display: flex; align-items: center; gap: 8px;
+    background: white; border: 1px solid var(--border);
+    border-radius: 5px; padding: 8px 12px; margin: 6px 0;
+    font-size: .85rem;
+  }
+  .copy-box .label { font-weight: 600; min-width: 160px; color: var(--purple); }
+  .copy-box .value { font-family: monospace; color: var(--muted); font-size: .82rem; flex: 1; }
+  .copy-box .icon  { font-size: 1rem; }
+  h3 { font-size: .95rem; color: var(--darkblue); margin: 20px 0 10px; font-weight: 700; }
+  h4 { font-size: .875rem; color: var(--muted); margin: 16px 0 8px; font-weight: 600;
+       text-transform: uppercase; letter-spacing: .5px; }
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <h1>⚙️ Power Platform Enterprise CI/CD — Complete Setup Guide</h1>
+  <p>Everything you need to connect Azure, Power Platform, JFrog Artifactory, and GitHub so your automated pipeline works end-to-end. Follow each section in order — don't skip steps.</p>
+  <span class="badge">Azure AD</span>
+  <span class="badge">Power Platform</span>
+  <span class="badge">JFrog Artifactory</span>
+  <span class="badge">GitHub Actions</span>
+</div>
+
+<!-- Progress overview -->
+<div style="background:var(--gray);padding:20px 40px;border-bottom:1px solid var(--border);">
+  <div style="max-width:860px;margin:0 auto;">
+    <div class="progress-header">
+      <div class="progress-item">
+        <div class="progress-dot azure">①</div>
+        <span class="progress-label">Azure<br>App Registration</span>
+      </div>
+      <div class="progress-line"></div>
+      <div class="progress-item">
+        <div class="progress-dot pp">②</div>
+        <span class="progress-label">Power Platform<br>App User</span>
+      </div>
+      <div class="progress-line"></div>
+      <div class="progress-item">
+        <div class="progress-dot jfrog">③</div>
+        <span class="progress-label">JFrog<br>Artifactory</span>
+      </div>
+      <div class="progress-line"></div>
+      <div class="progress-item">
+        <div class="progress-dot github">④</div>
+        <span class="progress-label">GitHub<br>Secrets & Vars</span>
+      </div>
+      <div class="progress-line"></div>
+      <div class="progress-item">
+        <div class="progress-dot repo">⑤</div>
+        <span class="progress-label">GitHub<br>Environments</span>
+      </div>
+      <div class="progress-line"></div>
+      <div class="progress-item">
+        <div class="progress-dot verify">⑥</div>
+        <span class="progress-label">Repo Structure<br>&amp; Verify</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="container">
+
+<!-- ── Sidebar TOC ── -->
+<nav class="toc">
+  <h3>Contents</h3>
+  <ol>
+    <li><a href="#prereqs">Prerequisites</a></li>
+    <li><a href="#azure">① Azure App Registration</a></li>
+    <div class="toc-sub">
+      <a href="#azure-create">Create the Registration</a>
+      <a href="#azure-permissions">Add API Permissions</a>
+      <a href="#azure-secret">Create Client Secret</a>
+      <a href="#azure-values">Note the 3 Values</a>
+    </div>
+    <li><a href="#pp">② Power Platform App User</a></li>
+    <div class="toc-sub">
+      <a href="#pp-appuser">Add Application User</a>
+      <a href="#pp-envs">Repeat for All Envs</a>
+    </div>
+    <li><a href="#jfrog">③ JFrog Artifactory</a></li>
+    <div class="toc-sub">
+      <a href="#jfrog-repo">Create Repository</a>
+      <a href="#jfrog-key">Generate API Key</a>
+    </div>
+    <li><a href="#github-secrets">④ GitHub Secrets &amp; Variables</a></li>
+    <div class="toc-sub">
+      <a href="#gh-pat">Create GHA_CORE_PAT</a>
+      <a href="#gh-secrets">Repository Secrets</a>
+      <a href="#gh-vars">Repository Variables</a>
+    </div>
+    <li><a href="#github-envs">⑤ GitHub Environments</a></li>
+    <div class="toc-sub">
+      <a href="#gh-env-create">Create Environments</a>
+      <a href="#gh-env-protect">Protection Rules</a>
+    </div>
+    <li><a href="#repo-structure">⑥ Repository Structure</a></li>
+    <div class="toc-sub">
+      <a href="#folder-layout">Folder Layout</a>
+      <a href="#deploy-settings">Deployment Settings</a>
+    </div>
+    <li><a href="#verify">Final Verification</a></li>
+    <li><a href="#troubleshoot">Troubleshooting</a></li>
+  </ol>
+</nav>
+
+<!-- ── Main Content ── -->
+<main class="content">
+
+<!-- ── PREREQUISITES ── -->
+<div id="prereqs" class="section">
+  <div class="section-header">
+    <div class="section-num" style="background:#605e5c">✓</div>
+    <div>
+      <h2>Before You Start — Prerequisites</h2>
+      <div class="subtitle">Make sure you have these before touching anything below</div>
+    </div>
+  </div>
+  <div class="section-body">
+    <ul class="checklist">
+      <li><div class="check"></div>You are a <strong>Global Administrator</strong> or <strong>Application Administrator</strong> in Azure Active Directory</li>
+      <li><div class="check"></div>You are a <strong>Power Platform Administrator</strong> or <strong>System Administrator</strong> in each Dynamics 365 environment</li>
+      <li><div class="check"></div>You have a <strong>JFrog Artifactory</strong> instance (cloud or on-premise) — or a JFrog Cloud free account at <a href="https://jfrog.com">jfrog.com</a></li>
+      <li><div class="check"></div>You have <strong>Admin access</strong> to the GitHub organisation and both repositories (<code>GHA-Dynamics</code> and <code>GHA-Core</code>)</li>
+      <li><div class="check"></div>All 6 Power Platform environments exist and are running: <strong>Sandbox, Dev, Intg, UAT, Perf, Prod</strong></li>
+      <li><div class="check"></div>You know each environment's URL — <a href="#find-url">how to find it →</a></li>
+    </ul>
+    <div class="callout callout-info">
+      <div class="callout-title">ℹ️ One App Registration, All Environments</div>
+      You only create ONE Azure App Registration. The same App ID and Client Secret is used across all Power Platform environments. You just need to register it as an Application User inside each environment separately (Section 2).
+    </div>
+  </div>
+</div>
+
+<!-- ── SECTION 1: AZURE ── -->
+<div id="azure" class="section">
+  <div class="section-header">
+    <div class="section-num">1</div>
+    <div>
+      <h2>Azure App Registration (Service Principal)</h2>
+      <div class="subtitle">This is the "identity" your CI/CD pipeline uses to talk to Power Platform. Think of it as creating a dedicated service account.</div>
+    </div>
+  </div>
+  <div class="section-body">
+
+    <h3 id="azure-create">Create the App Registration</h3>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num"></div>
+        <div class="step-body">
+          <strong>Open the Azure Portal</strong>
+          <p>Go to <a href="https://portal.azure.com" target="_blank">portal.azure.com</a> and sign in with your admin account.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num"></div>
+        <div class="step-body">
+          <strong>Navigate to App Registrations</strong>
+          <div class="nav-path">
+            <span class="step-name">Azure Active Directory</span>
+            <span class="arrow">→</span>
+            <span class="step-name">App registrations</span>
+            <span class="arrow">→</span>
+            <span class="step-name">+ New registration</span>
+          </div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num"></div>
+        <div class="step-body">
+          <strong>Fill in the registration form</strong>
+          <p>Use the values below exactly:</p>
+          <table class="value-table" style="margin-top:10px">
+            <tr><th>Field</th><th>Value to enter</th></tr>
+            <tr><td><strong>Name</strong></td><td><code>PowerPlatform-CI-CD</code> (or any name you prefer)</td></tr>
+            <tr><td><strong>Supported account types</strong></td><td>✅ <em>Accounts in this organizational directory only (Single tenant)</em></td></tr>
+            <tr><td><strong>Redirect URI</strong></td><td>Leave blank — not needed</td></tr>
+          </table>
+          <p>Click <strong>Register</strong>.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num"></div>
+        <div class="step-body">
+          <strong>You're on the app's Overview page — save these two values now</strong>
+          <div class="copy-box"><span class="icon">🔵</span><span class="label">Application (client) ID</span><span class="value">xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx  ← this is your APP_ID</span></div>
+          <div class="copy-box"><span class="icon">🟣</span><span class="label">Directory (tenant) ID</span><span class="value">xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx  ← this is your TENANT_ID</span></div>
+          <div class="callout callout-warn" style="margin-top:10px">
+            <div class="callout-title">⚠️ Copy these now — you'll need them in Section 4</div>
+            Open a Notepad/Notes app and paste both values. Label them clearly.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <h3 id="azure-permissions">Add API Permissions for Dynamics CRM</h3>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num"></div>
+        <div class="step-body">
+          <strong>Open API permissions</strong>
+          <div class="nav-path">
+            <span class="step-name">API permissions</span>
+            <span class="arrow">→</span>
+            <span class="step-name">+ Add a permission</span>
+          </div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num"></div>
+        <div class="step-body">
+          <strong>Find Dynamics CRM</strong>
+          <p>In the panel that opens, click <strong>"APIs my organization uses"</strong> tab, then search for <code>Dynamics CRM</code>. Click on it when it appears.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num"></div>
+        <div class="step-body">
+          <strong>Select the permission</strong>
+          <p>Choose <strong>Delegated permissions</strong>, tick <code>user_impersonation</code>, then click <strong>Add permissions</strong>.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num"></div>
+        <div class="step-body">
+          <strong>Grant admin consent</strong>
+          <p>Back on the API permissions page, click <strong>"Grant admin consent for [Your Org]"</strong>. A confirmation dialog appears — click <strong>Yes</strong>.</p>
+          <p style="margin-top:6px">✅ The status icon next to <code>user_impersonation</code> should turn <strong>green</strong>.</p>
+          <div class="callout callout-warn">
+            <div class="callout-title">⚠️ Must be Global Admin to grant consent</div>
+            If the "Grant admin consent" button is greyed out, you don't have the right permissions. Ask your Azure Global Administrator to do this step.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <h3 id="azure-secret">Create the Client Secret</h3>
+    <div class="callout callout-warn">
+      <div class="callout-title">⚠️ The secret value is shown ONCE — copy it immediately</div>
+      After you navigate away from the page, the full value is hidden forever. If you miss it, you have to create a new secret.
+    </div>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num"></div>
+        <div class="step-body">
+          <strong>Open Certificates &amp; secrets</strong>
+          <div class="nav-path">
+            <span class="step-name">Certificates &amp; secrets</span>
+            <span class="arrow">→</span>
+            <span class="step-name">Client secrets</span>
+            <span class="arrow">→</span>
+            <span class="step-name">+ New client secret</span>
+          </div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num"></div>
+        <div class="step-body">
+          <strong>Set the description and expiry</strong>
+          <table class="value-table" style="margin-top:8px">
+            <tr><th>Field</th><th>Value</th></tr>
+            <tr><td><strong>Description</strong></td><td><code>GitHub-CI-CD-Secret</code></td></tr>
+            <tr><td><strong>Expires</strong></td><td>24 months (recommended) — set a calendar reminder to renew!</td></tr>
+          </table>
+          <p style="margin-top:8px">Click <strong>Add</strong>.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num"></div>
+        <div class="step-body">
+          <strong>Copy the secret VALUE — not the Secret ID</strong>
+          <p>You'll see two columns: <strong>Value</strong> and <strong>Secret ID</strong>. You need the <strong>Value</strong> column (the long random string).</p>
+          <div class="copy-box"><span class="icon">🔴</span><span class="label">Secret Value</span><span class="value">~abc123XYZ...  ← this is your CLIENT_SECRET</span></div>
+        </div>
+      </div>
+    </div>
+
+    <h3 id="azure-values">✅ You should now have these 3 values</h3>
+    <table class="value-table">
+      <tr><th>What it's called in GitHub</th><th>Where you found it in Azure</th><th>Looks like</th></tr>
+      <tr><td><code class="tag tag-secret">APP_ID</code></td><td>App Registration → Overview → Application (client) ID</td><td>GUID: <code>xxxxxxxx-xxxx-...</code></td></tr>
+      <tr><td><code class="tag tag-secret">TENANT_ID</code></td><td>App Registration → Overview → Directory (tenant) ID</td><td>GUID: <code>xxxxxxxx-xxxx-...</code></td></tr>
+      <tr><td><code class="tag tag-secret">CLIENT_SECRET</code></td><td>Certificates &amp; secrets → Value column</td><td>Long random string</td></tr>
+    </table>
+  </div>
+</div>
+
+<!-- ── SECTION 2: POWER PLATFORM ── -->
+<div id="pp" class="section">
+  <div class="section-header">
+    <div class="section-num" style="background:#742774">2</div>
+    <div>
+      <h2>Power Platform — Register Application User</h2>
+      <div class="subtitle">Tell each Power Platform environment "trust this Azure app". You must do this in every single environment your pipeline will touch.</div>
+    </div>
+  </div>
+  <div class="section-body">
+
+    <div class="callout callout-info">
+      <div class="callout-title">ℹ️ Why is this needed?</div>
+      Azure only gives your app an identity — it doesn't automatically give it access to your Dataverse environments. You have to explicitly add it as an "Application User" inside each environment and grant it the System Administrator role so it can import solutions, run Solution Checker, etc.
+    </div>
+
+    <h3 id="pp-appuser">Add the Application User (do this once per environment)</h3>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num"></div>
+        <div class="step-body">
+          <strong>Open Power Platform Admin Center</strong>
+          <p>Go to <a href="https://admin.powerplatform.microsoft.com" target="_blank">admin.powerplatform.microsoft.com</a> and sign in.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num"></div>
+        <div class="step-body">
+          <strong>Select your environment</strong>
+          <div class="nav-path">
+            <span class="step-name">Environments</span>
+            <span class="arrow">→</span>
+            <span class="step-name">click your environment name</span>
+            <span class="arrow">→</span>
+            <span class="step-name">Settings</span>
+          </div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num"></div>
+        <div class="step-body">
+          <strong>Navigate to Application users</strong>
+          <div class="nav-path">
+            <span class="step-name">Users + permissions</span>
+            <span class="arrow">→</span>
+            <span class="step-name">Application users</span>
+            <span class="arrow">→</span>
+            <span class="step-name">+ New app user</span>
+          </div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num"></div>
+        <div class="step-body">
+          <strong>Add your App Registration</strong>
+          <p>Click <strong>"+ Add an app"</strong>. A search box appears. Type the name you gave your app registration (<code>PowerPlatform-CI-CD</code>) or paste the App ID. Select it and click <strong>Add</strong>.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num"></div>
+        <div class="step-body">
+          <strong>Assign the Security Role</strong>
+          <p>Under <strong>Security roles</strong>, click the edit (pencil) icon. Tick <strong>System Administrator</strong>. Click <strong>Save</strong>.</p>
+          <div class="callout callout-warn" style="margin-top:8px">
+            <div class="callout-title">⚠️ Must be System Administrator — not just System Customizer</div>
+            The pipeline needs to backup environments, import solutions, and run Solution Checker. "System Customizer" is not enough — it will cause permission errors during deployment.
+          </div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num"></div>
+        <div class="step-body">
+          <strong>Click "Create"</strong>
+          <p>The Application User is now listed with a blue robot icon in the user list.</p>
+        </div>
+      </div>
+    </div>
+
+    <h3 id="pp-envs">Repeat for Every Environment</h3>
+    <p style="margin-bottom:12px;">Go back to step 2 above and repeat the entire process for each environment in the table below. The <code>APP_ID</code> is the same every time — only the environment changes.</p>
+    <table class="value-table">
+      <tr><th>Environment</th><th>Used for</th><th>App User Added?</th></tr>
+      <tr><td>🧪 <strong>Sandbox (SDBX)</strong></td><td>Export solutions — Solution Checker auth</td><td>☐</td></tr>
+      <tr><td>🚀 <strong>Dev</strong></td><td>First deployment target (unmanaged)</td><td>☐</td></tr>
+      <tr><td>🔗 <strong>Intg</strong></td><td>Integration testing (managed)</td><td>☐</td></tr>
+      <tr><td>🧪 <strong>UAT</strong></td><td>User acceptance testing (managed)</td><td>☐</td></tr>
+      <tr><td>📊 <strong>Perf</strong></td><td>Performance testing (managed)</td><td>☐</td></tr>
+      <tr><td>🏭 <strong>Prod</strong></td><td>Production (managed)</td><td>☐</td></tr>
+    </table>
+
+    <h3 id="find-url">How to Find Your Environment URL</h3>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num"></div>
+        <div class="step-body">
+          <strong>In Power Platform Admin Center</strong>
+          <div class="nav-path">
+            <span class="step-name">Environments</span>
+            <span class="arrow">→</span>
+            <span class="step-name">click environment name</span>
+            <span class="arrow">→</span>
+            <span class="step-name">copy "Environment URL"</span>
+          </div>
+          <p style="margin-top:6px">It looks like: <code>https://yourorg-dev.crm4.dynamics.com</code></p>
+        </div>
+      </div>
+    </div>
+    <div class="callout callout-tip">
+      <div class="callout-title">💡 Note all 6 environment URLs now</div>
+      Copy all 6 URLs into a notepad — you will need them when setting GitHub Repository Variables in Section 4.
+    </div>
+  </div>
+</div>
+
+<!-- ── SECTION 3: JFROG ── -->
+<div id="jfrog" class="section">
+  <div class="section-header">
+    <div class="section-num" style="background:#40be46">3</div>
+    <div>
+      <h2>JFrog Artifactory — Create Repository &amp; API Key</h2>
+      <div class="subtitle">JFrog stores your built solution packages. The pipeline uploads managed + unmanaged ZIPs here after every build, and downloads them at deploy time.</div>
+    </div>
+  </div>
+  <div class="section-body">
+
+    <h3 id="jfrog-repo">Create the Repository</h3>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num"></div>
+        <div class="step-body">
+          <strong>Log in to JFrog</strong>
+          <p>Go to your JFrog instance — typically <code>https://[yourcompany].jfrog.io</code>. Sign in.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num"></div>
+        <div class="step-body">
+          <strong>Create a Local Repository</strong>
+          <div class="nav-path">
+            <span class="step-name">Administration</span>
+            <span class="arrow">→</span>
+            <span class="step-name">Repositories</span>
+            <span class="arrow">→</span>
+            <span class="step-name">+ Add Repositories</span>
+            <span class="arrow">→</span>
+            <span class="step-name">Local Repository</span>
+          </div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num"></div>
+        <div class="step-body">
+          <strong>Configure the repository</strong>
+          <table class="value-table" style="margin-top:8px">
+            <tr><th>Field</th><th>Value</th></tr>
+            <tr><td><strong>Package Type</strong></td><td>Generic</td></tr>
+            <tr><td><strong>Repository Key</strong></td><td><code>powerplatform-solutions</code></td></tr>
+          </table>
+          <p style="margin-top:8px">Leave everything else as default. Click <strong>Create Local Repository</strong>.</p>
+        </div>
+      </div>
+    </div>
+
+    <h3 id="jfrog-key">Generate API Key / Access Token</h3>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num"></div>
+        <div class="step-body">
+          <strong>Open your user profile</strong>
+          <div class="nav-path">
+            <span class="step-name">Top-right user icon</span>
+            <span class="arrow">→</span>
+            <span class="step-name">Edit Profile</span>
+          </div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num"></div>
+        <div class="step-body">
+          <strong>Generate API Key</strong>
+          <p>Scroll to <strong>Authentication Settings</strong> → click <strong>Generate API Key</strong> (or <strong>Generate an Identity Token</strong> in newer JFrog versions). Copy the key immediately.</p>
+          <div class="copy-box"><span class="icon">🟢</span><span class="label">JFrog API Key</span><span class="value">AKCp8...  ← this is your JFROG_API_KEY</span></div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num"></div>
+        <div class="step-body">
+          <strong>Note your JFrog base URL</strong>
+          <p>It's shown in the browser address bar when you're on your JFrog instance. Format:</p>
+          <div class="code-block"><span class="val">https://yourcompany.jfrog.io/artifactory</span></div>
+          <div class="copy-box"><span class="icon">🟢</span><span class="label">JFrog URL (JFROG_URL)</span><span class="value">https://yourcompany.jfrog.io/artifactory</span></div>
+        </div>
+      </div>
+    </div>
+
+    <h3>✅ You should now have these JFrog values</h3>
+    <table class="value-table">
+      <tr><th>GitHub variable/secret name</th><th>Value</th></tr>
+      <tr><td><code class="tag tag-secret">JFROG_API_KEY</code></td><td>The API key / Identity Token you generated</td></tr>
+      <tr><td><code class="tag tag-var">JFROG_URL</code></td><td><code>https://yourcompany.jfrog.io/artifactory</code></td></tr>
+      <tr><td><code class="tag tag-var">JFROG_REPO</code></td><td><code>powerplatform-solutions</code></td></tr>
+    </table>
+  </div>
+</div>
+
+<!-- ── SECTION 4: GITHUB SECRETS & VARS ── -->
+<div id="github-secrets" class="section">
+  <div class="section-header">
+    <div class="section-num" style="background:#24292f">4</div>
+    <div>
+      <h2>GitHub — Secrets &amp; Variables</h2>
+      <div class="subtitle">Store all credentials and configuration in GitHub so your workflows can access them securely. You must configure these in BOTH the GHA-Dynamics and GHA-Core repositories.</div>
+    </div>
+  </div>
+  <div class="section-body">
+
+    <div class="callout callout-info">
+      <div class="callout-title">ℹ️ Secrets vs Variables — what's the difference?</div>
+      <strong>Secrets</strong> are encrypted passwords/keys — GitHub hides them in logs. <strong>Variables</strong> are plain text config values like URLs — visible in logs. Never put passwords in Variables. Never put URLs in Secrets.
+    </div>
+
+    <h3 id="gh-pat">Step 1 — Create the GHA_CORE_PAT (do this first)</h3>
+    <p>This is a GitHub Personal Access Token that allows GHA-Dynamics to check out code from the private <code>GHA-Core</code> repository during pipeline runs.</p>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num"></div>
+        <div class="step-body">
+          <strong>Open your GitHub profile settings</strong>
+          <div class="nav-path">
+            <span class="step-name">Profile photo (top right)</span>
+            <span class="arrow">→</span>
+            <span class="step-name">Settings</span>
+            <span class="arrow">→</span>
+            <span class="step-name">Developer settings</span>
+            <span class="arrow">→</span>
+            <span class="step-name">Personal access tokens</span>
+            <span class="arrow">→</span>
+            <span class="step-name">Fine-grained tokens</span>
+            <span class="arrow">→</span>
+            <span class="step-name">Generate new token</span>
+          </div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num"></div>
+        <div class="step-body">
+          <strong>Configure the token</strong>
+          <table class="value-table" style="margin-top:8px">
+            <tr><th>Field</th><th>Value</th></tr>
+            <tr><td><strong>Token name</strong></td><td><code>GHA-Core-CI-Access</code></td></tr>
+            <tr><td><strong>Expiration</strong></td><td>1 year (set a calendar reminder)</td></tr>
+            <tr><td><strong>Resource owner</strong></td><td>Your GitHub Organisation</td></tr>
+            <tr><td><strong>Repository access</strong></td><td>Only selected repositories → choose <code>GHA-Core</code></td></tr>
+          </table>
+          <p style="margin-top:8px">Under <strong>Repository permissions</strong>, set:</p>
+          <table class="value-table">
+            <tr><td><strong>Contents</strong></td><td>Read-only</td></tr>
+            <tr><td><strong>Workflows</strong></td><td>Read-only</td></tr>
+          </table>
+          <p style="margin-top:8px">Click <strong>Generate token</strong> and <strong>copy the token value now</strong>.</p>
+        </div>
+      </div>
+    </div>
+
+    <h3 id="gh-secrets">Step 2 — Add Repository Secrets to GHA-Dynamics</h3>
+    <div class="nav-path">
+      <span class="step-name">GHA-Dynamics repo</span>
+      <span class="arrow">→</span>
+      <span class="step-name">Settings</span>
+      <span class="arrow">→</span>
+      <span class="step-name">Secrets and variables</span>
+      <span class="arrow">→</span>
+      <span class="step-name">Actions</span>
+      <span class="arrow">→</span>
+      <span class="step-name">Secrets tab</span>
+      <span class="arrow">→</span>
+      <span class="step-name">New repository secret</span>
+    </div>
+    <p style="margin:12px 0 6px">Add each of these secrets one by one — click "New repository secret", enter the Name and Secret, click Add:</p>
+    <table class="value-table">
+      <tr><th>Secret Name</th><th>Value to paste</th><th>Where it came from</th><th></th></tr>
+      <tr>
+        <td class="name">APP_ID</td>
+        <td>Your Azure App Registration's Application (client) ID</td>
+        <td>Section 1 — Azure Overview page</td>
+        <td class="req">REQUIRED</td>
+      </tr>
+      <tr>
+        <td class="name">CLIENT_SECRET</td>
+        <td>The secret value you copied from Azure</td>
+        <td>Section 1 — Certificates &amp; secrets</td>
+        <td class="req">REQUIRED</td>
+      </tr>
+      <tr>
+        <td class="name">TENANT_ID</td>
+        <td>Your Azure Directory (tenant) ID</td>
+        <td>Section 1 — Azure Overview page</td>
+        <td class="req">REQUIRED</td>
+      </tr>
+      <tr>
+        <td class="name">JFROG_API_KEY</td>
+        <td>Your JFrog API key / Identity Token</td>
+        <td>Section 3 — JFrog profile</td>
+        <td class="req">REQUIRED</td>
+      </tr>
+      <tr>
+        <td class="name">GHA_CORE_PAT</td>
+        <td>The GitHub Personal Access Token you just created</td>
+        <td>Step 1 above</td>
+        <td class="req">REQUIRED</td>
+      </tr>
+    </table>
+    <div class="callout callout-tip">
+      <div class="callout-title">💡 Add the same secrets to GHA-Core too</div>
+      Navigate to the <code>GHA-Core</code> repo → Settings → Secrets → and add <code>APP_ID</code>, <code>CLIENT_SECRET</code>, <code>TENANT_ID</code>, <code>JFROG_API_KEY</code> with the same values. <code>GHA_CORE_PAT</code> is not needed in GHA-Core.
+    </div>
+
+    <h3 id="gh-vars">Step 3 — Add Repository Variables to GHA-Dynamics</h3>
+    <div class="nav-path">
+      <span class="step-name">GHA-Dynamics repo</span>
+      <span class="arrow">→</span>
+      <span class="step-name">Settings</span>
+      <span class="arrow">→</span>
+      <span class="step-name">Secrets and variables</span>
+      <span class="arrow">→</span>
+      <span class="step-name">Actions</span>
+      <span class="arrow">→</span>
+      <span class="step-name">Variables tab</span>
+      <span class="arrow">→</span>
+      <span class="step-name">New repository variable</span>
+    </div>
+    <p style="margin:12px 0 6px">Add each variable below. Replace the example values with your actual environment URLs:</p>
+    <table class="value-table">
+      <tr><th>Variable Name</th><th>Example Value</th><th>Description</th><th></th></tr>
+      <tr>
+        <td class="name">PP_SDBX_URL</td>
+        <td><code>https://yourorg-sdbx.crm4.dynamics.com</code></td>
+        <td class="desc">Sandbox environment — used for Solution Checker auth and config export</td>
+        <td class="req">REQUIRED</td>
+      </tr>
+      <tr>
+        <td class="name">PP_DEV_URL</td>
+        <td><code>https://yourorg-dev.crm4.dynamics.com</code></td>
+        <td class="desc">Dev environment URL</td>
+        <td class="req">REQUIRED</td>
+      </tr>
+      <tr>
+        <td class="name">PP_INTG_URL</td>
+        <td><code>https://yourorg-intg.crm4.dynamics.com</code></td>
+        <td class="desc">Integration environment URL</td>
+        <td class="req">REQUIRED</td>
+      </tr>
+      <tr>
+        <td class="name">PP_UAT_URL</td>
+        <td><code>https://yourorg-uat.crm4.dynamics.com</code></td>
+        <td class="desc">UAT environment URL</td>
+        <td class="req">REQUIRED</td>
+      </tr>
+      <tr>
+        <td class="name">PP_PERF_URL</td>
+        <td><code>https://yourorg-perf.crm4.dynamics.com</code></td>
+        <td class="desc">Performance environment URL</td>
+        <td class="req">REQUIRED</td>
+      </tr>
+      <tr>
+        <td class="name">PP_PROD_URL</td>
+        <td><code>https://yourorg-prod.crm4.dynamics.com</code></td>
+        <td class="desc">Production environment URL</td>
+        <td class="req">REQUIRED</td>
+      </tr>
+      <tr>
+        <td class="name">JFROG_URL</td>
+        <td><code>https://yourcompany.jfrog.io/artifactory</code></td>
+        <td class="desc">JFrog Artifactory base URL — no trailing slash</td>
+        <td class="req">REQUIRED</td>
+      </tr>
+      <tr>
+        <td class="name">JFROG_REPO</td>
+        <td><code>powerplatform-solutions</code></td>
+        <td class="desc">Name of the JFrog repository you created</td>
+        <td class="req">REQUIRED</td>
+      </tr>
+      <tr>
+        <td class="name">PP_CHECKER_GEO</td>
+        <td><code>UnitedStates</code> <em>or</em> <code>Europe</code></td>
+        <td class="desc">Geography for Solution Checker API endpoint. Use the region closest to your tenant.</td>
+        <td class="req">REQUIRED</td>
+      </tr>
+      <tr>
+        <td class="name">PP_SOLUTION_NAME</td>
+        <td><code>CoreSolution</code></td>
+        <td class="desc">Only needed for single-solution repos. Leave blank for multi-solution repos.</td>
+        <td class="opt">OPTIONAL</td>
+      </tr>
+      <tr>
+        <td class="name">PP_DATA_SCHEMA_FILE</td>
+        <td><code>config/schema.xml</code></td>
+        <td class="desc">Path to Configuration Migration data schema. Leave blank if not using config data export.</td>
+        <td class="opt">OPTIONAL</td>
+      </tr>
+    </table>
+
+    <div class="callout callout-info">
+      <div class="callout-title">ℹ️ Which crm number do I use in the URL?</div>
+      The number after <code>crm</code> depends on your Azure region. Common ones:
+      <ul style="margin-top:6px;padding-left:20px;font-size:.85rem">
+        <li><code>crm</code> — North America</li>
+        <li><code>crm4</code> — EMEA (Europe, Middle East, Africa)</li>
+        <li><code>crm5</code> — Asia Pacific</li>
+        <li><code>crm6</code> — Australia</li>
+        <li><code>crm7</code> — Japan</li>
+        <li><code>crm8</code> — India</li>
+        <li><code>crm11</code> — United Kingdom</li>
+      </ul>
+      The easiest way: copy the URL directly from Power Platform Admin Center — it already has the correct number.
+    </div>
+  </div>
+</div>
+
+<!-- ── SECTION 5: GITHUB ENVIRONMENTS ── -->
+<div id="github-envs" class="section">
+  <div class="section-header">
+    <div class="section-num" style="background:#d83b01">5</div>
+    <div>
+      <h2>GitHub Environments &amp; Deployment Gates</h2>
+      <div class="subtitle">Environments are GitHub's "approval gates". When the pipeline reaches a gate, it pauses and waits for a human to click Approve before deploying to that environment.</div>
+    </div>
+  </div>
+  <div class="section-body">
+
+    <div class="callout callout-info">
+      <div class="callout-title">ℹ️ How gates work in your pipeline</div>
+      After the build succeeds, all four non-prod gates (Dev, Intg, UAT, Perf) become available simultaneously. A reviewer can approve any one of them — those environments deploy in parallel while unapproved ones wait. Prod only opens after UAT has successfully deployed.
+    </div>
+
+    <h3 id="gh-env-create">Create Each Environment</h3>
+    <div class="nav-path">
+      <span class="step-name">GHA-Dynamics repo</span>
+      <span class="arrow">→</span>
+      <span class="step-name">Settings</span>
+      <span class="arrow">→</span>
+      <span class="step-name">Environments</span>
+      <span class="arrow">→</span>
+      <span class="step-name">New environment</span>
+    </div>
+    <p style="margin:12px 0;">Create six environments — the names must match <strong>exactly</strong> as shown (case-sensitive):</p>
+    <table class="value-table">
+      <tr><th>Environment Name</th><th>Type</th><th>Approval needed?</th></tr>
+      <tr><td><code class="tag tag-env">Dev</code></td><td>Unmanaged solution deploy</td><td>Optional — your choice</td></tr>
+      <tr><td><code class="tag tag-env">Intg</code></td><td>Managed solution deploy</td><td>Recommended</td></tr>
+      <tr><td><code class="tag tag-env">UAT</code></td><td>Managed solution deploy</td><td>Recommended</td></tr>
+      <tr><td><code class="tag tag-env">Perf</code></td><td>Managed solution deploy</td><td>Recommended</td></tr>
+      <tr><td><code class="tag tag-env">Prod</code></td><td>Managed solution deploy</td><td><strong>Mandatory — always</strong></td></tr>
+    </table>
+
+    <h3 id="gh-env-protect">Configure Protection Rules (repeat for each environment)</h3>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num"></div>
+        <div class="step-body">
+          <strong>Click on the environment name</strong>
+          <p>From Settings → Environments, click the environment you just created.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num"></div>
+        <div class="step-body">
+          <strong>Enable "Required reviewers"</strong>
+          <p>Tick the <strong>Required reviewers</strong> checkbox. A search box appears. Search for and add the people or teams who should approve deployments to this environment.</p>
+          <div class="callout callout-tip" style="margin-top:8px">
+            <div class="callout-title">💡 Tip — use Teams, not individuals</div>
+            Add a GitHub Team (e.g. "platform-approvers") rather than individual users. This way, if someone leaves the team, approvals keep working automatically.
+          </div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num"></div>
+        <div class="step-body">
+          <strong>Set a "Wait timer" (optional but recommended for Prod)</strong>
+          <p>For the Prod environment, set a wait timer of <strong>5 minutes</strong>. This gives people a short window to cancel an accidental approval before the deployment actually starts.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num"></div>
+        <div class="step-body">
+          <strong>Restrict deployment branches (highly recommended for Prod)</strong>
+          <p>Under <strong>Deployment branches</strong>, change "All branches" to <strong>Selected branches</strong> and add <code>main</code>. This means only code merged into main can deploy to Prod — no accidental deployments from feature branches.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num"></div>
+        <div class="step-body">
+          <strong>Click "Save protection rules"</strong>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── SECTION 6: REPO STRUCTURE ── -->
+<div id="repo-structure" class="section">
+  <div class="section-header">
+    <div class="section-num" style="background:#107c10">6</div>
+    <div>
+      <h2>Repository Structure &amp; Deployment Settings</h2>
+      <div class="subtitle">Your solution repo (GHA-Dynamics) must follow this folder structure for the pipeline to find everything automatically.</div>
+    </div>
+  </div>
+  <div class="section-body">
+
+    <h3 id="folder-layout">Required Folder Layout</h3>
+    <div class="tree">
+<span class="folder">GHA-Dynamics/</span>
+├── <span class="folder">src/</span>
+│   └── <span class="folder">solutions/</span>
+│       └── <span class="folder">YourSolutionName/</span>   <span class="comment"># ← exact name must match PP solution name</span>
+│           ├── <span class="folder">Other/</span>
+│           │   └── <span class="file">Solution.xml</span>   <span class="comment"># ← pipeline reads version from here</span>
+│           ├── <span class="folder">Entities/</span>
+│           ├── <span class="folder">Workflows/</span>
+│           └── <span class="folder">...</span>             <span class="comment"># other unpacked solution files</span>
+│
+├── <span class="folder">deployment-settings/</span>
+│   ├── <span class="folder">dev/</span>
+│   │   └── <span class="file">YourSolutionName.json</span>   <span class="comment"># connection references for Dev</span>
+│   ├── <span class="folder">intg/</span>
+│   │   └── <span class="file">YourSolutionName.json</span>
+│   ├── <span class="folder">uat/</span>
+│   │   └── <span class="file">YourSolutionName.json</span>
+│   ├── <span class="folder">perf/</span>
+│   │   └── <span class="file">YourSolutionName.json</span>
+│   └── <span class="folder">prod/</span>
+│       └── <span class="file">YourSolutionName.json</span>
+│
+└── <span class="folder">config/</span>
+    └── <span class="folder">YourSolutionName/</span>
+        └── <span class="file">config-data.zip</span>         <span class="comment"># config migration data (optional)</span>
+    </div>
+
+    <h3 id="deploy-settings">Deployment Settings Files</h3>
+    <p style="margin-bottom:10px">Each <code>YourSolutionName.json</code> file tells Power Platform which connection references to use in that specific environment. Here's the minimum structure:</p>
+    <div class="code-block">
+<span class="comment">// deployment-settings/dev/YourSolutionName.json</span>
+{
+  <span class="key">"EnvironmentVariables"</span>: [
+    {
+      <span class="key">"SchemaName"</span>: <span class="val">"your_variable_schema_name"</span>,
+      <span class="key">"Value"</span>: <span class="val">"dev-specific-value"</span>
+    }
+  ],
+  <span class="key">"ConnectionReferences"</span>: [
+    {
+      <span class="key">"LogicalName"</span>: <span class="val">"your_connection_reference_name"</span>,
+      <span class="key">"ConnectionId"</span>: <span class="val">"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"</span>,
+      <span class="key">"ConnectorId"</span>: <span class="val">"/providers/Microsoft.PowerApps/apis/shared_sharepointonline"</span>
+    }
+  ]
+}
+    </div>
+    <div class="callout callout-tip">
+      <div class="callout-title">💡 How to get connection reference values</div>
+      After manually deploying to each environment once, run: <code>pac solution export --name YourSolutionName --path . --managed false</code> then inspect the exported <code>deployment-settings.json</code> file — it contains the pre-filled connection reference IDs for that environment.
+    </div>
+  </div>
+</div>
+
+<!-- ── VERIFY ── -->
+<div id="verify" class="section">
+  <div class="section-header">
+    <div class="section-num" style="background:#107c10">✓</div>
+    <div>
+      <h2>Final Verification Checklist</h2>
+      <div class="subtitle">Go through every item before running your first pipeline</div>
+    </div>
+  </div>
+  <div class="section-body">
+    <h4>Azure</h4>
+    <ul class="checklist">
+      <li><div class="check"></div>App Registration created and named</li>
+      <li><div class="check"></div>Dynamics CRM → user_impersonation permission granted with admin consent (green tick)</li>
+      <li><div class="check"></div>Client secret created and value copied</li>
+    </ul>
+    <h4>Power Platform</h4>
+    <ul class="checklist">
+      <li><div class="check"></div>Application User added to Sandbox with System Administrator role</li>
+      <li><div class="check"></div>Application User added to Dev with System Administrator role</li>
+      <li><div class="check"></div>Application User added to Intg with System Administrator role</li>
+      <li><div class="check"></div>Application User added to UAT with System Administrator role</li>
+      <li><div class="check"></div>Application User added to Perf with System Administrator role</li>
+      <li><div class="check"></div>Application User added to Prod with System Administrator role</li>
+    </ul>
+    <h4>JFrog</h4>
+    <ul class="checklist">
+      <li><div class="check"></div>Generic repository <code>powerplatform-solutions</code> created</li>
+      <li><div class="check"></div>API key generated and copied</li>
+    </ul>
+    <h4>GitHub — GHA-Dynamics Secrets</h4>
+    <ul class="checklist">
+      <li><div class="check"></div>Secret <code>APP_ID</code> added</li>
+      <li><div class="check"></div>Secret <code>CLIENT_SECRET</code> added</li>
+      <li><div class="check"></div>Secret <code>TENANT_ID</code> added</li>
+      <li><div class="check"></div>Secret <code>JFROG_API_KEY</code> added</li>
+      <li><div class="check"></div>Secret <code>GHA_CORE_PAT</code> added</li>
+    </ul>
+    <h4>GitHub — GHA-Dynamics Variables</h4>
+    <ul class="checklist">
+      <li><div class="check"></div>Variable <code>PP_SDBX_URL</code> added</li>
+      <li><div class="check"></div>Variable <code>PP_DEV_URL</code> added</li>
+      <li><div class="check"></div>Variable <code>PP_INTG_URL</code> added</li>
+      <li><div class="check"></div>Variable <code>PP_UAT_URL</code> added</li>
+      <li><div class="check"></div>Variable <code>PP_PERF_URL</code> added</li>
+      <li><div class="check"></div>Variable <code>PP_PROD_URL</code> added</li>
+      <li><div class="check"></div>Variable <code>JFROG_URL</code> added</li>
+      <li><div class="check"></div>Variable <code>JFROG_REPO</code> set to <code>powerplatform-solutions</code></li>
+      <li><div class="check"></div>Variable <code>PP_CHECKER_GEO</code> added</li>
+    </ul>
+    <h4>GitHub — Environments</h4>
+    <ul class="checklist">
+      <li><div class="check"></div>Environment <code>Dev</code> created with required reviewers</li>
+      <li><div class="check"></div>Environment <code>Intg</code> created with required reviewers</li>
+      <li><div class="check"></div>Environment <code>UAT</code> created with required reviewers</li>
+      <li><div class="check"></div>Environment <code>Perf</code> created with required reviewers</li>
+      <li><div class="check"></div>Environment <code>Prod</code> created with required reviewers + branch restriction to <code>main</code></li>
+    </ul>
+    <h4>GitHub — GHA-Core Secrets</h4>
+    <ul class="checklist">
+      <li><div class="check"></div>Secret <code>APP_ID</code> added to GHA-Core repo</li>
+      <li><div class="check"></div>Secret <code>CLIENT_SECRET</code> added to GHA-Core repo</li>
+      <li><div class="check"></div>Secret <code>TENANT_ID</code> added to GHA-Core repo</li>
+      <li><div class="check"></div>Secret <code>JFROG_API_KEY</code> added to GHA-Core repo</li>
+    </ul>
+    <h4>Repository Structure</h4>
+    <ul class="checklist">
+      <li><div class="check"></div><code>src/solutions/YourSolutionName/Other/Solution.xml</code> exists</li>
+      <li><div class="check"></div>Deployment settings files created for all 5 environments</li>
+    </ul>
+
+    <div class="callout callout-tip" style="margin-top:20px">
+      <div class="callout-title">💡 Run your first pipeline with mock_deploy=true</div>
+      Before trying a real deployment, trigger the <strong>Release Pipeline</strong> workflow manually with <code>mock_deploy = true</code>. This runs the entire pipeline end-to-end — build, checker, all gates — without making any changes to Power Platform or uploading to JFrog. It's a safe way to verify all your setup is correct before going live.
+    </div>
+  </div>
+</div>
+
+<!-- ── TROUBLESHOOTING ── -->
+<div id="troubleshoot" class="section">
+  <div class="section-header">
+    <div class="section-num" style="background:#8a8886">?</div>
+    <div>
+      <h2>Troubleshooting — Common Errors</h2>
+      <div class="subtitle">If something fails, check here first</div>
+    </div>
+  </div>
+  <div class="section-body">
+    <table class="value-table">
+      <tr><th>Error Message</th><th>Cause</th><th>Fix</th></tr>
+      <tr>
+        <td><code>APP_ID secret is not set</code></td>
+        <td>The secret wasn't added to the repo, or there's a typo in the secret name</td>
+        <td>Go to Settings → Secrets → confirm <code>APP_ID</code> exists (exact case)</td>
+      </tr>
+      <tr>
+        <td><code>jfrog_url is required</code></td>
+        <td><code>JFROG_URL</code> variable is missing or empty</td>
+        <td>Add <code>JFROG_URL</code> as a Repository Variable (not secret)</td>
+      </tr>
+      <tr>
+        <td><code>Unauthorized (401)</code> from JFrog</td>
+        <td>API key is wrong or expired</td>
+        <td>Regenerate the JFrog API key, update the <code>JFROG_API_KEY</code> secret</td>
+      </tr>
+      <tr>
+        <td><code>Not found (404)</code> from JFrog</td>
+        <td>Repository name in <code>JFROG_REPO</code> doesn't exist in JFrog</td>
+        <td>Confirm the repo name in JFrog matches <code>JFROG_REPO</code> variable exactly</td>
+      </tr>
+      <tr>
+        <td><code>Authentication failed</code> / <code>Could not connect to Dataverse</code></td>
+        <td>App Registration not added as Application User in that PP environment, or wrong APP_ID/CLIENT_SECRET/TENANT_ID</td>
+        <td>Re-check Section 2 — verify the app user has System Administrator role in that environment</td>
+      </tr>
+      <tr>
+        <td><code>Resource not found</code> when checking out GHA-Core</td>
+        <td><code>GHA_CORE_PAT</code> secret is missing, expired, or the token doesn't have access to GHA-Core repo</td>
+        <td>Regenerate the PAT, ensure it targets the GHA-Core repo with Contents: Read-only</td>
+      </tr>
+      <tr>
+        <td>Environment gate never appears / pipeline skips gate</td>
+        <td>GitHub Environment name doesn't exactly match what's in the workflow YAML</td>
+        <td>Compare the name in <code>release-pipeline.yml</code> (e.g. <code>environment: Dev</code>) with the environment name in Settings → Environments. They must match exactly — including capitalisation.</td>
+      </tr>
+      <tr>
+        <td><code>Solution.xml not found</code></td>
+        <td>Solution source folder structure is wrong</td>
+        <td>Confirm the folder is at <code>src/solutions/YourSolutionName/Other/Solution.xml</code></td>
+      </tr>
+    </table>
+  </div>
+</div>
+
+</main>
+</div>
+
+<script>
+// Highlight active TOC link on scroll
+const sections = document.querySelectorAll('[id]');
+const tocLinks = document.querySelectorAll('.toc a');
+window.addEventListener('scroll', () => {
+  let current = '';
+  sections.forEach(s => {
+    if (window.scrollY >= s.offsetTop - 80) current = s.id;
+  });
+  tocLinks.forEach(a => {
+    a.classList.toggle('active', a.getAttribute('href') === '#' + current);
+  });
+});
+</script>
+</body>
+</html>

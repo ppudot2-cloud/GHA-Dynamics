@@ -1,0 +1,19 @@
+{
+  "EnvironmentVariables": [
+    { "SchemaName": "new_SlaResponseHours",  "Value": "8" },
+    { "SchemaName": "new_EscalationEmail",   "Value": "it-test@contoso.com" },
+    { "SchemaName": "new_AutoAssignEnabled", "Value": "false" }
+  ],
+  "ConnectionReferences": [
+    {
+      "LogicalName": "new_SharedDataverse_HelpDesk",
+      "ConnectionId": "#{Test_DataverseConnectionId}#",
+      "ConnectorId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+    },
+    {
+      "LogicalName": "new_SharedOffice365_HelpDesk",
+      "ConnectionId": "#{Test_Office365ConnectionId}#",
+      "ConnectorId": "/providers/Microsoft.PowerApps/apis/shared_office365"
+    }
+  ]
+}

@@ -1,0 +1,78 @@
+{
+  "name": "Auto-Assign Support Ticket",
+  "properties": {
+    "connectionReferences": {
+      "shared_commondataserviceforapps": {
+        "runtimeSource": "embedded",
+        "connection": {
+          "connectionReferenceLogicalName": "new_SharedDataverse_HelpDesk"
+        }
+      },
+      "shared_office365": {
+        "runtimeSource": "embedded",
+        "connection": {
+          "connectionReferenceLogicalName": "new_SharedOffice365_HelpDesk"
+        }
+      }
+    },
+    "definition": {
+      "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+      "triggers": {
+        "When_a_ticket_is_created": {
+          "type": "OpenApiConnectionWebhook",
+          "inputs": {
+            "parameters": {
+              "subscriptionRequest/message": 1,
+              "subscriptionRequest/entityname": "new_ticket"
+            }
+          }
+        }
+      },
+      "actions": {
+        "Check_AutoAssign_Enabled": {
+          "type": "If",
+          "expression": "@equals(triggerOutputs()?['body/new_autoassignenabled'], true)",
+          "actions": {
+            "Get_agents_with_open_tickets": {
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": { "connectionName": "shared_commondataserviceforapps" },
+                "method": "get",
+                "path": "/v2/datasets/default/tables/new_tickets/items",
+                "queries": {
+                  "$filter": "new_status eq 100000001",
+                  "$select": "new_assignedagentid",
+                  "$orderby": "new_assignedagentid asc"
+                }
+              }
+            },
+            "Assign_ticket_to_agent": {
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": { "connectionName": "shared_commondataserviceforapps" },
+                "method": "patch",
+                "path": "/v2/datasets/default/tables/new_tickets/items/@{triggerOutputs()?['body/new_ticketid']}",
+                "body": {
+                  "new_assignedagentid": "@{first(body('Get_agents_with_open_tickets')?['value'])?['new_assignedagentid']}"
+                }
+              }
+            },
+            "Notify_agent_of_assignment": {
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": { "connectionName": "shared_office365" },
+                "method": "post",
+                "path": "/v2/Mail",
+                "body": {
+                  "To": "@{first(body('Get_agents_with_open_tickets')?['value'])?['_new_assignedagentid_value@OData.Community.Display.V1.FormattedValue']}",
+                  "Subject": "New Ticket Assigned: @{triggerOutputs()?['body/new_title']}",
+                  "Body": "A new @{triggerOutputs()?['body/new_priority']} priority ticket has been assigned to you.\n\nTitle: @{triggerOutputs()?['body/new_title']}\nDescription: @{triggerOutputs()?['body/new_description']}"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

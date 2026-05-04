@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<EnvironmentVariableDefinition SchemaName="new_EscalationEmail"
+                                Type="100000001"
+                                DisplayName="Escalation Email Address"
+                                Description="Email address that receives notifications when a Critical ticket is unassigned for more than 30 minutes. Set to the IT manager inbox for this environment."
+                                DefaultValue="it-escalation@contoso.com"
+                                IsRequired="true" />
