@@ -1,0 +1,1253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>End-to-End Pipeline Testing Guide — Power Platform CI/CD</title>
+<style>
+  :root {
+    --blue:    #0078d4;
+    --darkblue:#004578;
+    --green:   #107c10;
+    --orange:  #d83b01;
+    --purple:  #5c2d91;
+    --teal:    #008272;
+    --yellow:  #fff4ce;
+    --red-bg:  #fde7e9;
+    --green-bg:#dff6dd;
+    --blue-bg: #eff6fc;
+    --teal-bg: #e6f4f2;
+    --gray:    #f3f2f1;
+    --border:  #e0e0e0;
+    --text:    #201f1e;
+    --muted:   #605e5c;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+    font-size: 15px; line-height: 1.7; color: var(--text);
+    background: #fafafa;
+  }
+  .hero {
+    background: linear-gradient(135deg, #004578 0%, #0078d4 55%, #008272 100%);
+    color: white; padding: 48px 40px 40px;
+  }
+  .hero h1 { font-size: 2rem; font-weight: 700; margin-bottom: 8px; }
+  .hero p  { font-size: 1.05rem; opacity: .85; max-width: 740px; }
+  .hero .badge {
+    display: inline-block; background: rgba(255,255,255,.2);
+    border: 1px solid rgba(255,255,255,.4);
+    border-radius: 20px; padding: 3px 12px;
+    font-size: .8rem; margin-right: 8px; margin-top: 14px;
+  }
+  .container { display: flex; max-width: 1200px; margin: 0 auto; }
+  .toc {
+    width: 270px; min-width: 270px; padding: 28px 20px;
+    position: sticky; top: 0; height: 100vh; overflow-y: auto;
+    background: white; border-right: 1px solid var(--border);
+  }
+  .toc h3 { font-size: .75rem; text-transform: uppercase; letter-spacing: 1px;
+            color: var(--muted); margin-bottom: 12px; }
+  .toc ol { padding-left: 0; list-style: none; }
+  .toc li { margin-bottom: 2px; }
+  .toc a {
+    display: block; padding: 5px 10px; border-radius: 4px;
+    color: var(--text); text-decoration: none; font-size: .875rem;
+    transition: background .15s;
+  }
+  .toc a:hover, .toc a.active { background: var(--blue-bg); color: var(--blue); }
+  .toc .toc-sub a { padding-left: 22px; font-size: .82rem; color: var(--muted); }
+  .content { flex: 1; padding: 36px 44px 80px; max-width: 880px; }
+  .section {
+    background: white; border-radius: 8px; border: 1px solid var(--border);
+    margin-bottom: 32px; overflow: hidden;
+  }
+  .section-header {
+    display: flex; align-items: center; gap: 14px;
+    padding: 18px 24px; border-bottom: 1px solid var(--border);
+    background: var(--gray);
+  }
+  .section-num {
+    width: 36px; height: 36px; border-radius: 50%;
+    background: var(--blue); color: white;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 1rem; flex-shrink: 0;
+  }
+  .section-num.green  { background: var(--green); }
+  .section-num.orange { background: var(--orange); }
+  .section-num.purple { background: var(--purple); }
+  .section-num.teal   { background: var(--teal); }
+  .section-header h2 { font-size: 1.15rem; font-weight: 700; }
+  .section-header .subtitle { font-size: .85rem; color: var(--muted); }
+  .section-body { padding: 24px; }
+  h3 { font-size: 1rem; font-weight: 700; margin: 22px 0 10px; color: var(--darkblue); }
+  h3:first-child { margin-top: 0; }
+  p  { margin-bottom: 12px; }
+  ol, ul { padding-left: 22px; margin-bottom: 14px; }
+  li { margin-bottom: 6px; }
+  li > ol, li > ul { margin-top: 6px; margin-bottom: 4px; }
+  /* Steps */
+  .steps { counter-reset: step; }
+  .step {
+    display: flex; gap: 16px; margin-bottom: 20px;
+    padding: 16px 18px; background: var(--gray); border-radius: 6px;
+    border-left: 4px solid var(--blue);
+  }
+  .step.green  { border-color: var(--green); }
+  .step.orange { border-color: var(--orange); }
+  .step.purple { border-color: var(--purple); }
+  .step.teal   { border-color: var(--teal); }
+  .step-num {
+    counter-increment: step;
+    min-width: 28px; height: 28px; border-radius: 50%;
+    background: var(--blue); color: white;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: .85rem; flex-shrink: 0;
+  }
+  .step.green  .step-num  { background: var(--green); }
+  .step.orange .step-num  { background: var(--orange); }
+  .step.purple .step-num  { background: var(--purple); }
+  .step.teal   .step-num  { background: var(--teal); }
+  .step-content { flex: 1; }
+  .step-content strong { display: block; font-size: .95rem; margin-bottom: 4px; }
+  .step-content p { margin-bottom: 6px; font-size: .9rem; color: var(--muted); }
+  .step-content ul { font-size: .9rem; color: var(--muted); }
+  /* Navigation breadcrumb */
+  .nav-path {
+    display: inline-flex; align-items: center; flex-wrap: wrap; gap: 4px;
+    background: var(--darkblue); color: white;
+    padding: 5px 12px; border-radius: 4px; font-size: .82rem;
+    font-family: "Segoe UI", monospace; margin: 8px 0 12px;
+  }
+  .nav-path span { opacity: .6; }
+  /* Code / copy boxes */
+  .code-box {
+    background: #1e1e1e; color: #d4d4d4;
+    border-radius: 6px; padding: 14px 16px;
+    font-family: "Cascadia Code", "Consolas", monospace;
+    font-size: .83rem; line-height: 1.6;
+    overflow-x: auto; margin: 10px 0;
+    white-space: pre;
+  }
+  .copy-box {
+    background: var(--blue-bg); border: 1px solid #c7e0f4;
+    border-radius: 6px; padding: 10px 14px;
+    font-family: "Cascadia Code", "Consolas", monospace;
+    font-size: .85rem; color: var(--darkblue); margin: 8px 0;
+    word-break: break-all;
+  }
+  /* Callouts */
+  .callout {
+    border-radius: 6px; padding: 14px 16px; margin: 14px 0;
+    border-left: 4px solid;
+    font-size: .9rem;
+  }
+  .callout.info    { background: var(--blue-bg);  border-color: var(--blue);   }
+  .callout.warn    { background: var(--yellow);   border-color: #d68000;       }
+  .callout.success { background: var(--green-bg); border-color: var(--green);  }
+  .callout.danger  { background: var(--red-bg);   border-color: var(--orange); }
+  .callout.teal    { background: var(--teal-bg);  border-color: var(--teal);   }
+  .callout strong  { display: block; margin-bottom: 4px; }
+  /* Value tables */
+  table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: .88rem; }
+  th {
+    background: var(--darkblue); color: white;
+    padding: 8px 12px; text-align: left; font-weight: 600;
+  }
+  td { padding: 8px 12px; border-bottom: 1px solid var(--border); }
+  tr:last-child td { border-bottom: none; }
+  tr:nth-child(even) td { background: var(--gray); }
+  .tag {
+    display: inline-block; border-radius: 12px; padding: 2px 10px;
+    font-size: .75rem; font-weight: 600;
+  }
+  .tag.blue   { background: var(--blue-bg);  color: var(--blue); }
+  .tag.green  { background: var(--green-bg); color: var(--green); }
+  .tag.orange { background: #fdebd7;         color: var(--orange); }
+  .tag.purple { background: #f4edf8;         color: var(--purple); }
+  .sol-card {
+    border: 1px solid var(--border); border-radius: 8px;
+    overflow: hidden; margin-bottom: 20px;
+  }
+  .sol-card-header {
+    padding: 14px 18px; display: flex; align-items: center; gap: 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  .sol-card-header.crm      { background: #e8f0fe; }
+  .sol-card-header.helpdesk { background: var(--teal-bg); }
+  .sol-icon {
+    width: 40px; height: 40px; border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.3rem;
+  }
+  .sol-icon.crm      { background: #4285f4; }
+  .sol-icon.helpdesk { background: var(--teal); }
+  .sol-card-body { padding: 16px 18px; font-size: .88rem; }
+  .sol-card-body ul { margin-bottom: 0; }
+  .env-grid {
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 10px; margin: 12px 0;
+  }
+  .env-card {
+    border: 1px solid var(--border); border-radius: 6px;
+    padding: 12px 14px; background: white;
+  }
+  .env-card .env-name { font-weight: 700; font-size: .9rem; }
+  .env-card .env-url  { font-size: .78rem; color: var(--muted); font-family: monospace; margin-top: 2px; }
+  .env-card .env-type { font-size: .75rem; margin-top: 6px; }
+  .checklist { list-style: none; padding: 0; }
+  .checklist li {
+    padding: 7px 10px 7px 34px; position: relative;
+    border-bottom: 1px solid var(--border); font-size: .9rem;
+  }
+  .checklist li:last-child { border-bottom: none; }
+  .checklist li::before {
+    content: "☐"; position: absolute; left: 10px;
+    color: var(--muted); font-size: 1rem;
+  }
+  .checklist li.done::before { content: "✅"; }
+  @media (max-width: 900px) {
+    .toc { display: none; }
+    .content { padding: 20px; }
+    .env-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <h1>🧪 End-to-End Pipeline Testing Guide</h1>
+  <p>Step-by-step instructions for provisioning Azure resources, Power Platform environments, and deploying sample solutions to fully test the GitHub Actions CI/CD pipeline — from zero to a passing pipeline run.</p>
+  <div>
+    <span class="badge">⏱ ~2–3 hours total</span>
+    <span class="badge">☁️ Azure</span>
+    <span class="badge">⚡ Power Platform</span>
+    <span class="badge">🐙 GitHub</span>
+    <span class="badge">🏗️ 2 Sample Solutions</span>
+  </div>
+</div>
+
+<div class="container">
+
+<!-- ── SIDEBAR ────────────────────────────────────────────────────────────── -->
+<nav class="toc">
+  <h3>Contents</h3>
+  <ol>
+    <li><a href="#overview">Overview &amp; Architecture</a></li>
+    <li><a href="#prereqs">Prerequisites</a></li>
+    <li><a href="#azure-app-reg">Azure App Registration</a>
+      <ul class="toc-sub">
+        <li><a href="#azure-app-reg">Create the App Registration</a></li>
+        <li><a href="#azure-app-reg">Add API Permissions</a></li>
+        <li><a href="#azure-app-reg">Configure OIDC</a></li>
+      </ul>
+    </li>
+    <li><a href="#azure-kv">Azure Key Vault</a>
+      <ul class="toc-sub">
+        <li><a href="#azure-kv">Create the Key Vault</a></li>
+        <li><a href="#azure-kv">Grant Access to the SPN</a></li>
+        <li><a href="#azure-kv">Add Secrets</a></li>
+      </ul>
+    </li>
+    <li><a href="#pp-environments">Power Platform Environments</a>
+      <ul class="toc-sub">
+        <li><a href="#pp-environments">Create 4 Test Environments</a></li>
+        <li><a href="#pp-app-users">Create Application Users</a></li>
+      </ul>
+    </li>
+    <li><a href="#github-config">GitHub Configuration</a>
+      <ul class="toc-sub">
+        <li><a href="#github-config">Repository Variables</a></li>
+        <li><a href="#github-config">Bootstrap Secret</a></li>
+        <li><a href="#github-config">Environments &amp; Protection</a></li>
+      </ul>
+    </li>
+    <li><a href="#sample-solutions">Sample Solutions</a>
+      <ul class="toc-sub">
+        <li><a href="#sample-solutions">ContosoCRM</a></li>
+        <li><a href="#sample-solutions">ContosoHelpDesk</a></li>
+        <li><a href="#sample-solutions">Configure Pipeline Matrix</a></li>
+      </ul>
+    </li>
+    <li><a href="#run-pipeline">Run the Pipeline</a>
+      <ul class="toc-sub">
+        <li><a href="#run-pipeline">First Run (mock mode)</a></li>
+        <li><a href="#run-pipeline">Full Live Run</a></li>
+      </ul>
+    </li>
+    <li><a href="#verify">Verify Results</a></li>
+    <li><a href="#troubleshooting">Troubleshooting</a></li>
+  </ol>
+</nav>
+
+<!-- ── CONTENT ─────────────────────────────────────────────────────────────── -->
+<main class="content">
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     SECTION 0 — Overview
+════════════════════════════════════════════════════════════════════════════ -->
+<div class="section" id="overview">
+  <div class="section-header">
+    <div class="section-num" style="background:#5c2d91">🗺️</div>
+    <div>
+      <h2>Overview &amp; What You're Building</h2>
+      <div class="subtitle">Understand the full test topology before you start</div>
+    </div>
+  </div>
+  <div class="section-body">
+    <p>By the end of this guide you will have a fully operational CI/CD pipeline that automatically builds, scans, and deploys two real Power Platform solutions through four environments. Here's the complete topology:</p>
+
+    <div class="env-grid">
+      <div class="env-card">
+        <div class="env-name">🔵 Dev (Source)</div>
+        <div class="env-url">your-org-dev.crm.dynamics.com</div>
+        <div class="env-type"><span class="tag blue">Sandbox</span> Used to export solution source. The pipeline reads from this environment when exporting config data.</div>
+      </div>
+      <div class="env-card">
+        <div class="env-name">🟡 Test / INTG</div>
+        <div class="env-url">your-org-intg.crm.dynamics.com</div>
+        <div class="env-type"><span class="tag orange">Sandbox</span> First automated deploy target. No approval required. Validates the managed solution imports cleanly.</div>
+      </div>
+      <div class="env-card">
+        <div class="env-name">🟠 UAT</div>
+        <div class="env-url">your-org-uat.crm.dynamics.com</div>
+        <div class="env-type"><span class="tag orange">Sandbox</span> Second deploy target. Manual approval required (you approve in GitHub). User acceptance testing.</div>
+      </div>
+      <div class="env-card">
+        <div class="env-name">🔴 Prod</div>
+        <div class="env-url">your-org-prod.crm.dynamics.com</div>
+        <div class="env-type"><span class="tag green">Production</span> Final target. Two-approver gate. On success the JFrog artifact is tagged <code>prodDeployed=true</code>.</div>
+      </div>
+    </div>
+
+    <h3>What the pipeline does end-to-end</h3>
+    <ol>
+      <li><strong>Build job</strong> — packs both solutions with PAC CLI, stamps the version from <code>Solution.xml</code>, runs Solution Checker (real scan, not mock), exports config data, and uploads the full package to JFrog Artifactory.</li>
+      <li><strong>Deploy DEV</strong> — downloads the managed ZIP from JFrog, imports it to the Dev environment, applies deployment settings, runs a smoke-test ping.</li>
+      <li><strong>Deploy INTG</strong> — same as Dev, auto-triggered.</li>
+      <li><strong>Deploy UAT</strong> — waits for your approval in GitHub before deploying.</li>
+      <li><strong>Deploy PROD</strong> — waits for approval, deploys, then tags the JFrog artifact with <code>prodDeployed=true;deployedDate=&lt;date&gt;</code>.</li>
+    </ol>
+
+    <div class="callout info">
+      <strong>💡 Start with mock_deploy=true</strong>
+      Once GitHub and Azure are wired up but before PP environments exist, run the pipeline with <code>mock_deploy: true</code>. All steps run as simulations — no real PAC CLI, no real imports. This lets you validate the workflow YAML syntax and GitHub configuration without needing any actual Power Platform environments.
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     SECTION 1 — Prerequisites
+════════════════════════════════════════════════════════════════════════════ -->
+<div class="section" id="prereqs">
+  <div class="section-header">
+    <div class="section-num" style="background:#605e5c">✅</div>
+    <div>
+      <h2>Prerequisites</h2>
+      <div class="subtitle">Make sure you have all of these before starting</div>
+    </div>
+  </div>
+  <div class="section-body">
+    <ul class="checklist">
+      <li>An <strong>Azure subscription</strong> where you have Owner or Contributor + User Access Administrator rights</li>
+      <li>A <strong>Microsoft 365 / Entra ID tenant</strong> — used for the App Registration (can be the same tenant as Azure)</li>
+      <li><strong>Power Platform Admin access</strong> — you need the Environment Admin or Global Admin role in the Power Platform Admin Center</li>
+      <li>A <strong>GitHub repository</strong> — the GHA-Dynamics repo you've been working on. You need Admin access to configure Environments and Secrets.</li>
+      <li><strong>JFrog Artifactory</strong> — either a cloud account at <code>jfrog.io</code> or an on-premise instance. A free cloud trial at <a href="https://jfrog.com/start-free" target="_blank">jfrog.com/start-free</a> is sufficient for testing. You need API key access and a Generic repository.</li>
+      <li><strong>PAC CLI installed locally</strong> (optional but helpful) — <code>winget install Microsoft.PowerPlatform.CLI</code> — lets you test packing solutions before pushing to GitHub.</li>
+      <li>The <strong>GHA-Core repo</strong> cloned and pushed to your GitHub org alongside GHA-Dynamics.</li>
+    </ul>
+
+    <div class="callout warn">
+      <strong>⚠️ Use Sandbox environments for testing — not Production licenses</strong>
+      Power Platform Sandbox environments consume capacity from your tenant. For isolated testing you can create <strong>Trial environments</strong> (30-day free, no license needed) in the Power Platform Admin Center. Use Trial type for Dev, INTG, and UAT — reserve Sandbox or Production type for the Prod environment.
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     SECTION 2 — Azure App Registration
+════════════════════════════════════════════════════════════════════════════ -->
+<div class="section" id="azure-app-reg">
+  <div class="section-header">
+    <div class="section-num">1</div>
+    <div>
+      <h2>Create the Azure App Registration</h2>
+      <div class="subtitle">The identity that GitHub Actions uses to talk to Azure and Power Platform</div>
+    </div>
+  </div>
+  <div class="section-body">
+    <p>The App Registration is a service principal (SPN) in Entra ID. The pipeline uses it in two ways: (1) OIDC login to Azure to fetch secrets from Key Vault, and (2) as the identity imported into each Power Platform environment to perform solution imports.</p>
+
+    <div class="callout info">
+      <strong>💡 No stored secrets — OIDC only</strong>
+      We use Workload Identity Federation (OIDC) so GitHub Actions can authenticate to Azure without storing a client secret anywhere. GitHub presents a short-lived JWT token; Azure validates it against a Federated Identity Credential on the App Registration. Nothing to rotate.
+    </div>
+
+    <h3>Step 1 — Create the App Registration</h3>
+    <div class="nav-path">Azure Portal <span>›</span> Entra ID <span>›</span> App registrations <span>›</span> New registration</div>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-content">
+          <strong>Name</strong>
+          <p>Enter a descriptive name, e.g. <code>sp-powerplatform-cicd-gha</code>. This will be visible in audit logs.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-content">
+          <strong>Supported account types</strong>
+          <p>Select <strong>Accounts in this organizational directory only (Single tenant)</strong>.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-content">
+          <strong>Redirect URI</strong>
+          <p>Leave blank. Click <strong>Register</strong>.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">4</div>
+        <div class="step-content">
+          <strong>Copy the IDs — you'll need these later</strong>
+          <p>On the Overview page, copy and save these three values:</p>
+          <ul>
+            <li><strong>Application (client) ID</strong> → this becomes <code>AZURE_CLIENT_ID</code> and <code>PP_APP_ID</code> in Key Vault</li>
+            <li><strong>Directory (tenant) ID</strong> → this becomes <code>AZURE_TENANT_ID</code> and <code>PP_TENANT_ID</code> in Key Vault</li>
+            <li><strong>Object ID</strong> → needed when creating the PP Application User</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <h3>Step 2 — Add API Permissions</h3>
+    <div class="nav-path">App Registration <span>›</span> API permissions <span>›</span> Add a permission</div>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">5</div>
+        <div class="step-content">
+          <strong>Add Dynamics CRM permission</strong>
+          <p>Click <strong>Add a permission → APIs my organization uses</strong>. Search for <strong>Dataverse</strong> (or <strong>Common Data Service</strong>). Select it, choose <strong>Delegated permissions</strong>, and check <code>user_impersonation</code>. Click <strong>Add permissions</strong>.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">6</div>
+        <div class="step-content">
+          <strong>Grant admin consent</strong>
+          <p>Click <strong>Grant admin consent for [Your Tenant]</strong> and confirm. The permission status should show a green checkmark — <em>Granted for [Tenant]</em>.</p>
+        </div>
+      </div>
+    </div>
+
+    <h3>Step 3 — Create a Client Secret (for Power Platform auth only)</h3>
+    <div class="nav-path">App Registration <span>›</span> Certificates &amp; secrets <span>›</span> New client secret</div>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">7</div>
+        <div class="step-content">
+          <strong>Create the secret</strong>
+          <p>Add a description like <code>pp-cicd-secret</code>, set expiry to <strong>24 months</strong>, and click <strong>Add</strong>.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">8</div>
+        <div class="step-content">
+          <strong>⚠️ Copy the secret VALUE immediately</strong>
+          <p>The secret value is only shown once. Copy it now and paste it somewhere safe (you'll add it to Key Vault in the next section). The format looks like: <code>abc123~XYZ.something.long_string</code></p>
+        </div>
+      </div>
+    </div>
+
+    <h3>Step 4 — Configure OIDC Federated Identity Credential</h3>
+    <div class="nav-path">App Registration <span>›</span> Certificates &amp; secrets <span>›</span> Federated credentials <span>›</span> Add credential</div>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">9</div>
+        <div class="step-content">
+          <strong>Select scenario: GitHub Actions deploying Azure resources</strong>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">10</div>
+        <div class="step-content">
+          <strong>Fill in the GitHub details</strong>
+          <table>
+            <tr><th>Field</th><th>Value</th></tr>
+            <tr><td>Organization</td><td>Your GitHub org or username (e.g. <code>contoso-corp</code>)</td></tr>
+            <tr><td>Repository</td><td><code>GHA-Dynamics</code></td></tr>
+            <tr><td>Entity type</td><td><strong>Branch</strong></td></tr>
+            <tr><td>Branch</td><td><code>main</code></td></tr>
+            <tr><td>Name</td><td><code>gha-dynamics-main</code></td></tr>
+          </table>
+          <p>Click <strong>Add</strong>. Repeat for any other branches (e.g. <code>release/*</code>) that will trigger the pipeline.</p>
+        </div>
+      </div>
+    </div>
+
+    <h3>Step 5 — Assign Azure Role to the SPN</h3>
+    <p>The SPN needs permission to read secrets from Key Vault. Assign it at the Key Vault resource level (done in the next section), not at subscription level.</p>
+
+    <div class="callout success">
+      <strong>✅ App Registration complete</strong>
+      You now have a Client ID, Tenant ID, Object ID, and Client Secret. Keep them — you'll add them to Key Vault next.
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     SECTION 3 — Azure Key Vault
+════════════════════════════════════════════════════════════════════════════ -->
+<div class="section" id="azure-kv">
+  <div class="section-header">
+    <div class="section-num">2</div>
+    <div>
+      <h2>Create Azure Key Vault &amp; Add Secrets</h2>
+      <div class="subtitle">Central secrets store — the pipeline fetches all credentials from here at runtime</div>
+    </div>
+  </div>
+  <div class="section-body">
+
+    <h3>Step 1 — Create the Key Vault</h3>
+    <div class="nav-path">Azure Portal <span>›</span> Key vaults <span>›</span> Create</div>
+    <div class="steps">
+      <div class="step green">
+        <div class="step-num">1</div>
+        <div class="step-content">
+          <strong>Basics</strong>
+          <table>
+            <tr><th>Field</th><th>Value</th></tr>
+            <tr><td>Subscription</td><td>Your test subscription</td></tr>
+            <tr><td>Resource group</td><td>Create new: <code>rg-pp-cicd-test</code></td></tr>
+            <tr><td>Key vault name</td><td><code>kv-pp-cicd-test</code> (must be globally unique)</td></tr>
+            <tr><td>Region</td><td>Any — pick the closest region</td></tr>
+            <tr><td>Pricing tier</td><td><strong>Standard</strong></td></tr>
+          </table>
+        </div>
+      </div>
+      <div class="step green">
+        <div class="step-num">2</div>
+        <div class="step-content">
+          <strong>Access configuration — use Azure RBAC</strong>
+          <p>On the <strong>Access configuration</strong> tab, select <strong>Azure role-based access control</strong>. This is more secure than Vault Access Policies and works well with OIDC. Click <strong>Review + create → Create</strong>.</p>
+        </div>
+      </div>
+    </div>
+
+    <h3>Step 2 — Grant the SPN access to the Key Vault</h3>
+    <div class="nav-path">Key Vault <span>›</span> Access control (IAM) <span>›</span> Add role assignment</div>
+    <div class="steps">
+      <div class="step green">
+        <div class="step-num">3</div>
+        <div class="step-content">
+          <strong>Assign Key Vault Secrets User role</strong>
+          <p>Role: <strong>Key Vault Secrets User</strong>. Members: search for the App Registration name (<code>sp-powerplatform-cicd-gha</code>). Click <strong>Review + assign</strong>.</p>
+          <p>This grants the SPN read-only access to secrets — the minimum needed for the pipeline.</p>
+        </div>
+      </div>
+    </div>
+
+    <h3>Step 3 — Add the pipeline secrets</h3>
+    <div class="nav-path">Key Vault <span>›</span> Secrets <span>›</span> Generate/Import</div>
+    <p>Create each of the following secrets. Use <strong>Manual</strong> upload type. The <strong>Name</strong> column is the exact secret name the pipeline expects.</p>
+
+    <table>
+      <tr>
+        <th>Secret Name (exact)</th>
+        <th>Value to paste</th>
+        <th>Notes</th>
+      </tr>
+      <tr>
+        <td><code>pp-app-id</code></td>
+        <td>The Application (client) ID from Step 4 above</td>
+        <td>GUID format: <code>xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx</code></td>
+      </tr>
+      <tr>
+        <td><code>pp-client-secret</code></td>
+        <td>The client secret VALUE you copied in Step 8</td>
+        <td>The long random string — not the secret ID</td>
+      </tr>
+      <tr>
+        <td><code>pp-tenant-id</code></td>
+        <td>The Directory (tenant) ID from Step 4</td>
+        <td>GUID format</td>
+      </tr>
+      <tr>
+        <td><code>jfrog-api-key</code></td>
+        <td>Your JFrog API key (from JFrog → User profile → Generate API key)</td>
+        <td>If you don't have JFrog yet, enter a placeholder and update later</td>
+      </tr>
+    </table>
+
+    <div class="callout warn">
+      <strong>⚠️ Secret names are case-sensitive and must match exactly</strong>
+      The pipeline script looks for <code>pp-app-id</code>, <code>pp-client-secret</code>, <code>pp-tenant-id</code>, and <code>jfrog-api-key</code> — lowercase with hyphens. Any variation will cause the Fetch Secrets step to fail with an AKV 404 error.
+    </div>
+
+    <div class="callout success">
+      <strong>✅ Key Vault complete</strong>
+      Note down the Key Vault name (e.g. <code>kv-pp-cicd-test</code>) — you'll add it to GitHub Variables in Section 5.
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     SECTION 4 — Power Platform Environments
+════════════════════════════════════════════════════════════════════════════ -->
+<div class="section" id="pp-environments">
+  <div class="section-header">
+    <div class="section-num orange">3</div>
+    <div>
+      <h2>Create Power Platform Environments</h2>
+      <div class="subtitle">Four environments — Dev, Test (INTG), UAT, Prod — plus Application Users in each</div>
+    </div>
+  </div>
+  <div class="section-body">
+
+    <h3>Step 1 — Create the four environments</h3>
+    <div class="nav-path">Power Platform Admin Center <span>›</span> admin.powerplatform.microsoft.com <span>›</span> Environments <span>›</span> New</div>
+
+    <p>Create each environment with the settings below. For testing, use <strong>Trial</strong> type to avoid consuming production capacity. Each takes 2–5 minutes to provision.</p>
+
+    <table>
+      <tr>
+        <th>Name</th>
+        <th>Type</th>
+        <th>Purpose</th>
+        <th>Dataverse</th>
+        <th>Suggested URL slug</th>
+      </tr>
+      <tr>
+        <td>Contoso Dev</td>
+        <td><span class="tag blue">Trial / Sandbox</span></td>
+        <td>Source environment (export config data from here)</td>
+        <td>✅ Enable</td>
+        <td><code>contoso-dev</code></td>
+      </tr>
+      <tr>
+        <td>Contoso INTG</td>
+        <td><span class="tag blue">Trial / Sandbox</span></td>
+        <td>First automated deploy target</td>
+        <td>✅ Enable</td>
+        <td><code>contoso-intg</code></td>
+      </tr>
+      <tr>
+        <td>Contoso UAT</td>
+        <td><span class="tag orange">Trial / Sandbox</span></td>
+        <td>User acceptance, manual-approval gate</td>
+        <td>✅ Enable</td>
+        <td><code>contoso-uat</code></td>
+      </tr>
+      <tr>
+        <td>Contoso Prod</td>
+        <td><span class="tag green">Production / Sandbox</span></td>
+        <td>Production target, two-approver gate</td>
+        <td>✅ Enable</td>
+        <td><code>contoso-prod</code></td>
+      </tr>
+    </table>
+
+    <div class="callout info">
+      <strong>💡 How to create each environment</strong>
+      In the New Environment wizard: (1) Set the name and type. (2) Turn on <strong>Add a Dataverse data store</strong>. (3) Set Language = English, Currency = USD (or your currency). (4) Leave the URL as suggested or enter your slug. (5) Click <strong>Save</strong> and wait for provisioning to complete before creating the next one.
+    </div>
+
+    <h3>Step 2 — Record the environment URLs</h3>
+    <p>After each environment is provisioned, click into it in the Admin Center and copy the <strong>Environment URL</strong>. It looks like:</p>
+    <div class="copy-box">https://contoso-dev.crm.dynamics.com</div>
+    <p>You need all four URLs — they go into <code>project-vars.yml</code> and GitHub Variables in the next steps.</p>
+
+    <h3 id="pp-app-users">Step 3 — Create the Application User in each environment</h3>
+    <p>The Application User is how the App Registration (SPN) gets permission to import solutions in each environment. You must create it separately in all four environments.</p>
+
+    <div class="nav-path">Power Platform Admin Center <span>›</span> Environments <span>›</span> [Select Environment] <span>›</span> Settings <span>›</span> Users + permissions <span>›</span> Application users <span>›</span> New app user</div>
+
+    <div class="steps">
+      <div class="step orange">
+        <div class="step-num">1</div>
+        <div class="step-content">
+          <strong>Select the App Registration</strong>
+          <p>Click <strong>Add an app</strong> and search for your App Registration name (<code>sp-powerplatform-cicd-gha</code>). Select it and click <strong>Add</strong>.</p>
+        </div>
+      </div>
+      <div class="step orange">
+        <div class="step-num">2</div>
+        <div class="step-content">
+          <strong>Set the Business Unit</strong>
+          <p>Select the root business unit (the top-level one, usually the name of your org).</p>
+        </div>
+      </div>
+      <div class="step orange">
+        <div class="step-num">3</div>
+        <div class="step-content">
+          <strong>Assign the System Administrator security role</strong>
+          <p>Under <strong>Security roles</strong>, click the edit (pencil) icon. Select <strong>System Administrator</strong>. This gives the SPN full access to import and manage solutions.</p>
+        </div>
+      </div>
+      <div class="step orange">
+        <div class="step-num">4</div>
+        <div class="step-content">
+          <strong>Click Create and repeat for all four environments</strong>
+          <p>Do this for Dev, INTG, UAT, and Prod. Each takes about 30 seconds. The Application User status should show <strong>Enabled</strong>.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="callout danger">
+      <strong>❌ Common mistake — wrong identity added</strong>
+      Make sure you add the App Registration (service principal), not a regular user. The Application Users page only accepts AAD app registrations. If you search and don't find it, ensure the App Registration exists in the same tenant as your Power Platform environments.
+    </div>
+
+    <div class="callout success">
+      <strong>✅ Power Platform setup complete</strong>
+      You now have 4 environments, each with the SPN registered as a System Administrator Application User. The pipeline can now import solutions into all four environments.
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     SECTION 5 — GitHub Configuration
+════════════════════════════════════════════════════════════════════════════ -->
+<div class="section" id="github-config">
+  <div class="section-header">
+    <div class="section-num purple">4</div>
+    <div>
+      <h2>Configure GitHub Repository</h2>
+      <div class="subtitle">Variables, the bootstrap secret, and environment protection rules</div>
+    </div>
+  </div>
+  <div class="section-body">
+
+    <h3>Step 1 — Add Repository Variables (non-sensitive)</h3>
+    <div class="nav-path">GitHub Repository <span>›</span> Settings <span>›</span> Secrets and variables <span>›</span> Actions <span>›</span> Variables tab <span>›</span> New repository variable</div>
+
+    <p>These are non-sensitive resource identifiers — safe to store as Variables (not Secrets). Add each one:</p>
+
+    <table>
+      <tr>
+        <th>Variable Name</th>
+        <th>Value</th>
+        <th>Where to get it</th>
+      </tr>
+      <tr>
+        <td><code>AZURE_CLIENT_ID</code></td>
+        <td>Application (client) ID of the App Registration</td>
+        <td>Entra ID → App Registrations → your app → Overview</td>
+      </tr>
+      <tr>
+        <td><code>AZURE_TENANT_ID</code></td>
+        <td>Directory (tenant) ID</td>
+        <td>Same page as above</td>
+      </tr>
+      <tr>
+        <td><code>AZURE_SUBSCRIPTION_ID</code></td>
+        <td>Your Azure subscription ID</td>
+        <td>Azure Portal → Subscriptions</td>
+      </tr>
+      <tr>
+        <td><code>AZURE_KEY_VAULT_NAME</code></td>
+        <td><code>kv-pp-cicd-test</code></td>
+        <td>The Key Vault name you created in Section 2</td>
+      </tr>
+      <tr>
+        <td><code>JFROG_URL</code></td>
+        <td><code>https://your-company.jfrog.io/artifactory</code></td>
+        <td>JFrog → Settings → Platform → Artifactory base URL</td>
+      </tr>
+      <tr>
+        <td><code>JFROG_REPO</code></td>
+        <td><code>powerplatform-solutions</code></td>
+        <td>The Generic repository you created in JFrog</td>
+      </tr>
+    </table>
+
+    <h3>Step 2 — Add the Bootstrap Secret</h3>
+    <div class="nav-path">GitHub Repository <span>›</span> Settings <span>›</span> Secrets and variables <span>›</span> Actions <span>›</span> Secrets tab <span>›</span> New repository secret</div>
+
+    <table>
+      <tr>
+        <th>Secret Name</th>
+        <th>Value</th>
+        <th>Purpose</th>
+      </tr>
+      <tr>
+        <td><code>GHA_CORE_PAT</code></td>
+        <td>A GitHub Personal Access Token with <code>repo</code> scope</td>
+        <td>Used to checkout the GHA-Core shared scripts repository. This is the only secret stored directly in GitHub — everything else comes from Azure Key Vault.</td>
+      </tr>
+    </table>
+
+    <div class="callout info">
+      <strong>💡 How to create the PAT</strong>
+      Go to GitHub → Profile → Settings → Developer settings → Personal access tokens → Tokens (classic) → Generate new token. Set expiry to 90 days (for testing) or 1 year. Check the <strong>repo</strong> scope. Copy the token immediately and paste it as the <code>GHA_CORE_PAT</code> secret value.
+    </div>
+
+    <h3>Step 3 — Create GitHub Environments with Protection Rules</h3>
+    <div class="nav-path">GitHub Repository <span>›</span> Settings <span>›</span> Environments <span>›</span> New environment</div>
+
+    <p>Create four environments. The name must match exactly what's used in <code>release-pipeline.yml</code>.</p>
+
+    <table>
+      <tr>
+        <th>Environment Name</th>
+        <th>Required Reviewers</th>
+        <th>Wait Timer</th>
+        <th>Notes</th>
+      </tr>
+      <tr>
+        <td><code>dev</code></td>
+        <td>None</td>
+        <td>None</td>
+        <td>Auto-deploy after build passes</td>
+      </tr>
+      <tr>
+        <td><code>intg</code></td>
+        <td>None</td>
+        <td>None</td>
+        <td>Auto-deploy after Dev passes</td>
+      </tr>
+      <tr>
+        <td><code>uat</code></td>
+        <td><strong>Add yourself</strong> as reviewer</td>
+        <td>Optional: 0 min</td>
+        <td>Manual approval gate — you'll get a GitHub notification to approve</td>
+      </tr>
+      <tr>
+        <td><code>prod</code></td>
+        <td><strong>Add 2 reviewers</strong> (yourself + a colleague, or yourself twice)</td>
+        <td>Optional: 5 min</td>
+        <td>Two-person approval for production. Wait timer gives a last-chance cancel window.</td>
+      </tr>
+    </table>
+
+    <div class="steps" style="margin-top:16px">
+      <div class="step purple">
+        <div class="step-num">1</div>
+        <div class="step-content">
+          <strong>For each environment: click New environment → type the name → click Configure environment</strong>
+          <p>Then under <strong>Deployment protection rules</strong>, check <strong>Required reviewers</strong> for UAT and Prod, and add the reviewers.</p>
+        </div>
+      </div>
+      <div class="step purple">
+        <div class="step-num">2</div>
+        <div class="step-content">
+          <strong>For the <code>prod</code> environment: add deployment branches restriction</strong>
+          <p>Under <strong>Deployment branches and tags</strong>, click <strong>Add deployment branch rule</strong>. Select <strong>Selected branches</strong> and add <code>main</code>. This prevents anyone from deploying to Prod from a feature branch.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="callout success">
+      <strong>✅ GitHub configuration complete</strong>
+      The repository now has 6 variables, 1 secret, and 4 environments with appropriate protection rules.
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     SECTION 6 — Sample Solutions
+════════════════════════════════════════════════════════════════════════════ -->
+<div class="section" id="sample-solutions">
+  <div class="section-header">
+    <div class="section-num teal">5</div>
+    <div>
+      <h2>Sample Solutions — What's Already in the Repo</h2>
+      <div class="subtitle">Two real Power Platform solutions created and ready to deploy</div>
+    </div>
+  </div>
+  <div class="section-body">
+    <p>The following two solutions are already committed to <code>src/solutions/</code> in your GHA-Dynamics repository. They follow the same format as the existing CoreSolution/ExtensionA/ExtensionB stubs but contain real component definitions — custom tables, environment variables, security roles, and Power Automate flows.</p>
+
+    <div class="sol-card">
+      <div class="sol-card-header crm">
+        <div class="sol-icon crm">📊</div>
+        <div>
+          <div style="font-weight:700;font-size:1rem">ContosoCRM</div>
+          <div style="font-size:.82rem;color:#555">Sales &amp; Opportunity Tracking — <code>src/solutions/ContosoCRM/</code></div>
+        </div>
+        <span class="tag blue" style="margin-left:auto">v1.0.0.0</span>
+      </div>
+      <div class="sol-card-body">
+        <table>
+          <tr><th>Component</th><th>Schema Name</th><th>Description</th></tr>
+          <tr><td>📋 Table</td><td><code>new_Opportunity</code></td><td>Sales opportunities with stage, value, close date, probability, account lookup</td></tr>
+          <tr><td>📋 Table</td><td><code>new_Lead</code></td><td>Inbound leads with full name, email, company, source, status</td></tr>
+          <tr><td>⚙️ Env Variable</td><td><code>new_CrmApiBaseUrl</code></td><td>External CRM API URL — differs per environment (dev/test/prod)</td></tr>
+          <tr><td>⚙️ Env Variable</td><td><code>new_MaxOpportunityAgeDays</code></td><td>Stale opportunity threshold in days (30 in Dev, 90 in Prod)</td></tr>
+          <tr><td>🔐 Security Role</td><td><code>new_SalesAgent</code></td><td>Local access to Opportunities/Leads, read-only Accounts/Contacts</td></tr>
+          <tr><td>⚡ Flow</td><td><code>new_NotifyOnOpportunityWon</code></td><td>Sends email to sales team when Opportunity stage → Closed Won</td></tr>
+        </table>
+        <div class="callout teal" style="margin-top:14px">
+          <strong>Config data export:</strong> Uses <code>config/ContosoCRM/data-schema.xml</code> to export seed lead records tagged with Source=Event. Deployment settings are in <code>deployment-settings/{env}/ContosoCRM.json</code>.
+        </div>
+      </div>
+    </div>
+
+    <div class="sol-card">
+      <div class="sol-card-header helpdesk">
+        <div class="sol-icon helpdesk">🎫</div>
+        <div>
+          <div style="font-weight:700;font-size:1rem">ContosoHelpDesk</div>
+          <div style="font-size:.82rem;color:#555">IT Support Ticketing — <code>src/solutions/ContosoHelpDesk/</code></div>
+        </div>
+        <span class="tag green" style="margin-left:auto">v1.0.0.0</span>
+      </div>
+      <div class="sol-card-body">
+        <table>
+          <tr><th>Component</th><th>Schema Name</th><th>Description</th></tr>
+          <tr><td>📋 Table</td><td><code>new_Ticket</code></td><td>Support tickets with title, description, priority (Low–Critical), status, category, agent/contact lookups, SLA breach flag</td></tr>
+          <tr><td>⚙️ Env Variable</td><td><code>new_SlaResponseHours</code></td><td>First-response SLA in hours (24 in Dev, 4 in Prod)</td></tr>
+          <tr><td>⚙️ Env Variable</td><td><code>new_EscalationEmail</code></td><td>IT manager email for Critical ticket escalations (differs per env)</td></tr>
+          <tr><td>⚙️ Env Variable</td><td><code>new_AutoAssignEnabled</code></td><td>Boolean — auto-assign off in Dev/INTG to avoid noise, on in UAT/Prod</td></tr>
+          <tr><td>🔐 Security Role</td><td><code>new_SupportAgent</code></td><td>Create/read/write tickets, read/write contacts. No delete.</td></tr>
+          <tr><td>⚡ Flow</td><td><code>new_AutoAssignTicket</code></td><td>Assigns new tickets to the agent with fewest open tickets and notifies them by email</td></tr>
+        </table>
+        <div class="callout teal" style="margin-top:14px">
+          <strong>Config data export:</strong> Uses <code>config/ContosoHelpDesk/data-schema.xml</code> to export reference closed tickets. Deployment settings vary the SLA hours, escalation email, and auto-assign flag across environments.
+        </div>
+      </div>
+    </div>
+
+    <h3>Step — Update project-vars.yml with real environment URLs</h3>
+    <p>Open <code>.github/config/project-vars.yml</code> in your editor and replace the placeholder URLs with the actual environment URLs you copied in Section 3:</p>
+    <div class="code-box">variables:
+  PP_DEV_URL:  "https://contoso-dev.crm.dynamics.com"
+  PP_INTG_URL: "https://contoso-intg.crm.dynamics.com"
+  PP_UAT_URL:  "https://contoso-uat.crm.dynamics.com"
+  PP_PERF_URL: "https://contoso-uat.crm.dynamics.com"   # reuse UAT for perf in testing
+  PP_PROD_URL: "https://contoso-prod.crm.dynamics.com"
+  JFROG_URL:   "https://your-company.jfrog.io/artifactory"</div>
+
+    <h3>Step — Configure the release-pipeline.yml matrix</h3>
+    <p>Open <code>.github/workflows/release-pipeline.yml</code> and update the solution matrix to point to the two sample solutions:</p>
+    <div class="code-box">jobs:
+  setup:
+    ...
+    outputs:
+      matrix: |
+        {
+          "include": [
+            {
+              "solution": "ContosoCRM",
+              "source_folder": "src/solutions/ContosoCRM",
+              "data_schema":   "config/ContosoCRM/data-schema.xml",
+              "source_env":    "${{ vars.PP_DEV_URL }}"
+            },
+            {
+              "solution": "ContosoHelpDesk",
+              "source_folder": "src/solutions/ContosoHelpDesk",
+              "data_schema":   "config/ContosoHelpDesk/data-schema.xml",
+              "source_env":    "${{ vars.PP_DEV_URL }}"
+            }
+          ]
+        }</div>
+
+    <div class="callout warn">
+      <strong>⚠️ Replace YOUR_ORG placeholder</strong>
+      Both GHA-Dynamics and GHA-Core workflow files contain <code>YOUR_ORG/GHA-Core</code> references. Replace <code>YOUR_ORG</code> with your actual GitHub organization name (or username for personal repos) before pushing. Run this command from the GHA-Dynamics folder:
+      <div class="code-box">grep -r "YOUR_ORG" .github/ --include="*.yml" -l</div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     SECTION 7 — Run the Pipeline
+════════════════════════════════════════════════════════════════════════════ -->
+<div class="section" id="run-pipeline">
+  <div class="section-header">
+    <div class="section-num">6</div>
+    <div>
+      <h2>Run the Pipeline</h2>
+      <div class="subtitle">First a mock run to validate wiring, then a full live run</div>
+    </div>
+  </div>
+  <div class="section-body">
+
+    <h3>Phase 1 — Mock Run (validate GitHub wiring first)</h3>
+    <p>Run with <code>mock_deploy: true</code> first. This skips PAC CLI, Power Platform connections, and JFrog network calls — everything runs as a simulation. If it passes, your GitHub YAML, variables, secrets, and environment names are all correct.</p>
+
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-content">
+          <strong>Trigger a manual workflow run</strong>
+          <p>Go to your GitHub repository → Actions tab → select <strong>release-pipeline</strong> → click <strong>Run workflow</strong> (top-right dropdown).</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-content">
+          <strong>Set inputs for the mock run</strong>
+          <table>
+            <tr><th>Input</th><th>Value for mock</th></tr>
+            <tr><td>mock_deploy</td><td><strong>true</strong></td></tr>
+            <tr><td>enable_jfrog_upload</td><td>true (JFrog will be simulated)</td></tr>
+          </table>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-content">
+          <strong>Click Run workflow and watch the run</strong>
+          <p>You should see the following jobs appear: <code>setup</code> → <code>build (ContosoCRM)</code> and <code>build (ContosoHelpDesk)</code> in parallel → <code>deploy-dev</code> for each → <code>deploy-intg</code> → (pending approval) <code>deploy-uat</code>.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">4</div>
+        <div class="step-content">
+          <strong>Approve the UAT deployment when prompted</strong>
+          <p>You'll get a GitHub notification. Click into the workflow run → click <strong>Review deployments</strong> → check <code>uat</code> → click <strong>Approve and deploy</strong>.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">5</div>
+        <div class="step-content">
+          <strong>Verify all stages pass ✅</strong>
+          <p>The mock run should complete fully green. The JFrog tag step is skipped in mock mode (by design). Check the GitHub Step Summary for the Build Results table — it should show 🧪 Simulated for all rows.</p>
+        </div>
+      </div>
+    </div>
+
+    <h3>Phase 2 — Full Live Run</h3>
+
+    <div class="callout warn">
+      <strong>⚠️ Prerequisite checklist before live run</strong>
+      <ul style="margin-top:6px">
+        <li>All four PP environments are provisioned and Application Users created ✅</li>
+        <li>Key Vault has all 4 secrets (<code>pp-app-id</code>, <code>pp-client-secret</code>, <code>pp-tenant-id</code>, <code>jfrog-api-key</code>) ✅</li>
+        <li>GitHub has all 6 variables and <code>GHA_CORE_PAT</code> secret ✅</li>
+        <li><code>project-vars.yml</code> has real environment URLs ✅</li>
+        <li>Mock run passed ✅</li>
+      </ul>
+    </div>
+
+    <div class="steps">
+      <div class="step green">
+        <div class="step-num">1</div>
+        <div class="step-content">
+          <strong>Trigger Run workflow with mock_deploy = false</strong>
+          <p>Actions → release-pipeline → Run workflow → set <strong>mock_deploy: false</strong> → Run workflow.</p>
+        </div>
+      </div>
+      <div class="step green">
+        <div class="step-num">2</div>
+        <div class="step-content">
+          <strong>Watch the Pre-flight Validation step</strong>
+          <p>This is Step 2 in the Build job. It should print a validation report across 5 sections. If any section shows ❌, the build fails here — before any expensive operations run. Fix the reported issues and re-run.</p>
+        </div>
+      </div>
+      <div class="step green">
+        <div class="step-num">3</div>
+        <div class="step-content">
+          <strong>Watch Solution Checker run (takes 3–10 minutes)</strong>
+          <p>For a real run, the Solution Checker submits the packed solution to the Microsoft Power Platform analysis service. It will pass for these sample solutions (no deprecated APIs, no hard-coded URLs, no XRM SDK violations).</p>
+        </div>
+      </div>
+      <div class="step green">
+        <div class="step-num">4</div>
+        <div class="step-content">
+          <strong>Watch the JFrog upload step</strong>
+          <p>After Solution Checker passes, the pipeline uploads the managed ZIP + unmanaged ZIP + SARIF report + config ZIP as a single package to JFrog. You can verify in your JFrog UI under the <code>powerplatform-solutions</code> repository.</p>
+        </div>
+      </div>
+      <div class="step green">
+        <div class="step-num">5</div>
+        <div class="step-content">
+          <strong>Watch deployments to Dev and INTG (automatic)</strong>
+          <p>Each deploy job downloads the managed ZIP from JFrog, applies the deployment settings JSON for that environment, and imports the solution into Power Platform. Check in the PP Admin Center → Environments → Solutions — both ContosoCRM and ContosoHelpDesk should appear as <em>Installed</em>.</p>
+        </div>
+      </div>
+      <div class="step green">
+        <div class="step-num">6</div>
+        <div class="step-content">
+          <strong>Approve UAT deployment</strong>
+          <p>GitHub sends you an email notification when the UAT deployment is waiting. Click <strong>Review deployments</strong> in the Actions run → approve. The deployment runs and the solution is imported into the UAT environment.</p>
+        </div>
+      </div>
+      <div class="step green">
+        <div class="step-num">7</div>
+        <div class="step-content">
+          <strong>Approve Prod deployment and watch JFrog tagging</strong>
+          <p>Same approval flow for Prod (requires 2 approvers if configured that way). After Prod succeeds, the <code>jfrog-tag-prod</code> job runs automatically and tags the artifact with <code>prodDeployed=true;deployedDate=YYYY-MM-DD</code> in JFrog.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     SECTION 8 — Verify Results
+════════════════════════════════════════════════════════════════════════════ -->
+<div class="section" id="verify">
+  <div class="section-header">
+    <div class="section-num green">7</div>
+    <div>
+      <h2>Verify Results</h2>
+      <div class="subtitle">How to confirm everything deployed correctly</div>
+    </div>
+  </div>
+  <div class="section-body">
+
+    <h3>In Power Platform — check each environment</h3>
+    <div class="nav-path">Power Platform Admin Center <span>›</span> Environments <span>›</span> [Environment] <span>›</span> Solutions</div>
+    <p>For each of the 4 environments, you should see:</p>
+    <ul>
+      <li><strong>ContosoCRM</strong> — version 1.0.0.0 — Status: <em>Installed</em> — Type: <em>Managed</em></li>
+      <li><strong>ContosoHelpDesk</strong> — version 1.0.0.0 — Status: <em>Installed</em> — Type: <em>Managed</em></li>
+    </ul>
+
+    <h3>Verify environment variables were applied correctly</h3>
+    <div class="nav-path">make.powerapps.com <span>›</span> [Select environment] <span>›</span> Solutions <span>›</span> ContosoCRM <span>›</span> Environment variables</div>
+    <p>Check that environment variable values match the deployment settings for each environment:</p>
+    <table>
+      <tr><th>Environment Variable</th><th>Dev</th><th>INTG</th><th>UAT</th><th>Prod</th></tr>
+      <tr><td><code>new_CrmApiBaseUrl</code></td><td>crm-api-dev</td><td>crm-api-test</td><td>crm-api-uat</td><td>crm-api (no suffix)</td></tr>
+      <tr><td><code>new_MaxOpportunityAgeDays</code></td><td>30</td><td>60</td><td>90</td><td>90</td></tr>
+      <tr><td><code>new_SlaResponseHours</code></td><td>24</td><td>8</td><td>4</td><td>4</td></tr>
+      <tr><td><code>new_AutoAssignEnabled</code></td><td>false</td><td>false</td><td>true</td><td>true</td></tr>
+    </table>
+
+    <h3>Verify the JFrog artifact and tag</h3>
+    <div class="nav-path">JFrog UI <span>›</span> Artifactory <span>›</span> powerplatform-solutions <span>›</span> GHA-Dynamics <span>›</span> ContosoCRM <span>›</span> [run_number]</div>
+    <p>You should see 4 files per solution:</p>
+    <ul>
+      <li><code>ContosoCRM-1.0.0.0_unmanaged.zip</code></li>
+      <li><code>ContosoCRM-1.0.0.0_managed.zip</code></li>
+      <li><code>solution-checker/checker-report.sarif</code></li>
+      <li><code>config/config-data.zip</code></li>
+    </ul>
+    <p>After Prod deploy, click on the managed ZIP → Properties tab. You should see:</p>
+    <div class="copy-box">prodDeployed = true
+deployedDate = 2026-05-03</div>
+
+    <h3>Verify the GitHub Step Summary</h3>
+    <p>In the GitHub Actions run, click into the <strong>Build</strong> job → scroll to the bottom. The Step Summary should show a table like:</p>
+
+    <table>
+      <tr><th>Step</th><th>Mode</th><th>Status</th></tr>
+      <tr><td>Version stamp</td><td>Always</td><td>1.0.0.0</td></tr>
+      <tr><td>Pack Unmanaged</td><td>Always</td><td>✅ Real (PAC CLI)</td></tr>
+      <tr><td>Pack Managed</td><td>Always</td><td>✅ Real (PAC CLI)</td></tr>
+      <tr><td>Solution Checker</td><td>live (always on)</td><td>✅ Real (geo: UnitedStates)</td></tr>
+      <tr><td>Export config data</td><td>live</td><td>✅ Real (schema: config/ContosoCRM/data-schema.xml)</td></tr>
+      <tr><td>JFrog upload</td><td>after checker</td><td>✅ Package uploaded → your-company.jfrog.io/...</td></tr>
+      <tr><td>Prod tag</td><td>After Prod deploy</td><td>⏳ Set on success</td></tr>
+    </table>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     SECTION 9 — Troubleshooting
+════════════════════════════════════════════════════════════════════════════ -->
+<div class="section" id="troubleshooting">
+  <div class="section-header">
+    <div class="section-num orange">8</div>
+    <div>
+      <h2>Troubleshooting</h2>
+      <div class="subtitle">The most common failures and how to fix them</div>
+    </div>
+  </div>
+  <div class="section-body">
+    <table>
+      <tr>
+        <th>Error / Symptom</th>
+        <th>Likely Cause</th>
+        <th>Fix</th>
+      </tr>
+      <tr>
+        <td>Pre-flight §5: <code>PP_APP_ID is empty</code></td>
+        <td>AKV secret <code>pp-app-id</code> not found or SPN doesn't have Key Vault Secrets User role</td>
+        <td>Check Key Vault → Secrets → confirm <code>pp-app-id</code> exists. Check AKV → Access control (IAM) → confirm the SPN has Key Vault Secrets User role assignment.</td>
+      </tr>
+      <tr>
+        <td>Azure Login step fails: <code>AADSTS70021</code></td>
+        <td>Federated credential subject doesn't match the triggering branch/event</td>
+        <td>Check the Federated Identity Credential in Entra ID. The Subject must match the actual branch/event that triggered the workflow. Add additional credentials for different branches if needed.</td>
+      </tr>
+      <tr>
+        <td>Pre-flight §4: <code>JFrog connectivity check FAILED</code></td>
+        <td>Wrong JFrog URL, wrong API key, or JFrog instance not reachable</td>
+        <td>Test the URL manually: <code>curl -H "X-JFrog-Art-Api: YOUR_KEY" https://YOUR_URL/api/system/ping</code> — should return <code>OK</code>. Verify the <code>jfrog-api-key</code> secret in AKV matches the API key shown in JFrog → User profile.</td>
+      </tr>
+      <tr>
+        <td>Solution Checker fails: <code>unauthorized</code> or <code>403</code></td>
+        <td><code>pp-app-id</code> / <code>pp-client-secret</code> don't match a valid App Registration, or the App Registration doesn't have Dataverse API permissions</td>
+        <td>Verify the client ID and secret in AKV are correct. Check the App Registration → API permissions → Dataverse user_impersonation is granted.</td>
+      </tr>
+      <tr>
+        <td>Deploy step: <code>The user is not a member of the organization</code></td>
+        <td>Application User not created in the target PP environment</td>
+        <td>Go to PP Admin Center → the failing environment → Settings → Application Users. Confirm the SPN appears and has System Administrator role. If missing, re-create it.</td>
+      </tr>
+      <tr>
+        <td>Deploy step: <code>solution already installed with same version</code></td>
+        <td>Version 1.0.0.0 is already installed in the environment from a previous run</td>
+        <td>Bump the version in <code>src/solutions/ContosoCRM/Other/Solution.xml</code> from <code>1.0.0.0</code> to <code>1.0.1.0</code> and commit. The pipeline reads the version directly from Solution.xml.</td>
+      </tr>
+      <tr>
+        <td>UAT approval never shows up</td>
+        <td>GitHub environment not configured as a required reviewer, or the environment name in the workflow doesn't match</td>
+        <td>Check Settings → Environments → uat → Required reviewers is enabled and you're listed. Verify the <code>environment:</code> key in the deploy-uat job in release-pipeline.yml exactly matches <code>uat</code>.</td>
+      </tr>
+      <tr>
+        <td><code>Error: GHA_CORE_PAT secret not set</code></td>
+        <td>Bootstrap secret missing</td>
+        <td>Settings → Secrets → Actions → confirm <code>GHA_CORE_PAT</code> exists. If the PAT expired (90-day tokens), generate a new one and update the secret.</td>
+      </tr>
+      <tr>
+        <td>Build fails: <code>solution_source_folder does not exist</code></td>
+        <td>The matrix <code>source_folder</code> path doesn't match the actual folder structure in the repo</td>
+        <td>Verify the path in the pipeline matrix matches the actual folder path. For the sample solutions: <code>src/solutions/ContosoCRM</code> and <code>src/solutions/ContosoHelpDesk</code>.</td>
+      </tr>
+      <tr>
+        <td>PAC CLI pack fails with <code>null reference</code></td>
+        <td>Solution.xml is malformed or missing required fields</td>
+        <td>Validate the Solution.xml locally: <code>pac solution pack --folder src/solutions/ContosoCRM --zip /tmp/test.zip --packagetype Unmanaged</code>. The error message will point to the specific invalid element.</td>
+      </tr>
+    </table>
+
+    <h3>Quick diagnostic commands</h3>
+    <div class="code-box"># Test Azure OIDC login (run in a workflow or Cloud Shell)
+az login --federated-token "$ACTIONS_ID_TOKEN_REQUEST_TOKEN" ...
+
+# Test AKV access
+az keyvault secret show --vault-name kv-pp-cicd-test --name pp-app-id --query value -o tsv
+
+# Test JFrog connectivity
+curl -s -o /dev/null -w "%{http_code}" \
+  -H "X-JFrog-Art-Api: YOUR_API_KEY" \
+  "https://your-company.jfrog.io/artifactory/api/system/ping"
+# Expected output: 200
+
+# Pack a solution locally with PAC CLI
+pac solution pack \
+  --folder src/solutions/ContosoCRM \
+  --zip /tmp/ContosoCRM_unmanaged.zip \
+  --packagetype Unmanaged</div>
+  </div>
+</div>
+
+</main>
+</div>
+
+<script>
+// Sidebar TOC active link highlighting on scroll
+const sections = document.querySelectorAll('.section');
+const links    = document.querySelectorAll('.toc a');
+const observer = new IntersectionObserver(entries => {
+  entries.forEach(e => {
+    if (e.isIntersecting) {
+      links.forEach(l => l.classList.remove('active'));
+      const id = e.target.id;
+      if (id) {
+        const a = document.querySelector(`.toc a[href="#${id}"]`);
+        if (a) a.classList.add('active');
+      }
+    }
+  });
+}, { rootMargin: '-20% 0px -70% 0px' });
+sections.forEach(s => observer.observe(s));
+</script>
+</body>
+</html>
