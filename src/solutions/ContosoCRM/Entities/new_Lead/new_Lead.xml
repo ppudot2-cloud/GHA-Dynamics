@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Entity xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
   <Name LocalizedName="Lead" OriginalName="Lead">new_Lead</Name>
+  <ObjectTypeCode>10001</ObjectTypeCode>
   <EntityInfo>
     <entity Name="new_Lead">
       <LocalizedNames>
@@ -40,13 +41,33 @@
           <Type>picklist</Type>
           <Name>new_Source</Name>
           <LogicalName>new_source</LogicalName>
-          <!-- 100000000=Web, 100000001=Referral, 100000002=Event, 100000003=Cold Call -->
+          <OptionSetName>new_lead_new_source</OptionSetName>
+          <optionset Name="new_lead_new_source" localizedName="Source" IsCustomizable="1">
+            <OptionSetType>picklist</OptionSetType>
+            <IsGlobal>0</IsGlobal>
+            <options>
+              <option value="100000000"><labels><label description="Web" languagecode="1033" /></labels></option>
+              <option value="100000001"><labels><label description="Referral" languagecode="1033" /></labels></option>
+              <option value="100000002"><labels><label description="Event" languagecode="1033" /></labels></option>
+              <option value="100000003"><labels><label description="Cold Call" languagecode="1033" /></labels></option>
+            </options>
+          </optionset>
         </attribute>
         <attribute PhysicalName="new_Status">
           <Type>picklist</Type>
           <Name>new_Status</Name>
           <LogicalName>new_status</LogicalName>
-          <!-- 100000000=New, 100000001=Contacted, 100000002=Qualified, 100000003=Disqualified -->
+          <OptionSetName>new_lead_new_status</OptionSetName>
+          <optionset Name="new_lead_new_status" localizedName="Status" IsCustomizable="1">
+            <OptionSetType>picklist</OptionSetType>
+            <IsGlobal>0</IsGlobal>
+            <options>
+              <option value="100000000"><labels><label description="New" languagecode="1033" /></labels></option>
+              <option value="100000001"><labels><label description="Contacted" languagecode="1033" /></labels></option>
+              <option value="100000002"><labels><label description="Qualified" languagecode="1033" /></labels></option>
+              <option value="100000003"><labels><label description="Disqualified" languagecode="1033" /></labels></option>
+            </options>
+          </optionset>
         </attribute>
       </attributes>
     </entity>

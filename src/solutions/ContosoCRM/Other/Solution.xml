@@ -52,7 +52,16 @@
         </Address>
       </Addresses>
     </Publisher>
-    <RootComponents />
+    <RootComponents>
+      <!-- type="1"   = Entity -->
+      <RootComponent type="1" schemaName="new_Lead"        behavior="0" />
+      <RootComponent type="1" schemaName="new_Opportunity" behavior="0" />
+      <!-- type="20"  = Security Role -->
+      <RootComponent type="20" id="{00000000-0000-0000-0000-000000000010}" behavior="0" />
+      <!-- type="380" = Environment Variable Definition -->
+      <RootComponent type="380" schemaName="new_CrmApiBaseUrl"         behavior="0" />
+      <RootComponent type="380" schemaName="new_MaxOpportunityAgeDays" behavior="0" />
+    </RootComponents>
     <MissingDependencies />
   </SolutionManifest>
 </ImportExportXml>

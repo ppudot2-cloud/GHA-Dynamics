@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Entity xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
   <Name LocalizedName="Opportunity" OriginalName="Opportunity">new_Opportunity</Name>
+  <ObjectTypeCode>10002</ObjectTypeCode>
   <EntityInfo>
     <entity Name="new_Opportunity">
       <LocalizedNames>
@@ -33,7 +34,18 @@
           <Type>picklist</Type>
           <Name>new_Stage</Name>
           <LogicalName>new_stage</LogicalName>
-          <!-- 100000000=Qualification, 100000001=Proposal, 100000002=Negotiation, 100000003=Closed Won, 100000004=Closed Lost -->
+          <OptionSetName>new_opportunity_new_stage</OptionSetName>
+          <optionset Name="new_opportunity_new_stage" localizedName="Stage" IsCustomizable="1">
+            <OptionSetType>picklist</OptionSetType>
+            <IsGlobal>0</IsGlobal>
+            <options>
+              <option value="100000000"><labels><label description="Qualification" languagecode="1033" /></labels></option>
+              <option value="100000001"><labels><label description="Proposal" languagecode="1033" /></labels></option>
+              <option value="100000002"><labels><label description="Negotiation" languagecode="1033" /></labels></option>
+              <option value="100000003"><labels><label description="Closed Won" languagecode="1033" /></labels></option>
+              <option value="100000004"><labels><label description="Closed Lost" languagecode="1033" /></labels></option>
+            </options>
+          </optionset>
         </attribute>
         <attribute PhysicalName="new_CloseDate">
           <Type>datetime</Type>
