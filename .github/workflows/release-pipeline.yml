@@ -252,7 +252,7 @@ jobs:
       environment_url:                    ${{ vars.PP_DEV_URL }}
       solution_name:                      ${{ matrix.solution }}
       solution_type:                      unmanaged
-      artifact_name:                      solution-${{ matrix.solution }}-${{ github.run_number }}
+      artifact_name:                      solution-${{ matrix.solution }}-run${{ github.run_number }}
       solution_version:                   ${{ needs.build.outputs.solution_version }}
       enable_backup:                      ${{ inputs.enable_backup == true }}
       enable_blocking_check:              ${{ inputs.enable_blocking_check == true }}
@@ -306,7 +306,7 @@ jobs:
       environment_url:                    ${{ vars.PP_INTG_URL }}
       solution_name:                      ${{ matrix.solution }}
       solution_type:                      managed
-      artifact_name:                      solution-${{ matrix.solution }}-${{ github.run_number }}
+      artifact_name:                      solution-${{ matrix.solution }}-run${{ github.run_number }}
       solution_version:                   ${{ needs.build.outputs.solution_version }}
       enable_backup:                      ${{ inputs.enable_backup == true }}
       enable_blocking_check:              ${{ inputs.enable_blocking_check == true }}
@@ -361,7 +361,7 @@ jobs:
       environment_url:                    ${{ vars.PP_UAT_URL }}
       solution_name:                      ${{ matrix.solution }}
       solution_type:                      managed
-      artifact_name:                      solution-${{ matrix.solution }}-${{ github.run_number }}
+      artifact_name:                      solution-${{ matrix.solution }}-run${{ github.run_number }}
       solution_version:                   ${{ needs.build.outputs.solution_version }}
       enable_backup:                      ${{ inputs.enable_backup == true }}
       enable_blocking_check:              ${{ inputs.enable_blocking_check == true }}
@@ -416,7 +416,7 @@ jobs:
       environment_url:                    ${{ vars.PP_PERF_URL }}
       solution_name:                      ${{ matrix.solution }}
       solution_type:                      managed
-      artifact_name:                      solution-${{ matrix.solution }}-${{ github.run_number }}
+      artifact_name:                      solution-${{ matrix.solution }}-run${{ github.run_number }}
       solution_version:                   ${{ needs.build.outputs.solution_version }}
       enable_backup:                      ${{ inputs.enable_backup == true }}
       enable_blocking_check:              ${{ inputs.enable_blocking_check == true }}
@@ -474,7 +474,7 @@ jobs:
       environment_url:                    ${{ vars.PP_PROD_URL }}
       solution_name:                      ${{ matrix.solution }}
       solution_type:                      managed
-      artifact_name:                      solution-${{ matrix.solution }}-${{ github.run_number }}
+      artifact_name:                      solution-${{ matrix.solution }}-run${{ github.run_number }}
       solution_version:                   ${{ needs.build.outputs.solution_version }}
       enable_backup:                      ${{ inputs.enable_backup == true }}
       enable_blocking_check:              ${{ inputs.enable_blocking_check == true }}
