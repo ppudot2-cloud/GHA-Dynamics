@@ -239,6 +239,9 @@ jobs:
     name: "🚀 Dev [Unmanaged] | ${{ matrix.solution }}"
     needs: [setup, build, gate-dev]
     if: needs.gate-dev.result == 'success'
+    permissions:
+      id-token: write   # Required by _reusable-deploy.yml for OIDC Azure login
+      contents: read
     strategy:
       matrix: ${{ fromJSON(needs.setup.outputs.matrix) }}
       max-parallel: 1
@@ -290,6 +293,9 @@ jobs:
     name: "🚀 Intg [Managed] | ${{ matrix.solution }}"
     needs: [setup, build, gate-intg]
     if: needs.gate-intg.result == 'success'
+    permissions:
+      id-token: write   # Required by _reusable-deploy.yml for OIDC Azure login
+      contents: read
     strategy:
       matrix: ${{ fromJSON(needs.setup.outputs.matrix) }}
       max-parallel: 1
@@ -342,6 +348,9 @@ jobs:
     name: "🚀 UAT [Managed] | ${{ matrix.solution }}"
     needs: [setup, build, gate-uat]
     if: needs.gate-uat.result == 'success'
+    permissions:
+      id-token: write   # Required by _reusable-deploy.yml for OIDC Azure login
+      contents: read
     strategy:
       matrix: ${{ fromJSON(needs.setup.outputs.matrix) }}
       max-parallel: 1
@@ -394,6 +403,9 @@ jobs:
     name: "🚀 Perf [Managed] | ${{ matrix.solution }}"
     needs: [setup, build, gate-perf]
     if: needs.gate-perf.result == 'success'
+    permissions:
+      id-token: write   # Required by _reusable-deploy.yml for OIDC Azure login
+      contents: read
     strategy:
       matrix: ${{ fromJSON(needs.setup.outputs.matrix) }}
       max-parallel: 1
@@ -449,6 +461,9 @@ jobs:
     name: "🚀 Prod [Managed] | ${{ matrix.solution }}"
     needs: [setup, build, gate-prod]
     if: needs.gate-prod.result == 'success'
+    permissions:
+      id-token: write   # Required by _reusable-deploy.yml for OIDC Azure login
+      contents: read
     strategy:
       matrix: ${{ fromJSON(needs.setup.outputs.matrix) }}
       max-parallel: 1
