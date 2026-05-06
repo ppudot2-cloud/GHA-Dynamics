@@ -498,7 +498,8 @@ jobs:
     needs: [setup, deploy-prod]
     if: >
       needs.deploy-prod.result == 'success' &&
-      inputs.mock_deploy != true
+      inputs.mock_deploy != true &&
+      vars.JFROG_URL != ''
     strategy:
       matrix: ${{ fromJSON(needs.setup.outputs.matrix) }}
       fail-fast: false
