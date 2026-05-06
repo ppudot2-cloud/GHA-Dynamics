@@ -355,14 +355,14 @@ Also set the Power Platform environment URLs (these are referenced by the thin w
 | `PP_SDBX_URL` | `https://YOUR-ORG-sdbx.crm.dynamics.com` |
 | `JFROG_URL` | `https://YOUR-COMPANY.jfrog.io/artifactory` |
 
-### 5.3 Replace YOUR_ORG in Workflow Files
+### 5.3 Replace ppudot2-cloud in Workflow Files
 
 Update the GHA-Core checkout step in all reusable workflows:
 
 ```bash
 # In GHA-Core/.github/workflows/_reusable-build.yml,
 # _reusable-deploy.yml, _reusable-rollback.yml, _reusable-deploy-dev.yml:
-# Replace:  repository: YOUR_ORG/GHA-Core
+# Replace:  repository: ppudot2-cloud/GHA-Core
 # With:     repository: contoso/GHA-Core   (your actual org)
 ```
 
@@ -563,7 +563,7 @@ az ad app credential delete --id "$AZURE_CLIENT_ID" --key-id "<old-key-id>"
 PATs are tied to an individual and expire. GitHub Apps are better:
 
 ```bash
-# 1. Create a GitHub App at: github.com/organizations/YOUR_ORG/settings/apps/new
+# 1. Create a GitHub App at: github.com/organizations/ppudot2-cloud/settings/apps/new
 #    - Name: "GHA-Core CI Access"
 #    - Permissions: Repository > Contents: Read-only
 #    - Install on: GHA-Core only

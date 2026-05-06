@@ -57,7 +57,7 @@ on:
 jobs:
   rollback:
     name: "Rollback Solution"
-    uses: YOUR_ORG/GHA-Core/.github/workflows/_reusable-rollback.yml@main
+    uses: ppudot2-cloud/GHA-Core/.github/workflows/_reusable-rollback.yml@main
     with:
       # ── User inputs ────────────────────────────────────────────────────────
       target-environment:       ${{ inputs.target-environment }}
