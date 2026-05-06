@@ -144,7 +144,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       matrix: |
-      {
+        {
           "include": [
             {
               "solution": "ContosoCRM",
