@@ -191,6 +191,9 @@ jobs:
     name: "🏗️ Build | ${{ matrix.solution }}"
     needs: setup
     if: needs.setup.result == 'success'
+    permissions:
+      id-token: write   # Required by _reusable-build.yml for OIDC Azure login
+      contents: read
     strategy:
       matrix: ${{ fromJSON(needs.setup.outputs.matrix) }}
       fail-fast: false
