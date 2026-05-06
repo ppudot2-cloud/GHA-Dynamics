@@ -36,12 +36,12 @@
 variables:
   # ── Power Platform environment URLs ────────────────────────────────────────
   # Replace with your actual Dataverse environment URLs.
-  PP_DEV_URL:  "https://YOUR-ORG-dev.crm.dynamics.com"
-  PP_INTG_URL: "https://YOUR-ORG-intg.crm.dynamics.com"
-  PP_UAT_URL:  "https://YOUR-ORG-uat.crm.dynamics.com"
-  PP_PERF_URL: "https://YOUR-ORG-perf.crm.dynamics.com"
-  PP_PROD_URL: "https://YOUR-ORG-prod.crm.dynamics.com"
-  PP_SDBX_URL: "https://YOUR-ORG-sdbx.crm.dynamics.com"
+  PP_DEV_URL:  "https://cicd-dev.crm.dynamics.com"
+  PP_INTG_URL: "https://cicd-intg.crm.dynamics.com"
+  PP_UAT_URL:  "https://cicd-uat.crm.dynamics.com"
+  PP_PERF_URL: "https://cicd-uat.crm.dynamics.com"
+  PP_PROD_URL: "https://cicd-uat.crm.dynamics.com"
+  PP_SDBX_URL: "https://cicddev.crm.dynamics.com"
 
   # ── Project solution ────────────────────────────────────────────────────────
   PP_SOLUTION_NAME:     "YourSolutionName"

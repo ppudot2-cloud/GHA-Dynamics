@@ -143,9 +143,24 @@ jobs:
     name: "🔍 Resolve Solutions"
     runs-on: ubuntu-latest
     outputs:
-      matrix:         ${{ steps.resolve.outputs.matrix }}
-      solution_list:  ${{ steps.resolve.outputs.solution_list }}
-      solution_count: ${{ steps.resolve.outputs.solution_count }}
+      matrix: |
+      {
+          "include": [
+            {
+              "solution": "ContosoCRM",
+              "source_folder": "src/solutions/ContosoCRM",
+              "data_schema":   "config/ContosoCRM/data-schema.xml",
+              "source_env":    "${{ vars.PP_DEV_URL }}"
+            },
+            {
+              "solution": "ContosoHelpDesk",
+              "source_folder": "src/solutions/ContosoHelpDesk",
+              "data_schema":   "config/ContosoHelpDesk/data-schema.xml",
+              "source_env":    "${{ vars.PP_DEV_URL }}"
+            }
+          ]
+        }
+
 
     steps:
       - name: Checkout repository
