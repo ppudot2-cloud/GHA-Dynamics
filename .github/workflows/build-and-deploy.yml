@@ -125,7 +125,7 @@ jobs:
     permissions:
       id-token: write
       contents: read
-    uses: ppudot2-cloud/GHA-Core/.github/workflows/dynamics/stages/_stage-export.yml@main
+    uses: ppudot2-cloud/GHA-Core/.github/workflows/_stage-export.yml@main
     with:
       matrix:                 ${{ needs.setup.outputs.matrix }}
       source_environment_url: ${{ vars.PP_SDBX_URL }}
@@ -247,7 +247,7 @@ jobs:
     permissions:
       id-token: write
       contents: read
-    uses: ppudot2-cloud/GHA-Core/.github/workflows/dynamics/stages/_stage-build.yml@main
+    uses: ppudot2-cloud/GHA-Core/.github/workflows/_stage-build.yml@main
     with:
       matrix:                 ${{ needs.setup.outputs.matrix }}
       use_exported_source:    ${{ inputs.mock_deploy != true }}
@@ -271,7 +271,7 @@ jobs:
     permissions:
       id-token: write
       contents: read
-    uses: ppudot2-cloud/GHA-Core/.github/workflows/dynamics/stages/_stage-deploy-chain.yml@main
+    uses: ppudot2-cloud/GHA-Core/.github/workflows/_stage-deploy-chain.yml@main
     with:
       matrix:          ${{ needs.setup.outputs.matrix }}
       environments:    'Dev,Intg'

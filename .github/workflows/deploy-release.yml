@@ -109,7 +109,7 @@ jobs:
     permissions:
       id-token: write
       contents: read
-    uses: ppudot2-cloud/GHA-Core/.github/workflows/dynamics/stages/_stage-deploy-chain.yml@main
+    uses: ppudot2-cloud/GHA-Core/.github/workflows/_stage-deploy-chain.yml@main
     with:
       matrix:          ${{ needs.read-context.outputs.matrix }}
       environments:    'UAT,FRS,Perf'
