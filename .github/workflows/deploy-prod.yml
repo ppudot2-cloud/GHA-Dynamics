@@ -1,0 +1,209 @@
+# =============================================================================
+# WORKFLOW: Deploy Prod — Phase 3
+# =============================================================================
+#
+# Triggered automatically when the release → main pull request is merged.
+# This is the final phase of the three-phase gitflow pipeline:
+#
+#   Phase 1 — build-and-deploy.yml  → Dev + Intg
+#   Phase 2 — deploy-release.yml    → UAT + FRS + Perf
+#   Phase 3 — THIS WORKFLOW         → Prod
+#
+# HOW IT WORKS:
+#   1. Reads pipeline-context.json from main (merged from release by the PR).
+#   2. Calls _stage-deploy-chain with environments:'Prod' and the Phase 1 run_id
+#      so the same built artifacts are used throughout the entire pipeline.
+#   3. Tags the JFrog artifact as prodDeployed=true after success.
+#
+# APPROVAL GATE:
+#   The Prod GitHub Environment must have required reviewers configured in
+#   Settings → Environments → Prod. The deploy job will pause there even
+#   after the PR is merged, until a reviewer approves.
+# =============================================================================
+
+name: Deploy Prod (Phase 3)
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+jobs:
+  # ============================================================================
+  # Guard — skip if not a merged release→main PR
+  # ============================================================================
+  guard:
+    name: "🛡️ Verify trigger"
+    runs-on: ubuntu-latest
+    if: |
+      github.event.pull_request.merged == true &&
+      github.event.pull_request.head.ref == 'release'
+    steps:
+      - name: Confirm trigger
+        shell: bash
+        run: |
+          echo "✅ Triggered by merged PR: release → main"
+          echo "   PR #${{ github.event.pull_request.number }}: ${{ github.event.pull_request.title }}"
+          echo "   Merged by: @${{ github.actor }}"
+
+  # ============================================================================
+  # Read pipeline-context.json from main
+  # ============================================================================
+  read-context:
+    name: "📖 Read pipeline context"
+    needs: guard
+    runs-on: ubuntu-latest
+    outputs:
+      run_id:        ${{ steps.ctx.outputs.run_id }}
+      run_number:    ${{ steps.ctx.outputs.run_number }}
+      run_attempt:   ${{ steps.ctx.outputs.run_attempt }}
+      matrix:        ${{ steps.ctx.outputs.matrix }}
+      solution_list: ${{ steps.ctx.outputs.solution_list }}
+
+    steps:
+      - name: Checkout main branch
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+
+      - name: Parse pipeline-context.json
+        id: ctx
+        shell: pwsh
+        run: |
+          $ctxFile = 'pipeline-context.json'
+          if (-not (Test-Path $ctxFile)) {
+            Write-Error "::error::pipeline-context.json not found on main branch."
+            Write-Error "::error::This file should have propagated from release via the merged PR."
+            exit 1
+          }
+
+          $ctx = Get-Content $ctxFile | ConvertFrom-Json
+          Write-Host "Pipeline context loaded:"
+          Write-Host "  runId       : $($ctx.runId)"
+          Write-Host "  runNumber   : $($ctx.runNumber)"
+          Write-Host "  runAttempt  : $($ctx.runAttempt)"
+          Write-Host "  solutions   : $($ctx.solutionList)"
+          Write-Host "  triggeredBy : $($ctx.triggeredBy)"
+          Write-Host "  triggeredAt : $($ctx.triggeredAt)"
+
+          "run_id=$($ctx.runId)"             | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "run_number=$($ctx.runNumber)"     | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "run_attempt=$($ctx.runAttempt)"   | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "matrix=$($ctx.matrix)"            | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "solution_list=$($ctx.solutionList)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+  # ============================================================================
+  # Stage — Deploy Prod
+  # Single environment, Prod GitHub Environment gate pauses for approval.
+  # Artifacts downloaded from Phase 1 run via source_run_id.
+  # JFrog prodDeployed tag set via tag_prod_deployed:true on the Prod env config.
+  # ============================================================================
+  stage-deploy:
+    name: "🚀 Deploy Prod"
+    needs: [read-context]
+    permissions:
+      id-token: write
+      contents: read
+    uses: ppudot2-cloud/GHA-Core/.github/workflows/dynamics/stages/_stage-deploy-chain.yml@main
+    with:
+      matrix:          ${{ needs.read-context.outputs.matrix }}
+      environments:    'Prod'
+      source_run_id:   ${{ needs.read-context.outputs.run_id }}
+      run_number:      ${{ needs.read-context.outputs.run_number }}
+      run_attempt:     ${{ needs.read-context.outputs.run_attempt }}
+      mock_deploy:     false
+      trigger_upgrade: false
+      base_solutions:  ${{ vars.PP_BASE_SOLUTIONS || '' }}
+      jfrog_url:       ${{ vars.JFROG_URL || '' }}
+      jfrog_repo:      ${{ vars.JFROG_REPO || 'powerplatform-solutions' }}
+
+      dev_config: >-
+        {"name":"Dev","url":"${{ vars.PP_DEV_URL }}","previous_url":"",
+        "solution_type":"Unmanaged","enable_backup":false,
+        "enable_blocking_check":false,"enable_version_compare":false,
+        "import_config_data":false}
+
+      intg_config: >-
+        {"name":"Intg","url":"${{ vars.PP_INTG_URL }}","previous_url":"${{ vars.PP_DEV_URL }}",
+        "solution_type":"Managed","enable_backup":false,
+        "enable_blocking_check":true,"enable_version_compare":false,
+        "import_config_data":false}
+
+      uat_config: >-
+        {"name":"UAT","url":"${{ vars.PP_UAT_URL }}","previous_url":"${{ vars.PP_INTG_URL }}",
+        "solution_type":"Managed","enable_backup":true,
+        "enable_blocking_check":true,"enable_version_compare":true,
+        "import_config_data":false}
+
+      frs_config: >-
+        {"name":"FRS","url":"${{ vars.PP_FRS_URL }}","previous_url":"${{ vars.PP_UAT_URL }}",
+        "solution_type":"Managed","enable_backup":true,
+        "enable_blocking_check":true,"enable_version_compare":true,
+        "import_config_data":false}
+
+      perf_config: >-
+        {"name":"Perf","url":"${{ vars.PP_PERF_URL }}","previous_url":"${{ vars.PP_FRS_URL }}",
+        "solution_type":"Managed","enable_backup":false,
+        "enable_blocking_check":true,"enable_version_compare":true,
+        "import_config_data":false}
+
+      prod_config: >-
+        {"name":"Prod","url":"${{ vars.PP_PROD_URL }}","previous_url":"${{ vars.PP_PERF_URL }}",
+        "solution_type":"Managed","enable_backup":true,
+        "enable_blocking_check":true,"enable_version_compare":true,
+        "import_config_data":true}
+
+    secrets: inherit
+
+  # ============================================================================
+  # Pipeline Summary (always runs)
+  # ============================================================================
+  pipeline-summary:
+    name: "📋 Phase 3 Summary"
+    needs: [read-context, stage-deploy]
+    if: always() && needs.read-context.result != 'skipped'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Write summary
+        shell: bash
+        run: |
+          RESULT="${{ needs.stage-deploy.result }}"
+          ICON="✅"
+          if [ "$RESULT" != "success" ]; then ICON="❌"; fi
+
+          cat >> $GITHUB_STEP_SUMMARY << EOF
+          ## 🚀 Phase 3 — Prod Deployment Summary
+
+          | Field | Value |
+          | --- | --- |
+          | Phase 1 run | #${{ needs.read-context.outputs.run_number }} |
+          | Solutions | ${{ needs.read-context.outputs.solution_list }} |
+          | Prod deploy | $ICON $RESULT |
+          | Merged by | @${{ github.actor }} |
+          EOF
+
+      - name: Send failure notification
+        if: needs.stage-deploy.result == 'failure'
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: ${{ secrets.MAIL_SERVER }}
+          server_port:    ${{ secrets.MAIL_PORT }}
+          username:       ${{ secrets.MAIL_USERNAME }}
+          password:       ${{ secrets.MAIL_PASSWORD }}
+          to:             ppudot1@gmail.com
+          from:           GitHub Actions <${{ secrets.MAIL_USERNAME }}>
+          subject:        "❌ PROD Deployment FAILED (Phase 3) — ${{ github.repository }} run #${{ needs.read-context.outputs.run_number }}"
+          body: |
+            ⚠️ PRODUCTION DEPLOYMENT FAILED
+
+            Repository   : ${{ github.repository }}
+            Phase 1 run  : #${{ needs.read-context.outputs.run_number }}
+            Solutions    : ${{ needs.read-context.outputs.solution_list }}
+            Deploy result: ${{ needs.stage-deploy.result }}
+            Merged by    : @${{ github.actor }}
+
+            The rollback workflow can restore the previous version:
+            ${{ github.server_url }}/${{ github.repository }}/actions/workflows/rollback.yml
+
+            ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}

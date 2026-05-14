@@ -1,0 +1,1083 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GHA — Build and Deploy Pipeline E2E Flow</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f0f4fa; color: #1a1d2e; font-size: 13px; }
+
+  /* ── PAGE HEADER ─────────────────────────────────────────────────────── */
+  .page-header { background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 100%); color: #fff; padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; }
+  .ph-left { display: flex; align-items: center; gap: 14px; }
+  .ph-icon { font-size: 28px; }
+  .ph-title { font-size: 17px; font-weight: 700; color: #f1f5f9; letter-spacing: -.2px; }
+  .ph-sub { font-size: 11px; color: #94a3b8; margin-top: 2px; }
+  .ph-badges { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .ph-badge { font-size: 10px; font-weight: 600; padding: 3px 10px; border-radius: 12px; }
+  .phb-blue   { background: rgba(59,130,246,.25); color: #93c5fd; border: 1px solid rgba(59,130,246,.4); }
+  .phb-green  { background: rgba(34,197,94,.2);  color: #86efac; border: 1px solid rgba(34,197,94,.35); }
+  .phb-amber  { background: rgba(245,158,11,.2); color: #fcd34d; border: 1px solid rgba(245,158,11,.35); }
+  .phb-purple { background: rgba(168,85,247,.2); color: #d8b4fe; border: 1px solid rgba(168,85,247,.35); }
+
+  /* ── TAB BAR ──────────────────────────────────────────────────────────── */
+  .tab-bar { display: flex; gap: 2px; padding: 0 20px; background: #fff; border-bottom: 2px solid #e2e6ef; position: sticky; top: 0; z-index: 60; box-shadow: 0 2px 8px rgba(0,0,0,.06); }
+  .tab-btn { padding: 12px 20px; border: none; background: none; color: #64748b; font-size: 12px; font-weight: 600; cursor: pointer; letter-spacing: .3px; border-bottom: 3px solid transparent; margin-bottom: -2px; transition: color .15s, border-color .15s; white-space: nowrap; }
+  .tab-btn:hover { color: #2563eb; }
+  .tab-btn.active { color: #2563eb; border-bottom-color: #2563eb; }
+  .tab-panel { display: none; padding: 18px 20px 30px; }
+  .tab-panel.active { display: block; }
+
+  /* ── SOURCE KEY ─────────────────────────────────────────────────────── */
+  .top-bar { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 14px; flex-wrap: wrap; }
+  .src-key { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 12px; background: #fff; border: 1.5px solid #dbeafe; border-radius: 8px; align-items: center; }
+  .src-key-label { font-size: 10px; font-weight: 700; color: #374151; margin-right: 4px; }
+  .src-badge { font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 10px; }
+  .sb-s { background: #fee2e2; color: #991b1b; }
+  .sb-v { background: #dbeafe; color: #1e40af; }
+  .sb-i { background: #d1fae5; color: #065f46; }
+  .sb-o { background: #fef3c7; color: #92400e; }
+  .sb-h { background: #f3f4f6; color: #374151; }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 8px; padding: 8px 12px; background: #fff; border: 1.5px solid #e2e6ef; border-radius: 8px; align-items: center; flex: 1; }
+  .leg { display: flex; align-items: center; gap: 5px; font-size: 10px; color: #555; white-space: nowrap; }
+  .leg-dot { width: 9px; height: 9px; border-radius: 2px; flex-shrink: 0; }
+
+  /* ── PIPELINE WRAPPER ─────────────────────────────────────────────────── */
+  .pipeline-wrap { overflow-x: auto; }
+  .pipeline { min-width: 1460px; display: flex; flex-direction: column; border: 1.5px solid #d1d9e6; border-radius: 12px; overflow: hidden; background: #fff; box-shadow: 0 2px 12px rgba(0,0,0,.06); }
+
+  /* ── SECTION DIVIDERS ────────────────────────────────────────────────── */
+  .section-div { display: flex; align-items: center; padding: 7px 16px; background: #1e293b; color: #e2e8f0; font-size: 10.5px; font-weight: 700; letter-spacing: .6px; text-transform: uppercase; gap: 10px; border-bottom: 2px solid #334155; }
+  .section-div .sd-icon { font-size: 14px; }
+  .section-div .sd-sub  { font-size: 9.5px; font-weight: 400; color: #94a3b8; margin-left: 4px; letter-spacing: .2px; text-transform: none; }
+  .section-div .sd-pill { margin-left: auto; font-size: 9px; font-weight: 600; padding: 2px 8px; border-radius: 8px; }
+  .sdp-dyn  { background: rgba(59,130,246,.25);  color: #93c5fd;  border: 1px solid rgba(59,130,246,.3); }
+  .sdp-core { background: rgba(34,197,94,.2);    color: #86efac;  border: 1px solid rgba(34,197,94,.3); }
+  .sdp-both { background: rgba(168,85,247,.2);   color: #d8b4fe;  border: 1px solid rgba(168,85,247,.3); }
+
+  /* ── STAGE ROW ───────────────────────────────────────────────────────── */
+  .stage { display: flex; align-items: stretch; border-bottom: 1px solid #e8ecf2; }
+  .stage:last-child { border-bottom: none; }
+  .stage.gate-row { background: #f9fafb; }
+
+  .stage-label {
+    width: 152px; min-width: 152px; padding: 11px 10px;
+    display: flex; flex-direction: column; justify-content: center;
+    font-size: 10px; font-weight: 700; letter-spacing: .5px; text-transform: uppercase; color: #fff;
+    border-right: 3px solid rgba(255,255,255,.15); line-height: 1.3;
+  }
+  .stage-label .lbl-emoji { font-size: 16px; margin-bottom: 4px; }
+  .stage-label .lbl-main  { font-size: 10.5px; letter-spacing: .3px; }
+  .stage-label .lbl-sub   { font-size: 8.5px; font-weight: 400; opacity: .8; margin-top: 3px; line-height: 1.4; }
+  .stage-body { flex: 1; padding: 9px 14px; display: flex; align-items: center; flex-wrap: wrap; gap: 6px; background: inherit; }
+
+  /* ── STAGE COLOURS ────────────────────────────────────────────────────── */
+  .sl-setup  { background: #0891b2; }
+  .sl-export { background: #0369a1; }
+  .sl-build  { background: #15803d; }
+  .sl-assem  { background: #4338ca; }
+  .sl-dev    { background: #7e22ce; }
+  .sl-intg   { background: #6b21a8; }
+  .sl-uat    { background: #b91c1c; }
+  .sl-frs    { background: #0f766e; }
+  .sl-perf   { background: #b45309; }
+  .sl-prod   { background: #991b1b; }
+  .sl-sum    { background: #334155; }
+  .sl-note   { background: #374151; }
+
+  /* ── PILLS ───────────────────────────────────────────────────────────── */
+  .pill {
+    position: relative; display: inline-flex; align-items: center; gap: 4px;
+    padding: 4px 9px; border-radius: 16px; font-size: 10px; font-weight: 600;
+    cursor: default; border: 1.5px solid transparent;
+    transition: transform .12s, box-shadow .12s; white-space: nowrap;
+  }
+  .pill:hover { transform: translateY(-2px); box-shadow: 0 4px 16px rgba(0,0,0,.18); z-index: 30; }
+  .pill .badge        { font-size: 8px; background: rgba(0,0,0,.15); padding: 1px 5px; border-radius: 7px; }
+  .pill .new-badge    { font-size: 8px; background: #10b981; color: #fff; padding: 1px 5px; border-radius: 7px; }
+  .pill .mand-badge   { font-size: 8px; background: #ef4444; color: #fff; padding: 1px 5px; border-radius: 7px; }
+  .pill .toggle-badge { font-size: 8px; background: #6366f1; color: #fff; padding: 1px 5px; border-radius: 7px; }
+  .pill .arch-badge   { font-size: 8px; background: #f59e0b; color: #fff; padding: 1px 5px; border-radius: 7px; }
+
+  /* ── TOOLTIP ─────────────────────────────────────────────────────────── */
+  .tt {
+    display: none; position: absolute; left: 50%; transform: translateX(-50%);
+    top: calc(100% + 9px); width: 320px;
+    background: #1a2035; color: #d8ddf0;
+    padding: 11px 13px; border-radius: 10px; font-size: 10px; font-weight: 400;
+    z-index: 200; box-shadow: 0 12px 35px rgba(0,0,0,.45);
+    line-height: 1.55; pointer-events: none; border: 1px solid rgba(255,255,255,.08);
+  }
+  .tt::before { content: ''; position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); border: 6px solid transparent; border-bottom-color: #1a2035; }
+  .pill:hover .tt { display: block; }
+  .tt-up { top: auto; bottom: calc(100% + 9px); }
+  .tt-up::before { top: 100%; bottom: auto; border-bottom-color: transparent; border-top-color: #1a2035; }
+  .tt-title { color: #7dd3fc; font-weight: 700; font-size: 10.5px; margin-bottom: 5px; border-bottom: 1px solid #2a3252; padding-bottom: 4px; }
+  .tt-desc  { color: #94a3b8; font-size: 9.5px; margin-bottom: 6px; line-height: 1.45; }
+  .tt-sec   { font-size: 9px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: .5px; margin: 6px 0 3px; }
+  .tt-row   { display: flex; gap: 5px; align-items: baseline; font-size: 9.5px; color: #c4cce0; margin-bottom: 2px; }
+  .tt-row .lbl { color: #e2e8f0; font-weight: 600; min-width: 130px; flex-shrink: 0; }
+  .tt-out   { color: #86efac; font-size: 9.5px; margin-bottom: 2px; }
+  .tt-warn  { color: #fbbf24; font-size: 9px; margin-top: 5px; }
+  .tt-mand  { color: #f87171; font-size: 9px; font-weight: 700; margin-top: 4px; }
+  .tt-toggle{ color: #a5b4fc; font-size: 9px; margin-top: 5px; }
+  .tt-new   { color: #6ee7b7; font-size: 9px; margin-top: 4px; }
+  .tt-code  { font-family: 'SFMono-Regular', Consolas, monospace; font-size: 8.5px; background: #0f172a; padding: 4px 7px; border-radius: 5px; margin-top: 5px; color: #93c5fd; display: block; line-height: 1.6; white-space: pre-wrap; }
+
+  /* ── GATES & UTILS ───────────────────────────────────────────────────── */
+  .gate { display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 10px; font-size: 9.5px; font-weight: 700; flex-shrink: 0; }
+  .gate-yellow { background: #fef9c3; color: #854d0e; border: 1.5px solid #eab308; }
+  .gate-blue   { background: #e0f2fe; color: #0c4a6e; border: 1.5px solid #38bdf8; }
+  .gate-purple { background: #f3e8ff; color: #4a044e; border: 1.5px solid #c084fc; }
+  .gate-info   { background: #e0f2fe; color: #0c4a6e; border: 1.5px solid #38bdf8; font-size: 9px; font-weight: 600; padding: 2px 8px; border-radius: 7px; }
+  .gate-loop   { background: #f3e8ff; color: #6b21a8; border: 1.5px solid #c084fc; font-size: 9px; font-weight: 700; padding: 2px 8px; border-radius: 7px; }
+  .skip-note   { background: #fff7ed; border: 1.5px solid #fb923c; color: #7c2d12; font-size: 9px; font-weight: 600; padding: 2px 8px; border-radius: 7px; }
+  .prod-badge  { background: #fee2e2; color: #7f1d1d; border: 1px solid #ef4444; font-size: 8px; font-weight: 700; padding: 1px 5px; border-radius: 5px; }
+  .arrow  { color: #9ca3af; font-size: 14px; flex-shrink: 0; }
+  .divider{ width: 1px; height: 22px; background: #d1d9e6; margin: 0 5px; flex-shrink: 0; }
+
+  /* ── PILL COLOUR CLASSES ─────────────────────────────────────────────── */
+  .c-setup   { background: #cffafe; border-color: #22d3ee; color: #164e63; }
+  .c-auth    { background: #e0f2fe; border-color: #38bdf8; color: #0c4a6e; }
+  .c-build   { background: #dcfce7; border-color: #4ade80; color: #14532d; }
+  .c-deploy  { background: #f3e8ff; border-color: #c084fc; color: #4a044e; }
+  .c-check   { background: #fef9c3; border-color: #facc15; color: #713f12; }
+  .c-scan    { background: #fff1f2; border-color: #fb7185; color: #881337; }
+  .c-backup  { background: #fce7f3; border-color: #f472b6; color: #831843; }
+  .c-data    { background: #ccfbf1; border-color: #2dd4bf; color: #134e4a; }
+  .c-pub     { background: #e0e7ff; border-color: #818cf8; color: #1e1b4b; }
+  .c-jfrog   { background: #fef3c7; border-color: #f59e0b; color: #78350f; }
+  .c-gha-art { background: #f0fdf4; border-color: #4ade80; color: #14532d; }
+  .c-assem   { background: #eef2ff; border-color: #818cf8; color: #312e81; }
+  .c-sum     { background: #f8fafc; border-color: #94a3b8; color: #334155; }
+  .c-git     { background: #f1f5f9; border-color: #94a3b8; color: #1e293b; }
+  .c-flag    { background: #fff7ed; border-color: #fb923c; color: #7c2d12; }
+
+  /* ── FLOW NOTE ───────────────────────────────────────────────────────── */
+  .flow-note { background: #eff6ff; border: 1.5px solid #bfdbfe; border-radius: 10px; padding: 12px 16px; font-size: 10.5px; color: #1e40af; margin-top: 16px; line-height: 1.65; }
+  .flow-note b { color: #1d4ed8; }
+  .flow-note code { font-size: 9.5px; background: #dbeafe; color: #1e3a8a; padding: 1px 4px; border-radius: 3px; }
+  .flow-note .fn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 16px; margin-top: 8px; }
+  .flow-note .fn-item { border-left: 2px solid #93c5fd; padding-left: 8px; font-size: 10px; line-height: 1.5; }
+
+  /* ── VARS TAB ─────────────────────────────────────────────────────────── */
+  .var-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 16px; }
+  .var-card { background: #fff; border: 1.5px solid #e2e6ef; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,.05); }
+  .var-card-head { padding: 11px 16px; font-size: 11px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+  .var-row { display: flex; align-items: baseline; gap: 8px; padding: 6px 14px; border-top: 1px solid #f0f2f8; font-size: 10.5px; }
+  .var-row:hover { background: #f8f9fc; }
+  .var-name { font-family: 'SFMono-Regular', Consolas, monospace; font-weight: 600; color: #1e40af; min-width: 210px; font-size: 9.5px; }
+  .var-desc { color: #4b5563; flex: 1; line-height: 1.4; }
+  .badge-head { font-size: 9px; font-weight: 700; padding: 2px 8px; border-radius: 9px; }
+  .bh-secret { background: #fee2e2; color: #991b1b; }
+  .bh-var    { background: #dbeafe; color: #1e40af; }
+  .bh-input  { background: #d1fae5; color: #065f46; }
+  .bh-file   { background: #f3e8ff; color: #6b21a8; }
+
+  /* ── ENV CONFIG TABLE ─────────────────────────────────────────────────── */
+  .env-config-wrap { overflow-x: auto; margin-top: 16px; }
+  .env-table { width: 100%; border-collapse: collapse; font-size: 10px; background: #fff; border-radius: 10px; overflow: hidden; box-shadow: 0 1px 6px rgba(0,0,0,.06); }
+  .env-table th { background: #1e293b; color: #e2e8f0; padding: 8px 12px; text-align: left; font-size: 9.5px; font-weight: 700; letter-spacing: .4px; white-space: nowrap; }
+  .env-table td { padding: 7px 12px; border-bottom: 1px solid #f0f2f8; color: #374151; vertical-align: top; }
+  .env-table tr:hover td { background: #f8fafc; }
+  .env-table tr:last-child td { border-bottom: none; }
+  .env-name { font-weight: 700; font-size: 11px; }
+  .env-dev  { color: #6d28d9; }
+  .env-intg { color: #5b21b6; }
+  .env-uat  { color: #b91c1c; }
+  .env-frs  { color: #0f766e; }
+  .env-perf { color: #b45309; }
+  .env-prod { color: #991b1b; }
+  .t-true  { color: #059669; font-weight: 700; }
+  .t-false { color: #9ca3af; }
+  .t-un    { color: #7e22ce; font-weight: 600; }
+  .t-man   { color: #0369a1; font-weight: 600; }
+  .env-url { font-family: monospace; font-size: 9px; color: #6b7280; }
+  .prec-table { width: 100%; border-collapse: collapse; font-size: 10.5px; margin-top: 16px; background: #fff; border-radius: 10px; overflow: hidden; box-shadow: 0 1px 6px rgba(0,0,0,.06); }
+  .prec-table th { background: #1e293b; color: #e2e8f0; padding: 8px 14px; text-align: left; font-size: 10px; font-weight: 700; }
+  .prec-table td { padding: 7px 14px; border-bottom: 1px solid #f0f2f8; color: #374151; }
+  .prec-table tr:hover td { background: #f8fafc; }
+  .prec-rank { font-weight: 700; font-size: 13px; color: #2563eb; }
+  .section-h2 { font-size: 13px; font-weight: 700; color: #1e293b; margin: 20px 0 10px; padding-bottom: 6px; border-bottom: 2px solid #e2e6ef; }
+</style>
+</head>
+<body>
+
+<!-- ── PAGE HEADER ──────────────────────────────────────────────────────── -->
+<div class="page-header">
+  <div class="ph-left">
+    <div class="ph-icon">🚀</div>
+    <div>
+      <div class="ph-title">Build and Deploy — End-to-End Pipeline Flow</div>
+      <div class="ph-sub">combined-pipeline.yml (GHA-Dynamics) → _stage-*.yml + composite actions (GHA-Core)</div>
+    </div>
+  </div>
+  <div class="ph-badges">
+    <span class="ph-badge phb-blue">📦 GHA-Dynamics</span>
+    <span class="ph-badge phb-green">♻️ GHA-Core</span>
+    <span class="ph-badge phb-amber">🔁 Per-solution loop</span>
+    <span class="ph-badge phb-purple">Hover pills for I/O details</span>
+  </div>
+</div>
+
+<!-- ── TAB BAR ──────────────────────────────────────────────────────────── -->
+<div class="tab-bar">
+  <button class="tab-btn active" onclick="showTab('flow',this)">🚀 Build &amp; Deploy Pipeline</button>
+  <button class="tab-btn" onclick="showTab('envconfig',this)">⚙️ Environment Config</button>
+  <button class="tab-btn" onclick="showTab('vars',this)">🔑 Variables &amp; Inputs</button>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     TAB 1 — PIPELINE FLOW
+     ═══════════════════════════════════════════════════════════════════════ -->
+<div id="flow" class="tab-panel active">
+
+  <div class="top-bar">
+    <div class="src-key">
+      <span class="src-key-label">Tooltip source keys:</span>
+      <span class="src-badge sb-s">[S] Secret / AKV</span>
+      <span class="src-badge sb-v">[V] Repo Variable</span>
+      <span class="src-badge sb-i">[I] Dispatch Input</span>
+      <span class="src-badge sb-o">[O] Step/Job Output</span>
+      <span class="src-badge sb-h">[H] Hardcoded default</span>
+    </div>
+  </div>
+  <div class="top-bar" style="margin-bottom:16px;">
+    <div class="legend">
+      <div class="leg"><div class="leg-dot" style="background:#22d3ee"></div>Setup/Discover</div>
+      <div class="leg"><div class="leg-dot" style="background:#38bdf8"></div>Auth/Install</div>
+      <div class="leg"><div class="leg-dot" style="background:#4ade80"></div>Build/Pack</div>
+      <div class="leg"><div class="leg-dot" style="background:#facc15"></div>Check/Verify</div>
+      <div class="leg"><div class="leg-dot" style="background:#f472b6"></div>Backup</div>
+      <div class="leg"><div class="leg-dot" style="background:#c084fc"></div>Deploy/Import</div>
+      <div class="leg"><div class="leg-dot" style="background:#818cf8"></div>Publish</div>
+      <div class="leg"><div class="leg-dot" style="background:#2dd4bf"></div>Data/Config</div>
+      <div class="leg"><div class="leg-dot" style="background:#f59e0b"></div>JFrog (archival)</div>
+      <div class="leg"><div class="leg-dot" style="background:#4ade80; border: 1px dashed #15803d"></div>GitHub Artifacts (deploy)</div>
+      <div class="leg"><div class="leg-dot" style="background:#94a3b8"></div>Summary</div>
+    </div>
+  </div>
+
+  <div class="pipeline-wrap">
+  <div class="pipeline">
+
+    <!-- ════ SECTION: SETUP ════ -->
+    <div class="section-div">
+      <span class="sd-icon">🔍</span>
+      SETUP JOB
+      <span class="sd-sub">combined-pipeline.yml — runs once before all stages · resolves solution order &amp; export flag</span>
+      <span class="sd-pill sdp-dyn">GHA-Dynamics</span>
+    </div>
+
+    <div class="stage">
+      <div class="stage-label sl-setup">
+        <div class="lbl-emoji">📦</div>
+        <div class="lbl-main">Checkout</div>
+        <div class="lbl-sub">2 repos<br>runs-on: ubuntu</div>
+      </div>
+      <div class="stage-body">
+        <div class="pill c-git">Checkout GHA-Dynamics
+          <div class="tt"><div class="tt-title">actions/checkout@v4 — GHA-Dynamics</div>
+            <div class="tt-desc">Checks out the caller repo (solutions.json, src/solutions/, deployment-settings/) onto the runner workspace root.</div>
+            <div class="tt-sec">📥 Inputs</div>
+            <div class="tt-row"><span class="lbl">ref</span><span class="src-badge sb-h">[H]</span> default branch (github.ref)</div>
+            <div class="tt-sec">📤 Outputs</div>
+            <div class="tt-out">Workspace: solutions.json, src/, deployment-settings/</div>
+          </div>
+        </div>
+        <div class="arrow">→</div>
+        <div class="pill c-git">Checkout GHA-Core → .ci/
+          <div class="tt"><div class="tt-title">actions/checkout@v4 — GHA-Core</div>
+            <div class="tt-desc">Checks out the GHA-Core shared script library into <code>.ci/</code> using a PAT. Provides all reusable PowerShell scripts (Resolve-SolutionMatrix.ps1, Write-PipelineSummary.ps1, etc.).</div>
+            <div class="tt-sec">📥 Inputs</div>
+            <div class="tt-row"><span class="lbl">GHA_CORE_PAT</span><span class="src-badge sb-s">[S]</span> cross-repo access token</div>
+            <div class="tt-row"><span class="lbl">path</span><span class="src-badge sb-h">[H]</span> .ci/</div>
+            <div class="tt-sec">📤 Outputs</div>
+            <div class="tt-out">.ci/templates/steps/dynamics/*.ps1 available on runner</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="stage">
+      <div class="stage-label sl-setup">
+        <div class="lbl-emoji">🔍</div>
+        <div class="lbl-main">Resolve Matrix</div>
+        <div class="lbl-sub">Resolve-SolutionMatrix.ps1<br>deployOrder sort</div>
+      </div>
+      <div class="stage-body">
+        <div class="pill c-setup">Resolve-SolutionMatrix.ps1
+          <div class="tt"><div class="tt-title">Resolve Solution Matrix</div>
+            <div class="tt-desc">Reads solutions.json, validates the requested solution subset, sorts by <b>deployOrder</b> integer (ascending). dependsOn is metadata only — not used for ordering.</div>
+            <div class="tt-sec">📥 Inputs</div>
+            <div class="tt-row"><span class="lbl">solutions input</span><span class="src-badge sb-i">[I]</span> "all" or "CoreSolution,ExtA"</div>
+            <div class="tt-row"><span class="lbl">PP_SOLUTION_NAME</span><span class="src-badge sb-v">[V]</span> fallback for single-solution repos</div>
+            <div class="tt-row"><span class="lbl">solutions.json</span><span class="src-badge sb-h">[H]</span> deployOrder, folder, checkerGeo…</div>
+            <div class="tt-sec">📤 Outputs → GITHUB_OUTPUT</div>
+            <div class="tt-out">matrix → {"solution":["CoreSolution","ExtA","ExtB"]}</div>
+            <div class="tt-out">solution_list → "CoreSolution, ExtA, ExtB"</div>
+            <div class="tt-out">solution_count → 3</div>
+            <div class="tt-toggle">ℹ deployOrder controls sequential import order. Solutions without deployOrder sort last.</div>
+          </div>
+        </div>
+        <div class="divider"></div>
+        <div class="pill c-flag">Resolve pipeline flags
+          <div class="tt"><div class="tt-title">Resolve Pipeline Flags</div>
+            <div class="tt-desc">Determines whether Stage 1 Export should run. Sets <code>run_export</code> output.</div>
+            <div class="tt-sec">📥 Logic</div>
+            <div class="tt-row"><span class="lbl">skip_export=true</span><span>→ run_export=false</span></div>
+            <div class="tt-row"><span class="lbl">mock_deploy=true</span><span>→ run_export=false</span></div>
+            <div class="tt-row"><span class="lbl">otherwise</span><span>→ run_export=true</span></div>
+            <div class="tt-sec">📤 Outputs</div>
+            <div class="tt-out">run_export → true | false</div>
+          </div>
+        </div>
+        <div class="divider"></div>
+        <div class="gate gate-blue">📤 Outputs: matrix · solution_list · solution_count · run_export</div>
+      </div>
+    </div>
+
+    <!-- ════ SECTION: STAGE 1 EXPORT ════ -->
+    <div class="section-div">
+      <span class="sd-icon">📤</span>
+      STAGE 1 — EXPORT
+      <span class="sd-sub">_stage-export.yml (GHA-Core) · per solution in parallel · uploads to GitHub artifact storage</span>
+      <span class="sd-pill sdp-core">GHA-Core</span>
+    </div>
+
+    <div class="stage gate-row">
+      <div class="stage-label sl-note">
+        <div class="lbl-emoji">⏭️</div>
+        <div class="lbl-main">Skip Condition</div>
+        <div class="lbl-sub">evaluated before stage runs</div>
+      </div>
+      <div class="stage-body">
+        <div class="skip-note">⏭ Skipped if: skip_export=true OR mock_deploy=true → build uses committed src/solutions/ instead</div>
+        <div class="arrow">→</div>
+        <div class="gate gate-blue">if: run_export == 'true'</div>
+      </div>
+    </div>
+
+    <div class="stage">
+      <div class="stage-label sl-export">
+        <div class="lbl-emoji">📤</div>
+        <div class="lbl-main">Export</div>
+        <div class="lbl-sub">per solution<br>parallel (fail-fast:false)</div>
+      </div>
+      <div class="stage-body">
+        <div class="pill c-auth">CI Bootstrap
+          <div class="tt"><div class="tt-title">ci-bootstrap composite</div>
+            <div class="tt-desc">Checks out both repos, Azure OIDC login, fetches AKV secrets. jfrog_enabled=false for export stage.</div>
+            <div class="tt-sec">📥 Inputs</div>
+            <div class="tt-row"><span class="lbl">PP_APP_ID</span><span class="src-badge sb-s">[S]</span> service principal app ID</div>
+            <div class="tt-row"><span class="lbl">PP_CLIENT_SECRET</span><span class="src-badge sb-s">[S]</span> service principal secret</div>
+            <div class="tt-row"><span class="lbl">PP_TENANT_ID</span><span class="src-badge sb-s">[S]</span> AAD tenant ID</div>
+            <div class="tt-row"><span class="lbl">jfrog_enabled</span><span class="src-badge sb-h">[H]</span> false (no JFrog in export)</div>
+          </div>
+        </div>
+        <div class="arrow">→</div>
+        <div class="pill c-auth">PAC CLI Install
+          <div class="tt"><div class="tt-title">pac-install composite</div>
+            <div class="tt-desc">Installs the Power Platform CLI (PAC CLI) on the runner. Required before any pac commands run.</div>
+            <div class="tt-sec">📤 Outputs</div>
+            <div class="tt-out">pac available on $PATH</div>
+          </div>
+        </div>
+        <div class="arrow">→</div>
+        <div class="pill c-build">Export Solution
+          <div class="tt"><div class="tt-title">export-solution composite</div>
+            <div class="tt-desc">Authenticates PAC CLI against the sandbox, exports the unmanaged solution ZIP, then runs <code>pac solution unpack</code> to produce the source tree.</div>
+            <div class="tt-sec">📥 Inputs</div>
+            <div class="tt-row"><span class="lbl">solution_name</span><span class="src-badge sb-o">[O]</span> from matrix</div>
+            <div class="tt-row"><span class="lbl">PP_SDBX_URL</span><span class="src-badge sb-v">[V]</span> source environment URL</div>
+            <div class="tt-row"><span class="lbl">export_folder</span><span class="src-badge sb-h">[H]</span> export-src/</div>
+            <div class="tt-sec">📤 Outputs</div>
+            <div class="tt-out">source_folder → export-src/{SolutionName}/</div>
+          </div>
+        </div>
+        <div class="arrow">→</div>
+        <div class="pill c-gha-art">Upload exported source <span class="new-badge">GitHub Artifacts</span>
+          <div class="tt"><div class="tt-title">actions/upload-artifact@v4</div>
+            <div class="tt-desc">Uploads the unpacked solution source tree to GitHub artifact storage so the build stage can download and pack it.</div>
+            <div class="tt-sec">📥 Inputs</div>
+            <div class="tt-row"><span class="lbl">name</span><span class="src-badge sb-h">[H]</span> exported-source-{SolutionName}</div>
+            <div class="tt-row"><span class="lbl">path</span><span class="src-badge sb-o">[O]</span> source_folder output</div>
+            <div class="tt-row"><span class="lbl">retention-days</span><span class="src-badge sb-h">[H]</span> 1 (short-lived handoff)</div>
+            <div class="tt-sec">📤 Outputs</div>
+            <div class="tt-out">exported-source-{SolutionName} in GitHub artifact store</div>
+            <div class="tt-toggle">🔁 Per solution in parallel — each solution uploads independently</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ════ SECTION: STAGE 2 BUILD ════ -->
+    <div class="section-div">
+      <span class="sd-icon">🏗️</span>
+      STAGE 2 — BUILD
+      <span class="sd-sub">_stage-build.yml → _job-build.yml (GHA-Core) · per solution in parallel · always runs after export or skip</span>
+      <span class="sd-pill sdp-core">GHA-Core</span>
+    </div>
+
+    <div class="stage">
+      <div class="stage-label sl-build">
+        <div class="lbl-emoji">🏗️</div>
+        <div class="lbl-main">Build</div>
+        <div class="lbl-sub">per solution<br>parallel (fail-fast:false)<br>always() after export</div>
+      </div>
+      <div class="stage-body">
+        <div class="pill c-auth">CI Bootstrap
+          <div class="tt"><div class="tt-title">ci-bootstrap composite</div>
+            <div class="tt-desc">Checkout both repos, Azure OIDC login, AKV secret fetch. jfrog_enabled=true when JFROG_URL is set.</div>
+            <div class="tt-sec">📥 Inputs</div>
+            <div class="tt-row"><span class="lbl">PP_APP_ID/SECRET/TENANT</span><span class="src-badge sb-s">[S]</span> service principal</div>
+            <div class="tt-row"><span class="lbl">JFROG_TOKEN</span><span class="src-badge sb-s">[S]</span> fetched if jfrog_enabled</div>
+            <div class="tt-row"><span class="lbl">jfrog_enabled</span><span class="src-badge sb-v">[V]</span> JFROG_URL != ''</div>
+          </div>
+        </div>
+        <div class="arrow">→</div>
+        <div class="pill c-auth">PAC CLI Install
+          <div class="tt"><div class="tt-title">pac-install composite</div>
+            <div class="tt-desc">Installs PAC CLI on the build runner.</div>
+          </div>
+        </div>
+        <div class="arrow">→</div>
+        <div class="pill c-setup">Download exported source <span class="toggle-badge">if exported</span>
+          <div class="tt"><div class="tt-title">actions/download-artifact@v4</div>
+            <div class="tt-desc">Downloads the <code>exported-source-{name}</code> artifact from Stage 1 when export ran successfully. Skipped when building from committed source tree.</div>
+            <div class="tt-sec">📥 Inputs</div>
+            <div class="tt-row"><span class="lbl">use_exported_source</span><span class="src-badge sb-o">[O]</span> stage-export.result == 'success'</div>
+            <div class="tt-row"><span class="lbl">name</span><span class="src-badge sb-h">[H]</span> exported-source-{SolutionName}</div>
+            <div class="tt-toggle">🔀 false → packs from committed src/solutions/ tree</div>
+          </div>
+        </div>
+        <div class="arrow">→</div>
+        <div class="pill c-build">Pack Solution
+          <div class="tt"><div class="tt-title">pack-solution composite</div>
+            <div class="tt-desc">Bumps the version number, runs <code>pac solution pack</code> to produce both unmanaged and managed ZIPs in <code>out/{artifactName}/</code>.</div>
+            <div class="tt-sec">📥 Inputs</div>
+            <div class="tt-row"><span class="lbl">solution_name</span><span class="src-badge sb-o">[O]</span> from matrix</div>
+            <div class="tt-row"><span class="lbl">run_number</span><span class="src-badge sb-h">[H]</span> github.run_number</div>
+            <div class="tt-row"><span class="lbl">run_attempt</span><span class="src-badge sb-h">[H]</span> github.run_attempt</div>
+            <div class="tt-sec">📤 Outputs</div>
+            <div class="tt-out">artifact_name → {Name}_{run}_{attempt}</div>
+            <div class="tt-out">out_dir → out/{artifactName}/</div>
+            <div class="tt-out">unmanaged_zip, managed_zip paths</div>
+          </div>
+        </div>
+        <div class="arrow">→</div>
+        <div class="pill c-check">Solution Checker <span class="mand-badge">MANDATORY</span>
+          <div class="tt"><div class="tt-title">solution-checker composite</div>
+            <div class="tt-desc">Runs Microsoft Solution Checker via PAC CLI against the unmanaged ZIP. Always runs — no toggle to skip. Uploads SARIF to GitHub Security tab.</div>
+            <div class="tt-sec">📥 Inputs</div>
+            <div class="tt-row"><span class="lbl">checker_error_level</span><span class="src-badge sb-i">[I]</span> HighIssue (default)</div>
+            <div class="tt-row"><span class="lbl">checker_geo</span><span class="src-badge sb-h">[H]</span> from solutions.json per solution</div>
+            <div class="tt-mand">🚫 Pipeline fails if issues exceed error level — no override</div>
+          </div>
+        </div>
+        <div class="arrow">→</div>
+        <div class="pill c-data">Export Config Data <span class="toggle-badge">if schema set</span>
+          <div class="tt"><div class="tt-title">export-config-data composite</div>
+            <div class="tt-desc">Exports Configuration Migration data from sandbox when <code>dataSchemaFile</code> is set in solutions.json. Produces <code>config-data/{name}-data.zip</code>.</div>
+            <div class="tt-sec">📥 Inputs</div>
+            <div class="tt-row"><span class="lbl">data_schema_file</span><span class="src-badge sb-h">[H]</span> from solutions.json</div>
+            <div class="tt-row"><span class="lbl">PP_SDBX_URL</span><span class="src-badge sb-v">[V]</span> source environment</div>
+            <div class="tt-toggle">🔀 Empty dataSchemaFile → step is skipped entirely</div>
+          </div>
+        </div>
+        <div class="arrow">→</div>
+        <div class="pill c-gha-art">Upload artifact for deploy <span class="new-badge">GitHub Artifacts</span>
+          <div class="tt"><div class="tt-title">actions/upload-artifact@v4 — Deploy Handoff</div>
+            <div class="tt-desc">Uploads the packed ZIPs and config-data to GitHub artifact storage. This is what ALL deploy environments download — JFrog is NOT used during deploy.</div>
+            <div class="tt-sec">📥 Contents uploaded</div>
+            <div class="tt-row"><span class="lbl">name</span><span class="src-badge sb-h">[H]</span> solution-artifact-{SolutionName}</div>
+            <div class="tt-row"><span class="lbl">out/{artifactName}/</span><span>managed + unmanaged ZIPs</span></div>
+            <div class="tt-row"><span class="lbl">config-data/{name}-data.zip</span><span>if exported</span></div>
+            <div class="tt-row"><span class="lbl">retention-days</span><span class="src-badge sb-h">[H]</span> 7 (covers full approval chain)</div>
+            <div class="tt-new">✅ Built once here — Dev/Intg/UAT/FRS/Perf/Prod all use this same artifact</div>
+          </div>
+        </div>
+        <div class="arrow">→</div>
+        <div class="pill c-jfrog">JFrog Upload <span class="arch-badge">archival</span>
+          <div class="tt"><div class="tt-title">jfrog-upload composite</div>
+            <div class="tt-desc">Uploads managed/unmanaged ZIPs to JFrog Artifactory for long-term archival. Runs once per build. Deploy stages do NOT download from JFrog.</div>
+            <div class="tt-sec">📥 Inputs</div>
+            <div class="tt-row"><span class="lbl">JFROG_URL</span><span class="src-badge sb-v">[V]</span> Artifactory base URL</div>
+            <div class="tt-row"><span class="lbl">JFROG_REPO</span><span class="src-badge sb-v">[V]</span> powerplatform-solutions</div>
+            <div class="tt-row"><span class="lbl">JFROG_TOKEN</span><span class="src-badge sb-s">[S]</span> from AKV</div>
+            <div class="tt-toggle">🔀 Skipped when JFROG_URL is empty or mock_deploy=true</div>
+            <div class="tt-new">ℹ JFrog only used again at Prod to set prodDeployed=true tag</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ════ SECTION: STAGE 3 DEPLOY CHAIN ════ -->
+    <div class="section-div">
+      <span class="sd-icon">🚀</span>
+      STAGE 3 — DEPLOY CHAIN
+      <span class="sd-sub">_stage-deploy-chain.yml (GHA-Core) · Job 1: assemble-env-matrix → Job 2: deploy-env (strategy.matrix, max-parallel:1)</span>
+      <span class="sd-pill sdp-core">GHA-Core</span>
+    </div>
+
+    <!-- Assemble env matrix job -->
+    <div class="stage">
+      <div class="stage-label sl-assem">
+        <div class="lbl-emoji">🗂️</div>
+        <div class="lbl-main">Assemble Env Matrix</div>
+        <div class="lbl-sub">Job 1 of deploy chain<br>runs-on: ubuntu</div>
+      </div>
+      <div class="stage-body">
+        <div class="pill c-assem">Parse dev_config JSON
+          <div class="tt"><div class="tt-title">dev_config input → parsed object</div>
+            <div class="tt-desc">Reads the <code>dev_config</code> JSON string passed from combined-pipeline.yml and converts it to a PowerShell object.</div>
+            <div class="tt-sec">📥 Input (from combined-pipeline.yml with: block)</div>
+            <span class="tt-code">{"name":"Dev","url":"$PP_DEV_URL",
+"previous_url":"","solution_type":"Unmanaged",
+"enable_backup":false,"enable_blocking_check":false,
+"enable_version_compare":false,"import_config_data":false}</span>
+          </div>
+        </div>
+        <div class="arrow">→</div>
+        <div class="pill c-assem">Parse intg_config JSON
+          <div class="tt"><div class="tt-title">intg_config input → parsed object</div>
+            <span class="tt-code">{"name":"Intg","url":"$PP_INTG_URL",
+"previous_url":"$PP_DEV_URL","solution_type":"Managed",
+"enable_backup":false,"enable_blocking_check":true,
+"enable_version_compare":false,"import_config_data":false}</span>
+          </div>
+        </div>
+        <div class="arrow">→</div>
+        <div class="pill c-assem">Parse uat/frs/perf/prod configs
+          <div class="tt"><div class="tt-title">Remaining 4 env config inputs</div>
+            <div class="tt-desc">All 6 named JSON inputs are parsed and assembled into an ordered PowerShell array. The array order fixes the promotion sequence.</div>
+            <div class="tt-sec">📤 Output</div>
+            <div class="tt-out">env_matrix_json → ordered JSON array [Dev, Intg, UAT, FRS, Perf, Prod]</div>
+            <div class="tt-new">✅ No external file — all env config defined inline in combined-pipeline.yml</div>
+          </div>
+        </div>
+        <div class="divider"></div>
+        <div class="gate gate-purple">📤 env_matrix_json → drives strategy.matrix in deploy-env job</div>
+      </div>
+    </div>
+
+    <!-- Dev deploy -->
+    <div class="stage">
+      <div class="stage-label sl-dev">
+        <div class="lbl-emoji">🔐</div>
+        <div class="lbl-main">Dev</div>
+        <div class="lbl-sub">environment: Dev<br>approval gate<br>Unmanaged</div>
+      </div>
+      <div class="stage-body">
+        <div class="gate gate-yellow">🔐 GitHub Env Gate: Dev</div>
+        <div class="divider"></div>
+        <div class="pill c-auth">CI Bootstrap
+          <div class="tt"><div class="tt-title">ci-bootstrap composite</div>
+            <div class="tt-desc">Checkout repos, Azure OIDC login, AKV secret fetch on the deploy runner.</div>
+            <div class="tt-row"><span class="lbl">jfrog_enabled</span><span class="src-badge sb-v">[V]</span> JFROG_URL != '' (for Prod tag)</div>
+          </div>
+        </div>
+        <div class="arrow">→</div>
+        <div class="pill c-auth">PAC CLI Install</div>
+        <div class="arrow">→</div>
+        <div class="pill c-gha-art">Download solution artifacts <span class="new-badge">GitHub Artifacts</span>
+          <div class="tt"><div class="tt-title">actions/download-artifact@v4</div>
+            <div class="tt-desc">Downloads all <code>solution-artifact-*</code> artifacts built in Stage 2. Uses the same GitHub-stored ZIPs for every environment — no JFrog download.</div>
+            <div class="tt-row"><span class="lbl">pattern</span><span class="src-badge sb-h">[H]</span> solution-artifact-*</div>
+            <div class="tt-row"><span class="lbl">merge-multiple</span><span class="src-badge sb-h">[H]</span> true</div>
+            <div class="tt-row"><span class="lbl">path</span><span class="src-badge sb-h">[H]</span> . (workspace root)</div>
+            <div class="tt-new">✅ Preserves out/{artifactName}/ and config-data/ layout</div>
+          </div>
+        </div>
+        <div class="arrow">→</div>
+        <div class="gate-loop">🔁 per solution (sequential)</div>
+        <div class="arrow">→</div>
+        <div class="pill c-check">Verify artifact present</div>
+        <div class="arrow">→</div>
+        <div class="pill c-setup">Resolve deploy-settings tokens</div>
+        <div class="arrow">→</div>
+        <div class="pill c-check">Verify base solutions</div>
+        <div class="arrow">→</div>
+        <div class="pill c-deploy">Import (Unmanaged)
+          <div class="tt"><div class="tt-title">pac solution import — Unmanaged</div>
+            <div class="tt-desc">Dev environment always imports as Unmanaged so makers can edit solutions directly in the environment.</div>
+            <div class="tt-row"><span class="lbl">solution_type</span><span class="src-badge sb-h">[H]</span> Unmanaged</div>
+            <div class="tt-row"><span class="lbl">enable_blocking_check</span><span class="src-badge sb-h">[H]</span> false</div>
+            <div class="tt-row"><span class="lbl">enable_backup</span><span class="src-badge sb-h">[H]</span> false</div>
+            <div class="tt-row"><span class="lbl">enable_version_compare</span><span class="src-badge sb-h">[H]</span> false</div>
+          </div>
+        </div>
+        <div class="arrow">→</div>
+        <div class="pill c-pub">Publish</div>
+        <div class="arrow">→</div>
+        <div class="pill c-sum">Write-DeploySummary.ps1</div>
+      </div>
+    </div>
+
+    <!-- Intg deploy -->
+    <div class="stage">
+      <div class="stage-label sl-intg">
+        <div class="lbl-emoji">🔐</div>
+        <div class="lbl-main">Intg</div>
+        <div class="lbl-sub">environment: Intg<br>approval gate<br>Managed</div>
+      </div>
+      <div class="stage-body">
+        <div class="gate gate-yellow">🔐 GitHub Env Gate: Intg</div>
+        <div class="divider"></div>
+        <div class="pill c-auth">CI Bootstrap</div>
+        <div class="arrow">→</div>
+        <div class="pill c-auth">PAC CLI Install</div>
+        <div class="arrow">→</div>
+        <div class="pill c-gha-art">Download artifacts <span class="new-badge">GitHub</span></div>
+        <div class="arrow">→</div>
+        <div class="gate-loop">🔁 per solution</div>
+        <div class="arrow">→</div>
+        <div class="pill c-check">Verify artifact</div>
+        <div class="arrow">→</div>
+        <div class="pill c-setup">Resolve tokens</div>
+        <div class="arrow">→</div>
+        <div class="pill c-check">Verify base solutions</div>
+        <div class="arrow">→</div>
+        <div class="pill c-scan">Blocking Check <span class="mand-badge">active</span>
+          <div class="tt"><div class="tt-title">Invoke-BlockingCheck.ps1</div>
+            <div class="tt-desc">Checks for active flows, ownership locks, or other blockers that would prevent a clean import. Fails the pipeline if any blockers are found.</div>
+            <div class="tt-row"><span class="lbl">enable_blocking_check</span><span class="src-badge sb-h">[H]</span> true for Intg+</div>
+          </div>
+        </div>
+        <div class="arrow">→</div>
+        <div class="pill c-deploy">Import (Managed)</div>
+        <div class="arrow">→</div>
+        <div class="pill c-pub">Publish</div>
+        <div class="arrow">→</div>
+        <div class="pill c-sum">Deploy Summary</div>
+      </div>
+    </div>
+
+    <!-- UAT deploy -->
+    <div class="stage">
+      <div class="stage-label sl-uat">
+        <div class="lbl-emoji">🔐</div>
+        <div class="lbl-main">UAT</div>
+        <div class="lbl-sub">environment: UAT<br>approval gate<br>Managed + Backup</div>
+      </div>
+      <div class="stage-body">
+        <div class="gate gate-yellow">🔐 GitHub Env Gate: UAT</div>
+        <div class="divider"></div>
+        <div class="pill c-auth">CI Bootstrap</div>
+        <div class="arrow">→</div>
+        <div class="pill c-auth">PAC CLI Install</div>
+        <div class="arrow">→</div>
+        <div class="pill c-gha-art">Download artifacts <span class="new-badge">GitHub</span></div>
+        <div class="arrow">→</div>
+        <div class="gate-loop">🔁 per solution</div>
+        <div class="arrow">→</div>
+        <div class="pill c-check">Verify artifact</div>
+        <div class="arrow">→</div>
+        <div class="pill c-setup">Resolve tokens</div>
+        <div class="arrow">→</div>
+        <div class="pill c-check">Verify base solutions</div>
+        <div class="arrow">→</div>
+        <div class="pill c-scan">Blocking Check <span class="mand-badge">active</span></div>
+        <div class="arrow">→</div>
+        <div class="pill c-check">Version Compare <span class="toggle-badge">active</span>
+          <div class="tt"><div class="tt-title">Compare-SolutionVersion.ps1</div>
+            <div class="tt-desc">Compares the artifact version against the currently installed version in the environment. If installed version ≥ artifact version, sets <code>skip_import=true</code>.</div>
+            <div class="tt-row"><span class="lbl">enable_version_compare</span><span class="src-badge sb-h">[H]</span> true for UAT+</div>
+            <div class="tt-toggle">⏭ skip_import=true → backup, import, publish all skipped</div>
+          </div>
+        </div>
+        <div class="arrow">→</div>
+        <div class="pill c-backup">Backup <span class="toggle-badge">active</span>
+          <div class="tt"><div class="tt-title">pac solution export — Backup</div>
+            <div class="tt-desc">Exports the current managed solution from the target environment as a backup ZIP before overwriting. Skipped if skip_import=true.</div>
+            <div class="tt-row"><span class="lbl">enable_backup</span><span class="src-badge sb-h">[H]</span> true for UAT+</div>
+          </div>
+        </div>
+        <div class="arrow">→</div>
+        <div class="pill c-deploy">Import (Managed)</div>
+        <div class="arrow">→</div>
+        <div class="pill c-pub">Publish</div>
+        <div class="arrow">→</div>
+        <div class="pill c-sum">Deploy Summary</div>
+      </div>
+    </div>
+
+    <!-- FRS deploy -->
+    <div class="stage">
+      <div class="stage-label sl-frs">
+        <div class="lbl-emoji">🔐</div>
+        <div class="lbl-main">FRS</div>
+        <div class="lbl-sub">environment: FRS<br>approval gate<br>Managed + Backup</div>
+      </div>
+      <div class="stage-body">
+        <div class="gate gate-yellow">🔐 GitHub Env Gate: FRS</div>
+        <div class="divider"></div>
+        <div class="pill c-auth">CI Bootstrap</div>
+        <div class="arrow">→</div>
+        <div class="pill c-auth">PAC CLI Install</div>
+        <div class="arrow">→</div>
+        <div class="pill c-gha-art">Download artifacts <span class="new-badge">GitHub</span></div>
+        <div class="arrow">→</div>
+        <div class="gate-loop">🔁 per solution</div>
+        <div class="arrow">→</div>
+        <div class="pill c-check">Verify artifact</div>
+        <div class="arrow">→</div>
+        <div class="pill c-setup">Resolve tokens</div>
+        <div class="arrow">→</div>
+        <div class="pill c-check">Verify base solutions</div>
+        <div class="arrow">→</div>
+        <div class="pill c-scan">Blocking Check <span class="mand-badge">active</span></div>
+        <div class="arrow">→</div>
+        <div class="pill c-check">Version Compare <span class="toggle-badge">active</span></div>
+        <div class="arrow">→</div>
+        <div class="pill c-backup">Backup <span class="toggle-badge">active</span></div>
+        <div class="arrow">→</div>
+        <div class="pill c-deploy">Import (Managed)</div>
+        <div class="arrow">→</div>
+        <div class="pill c-pub">Publish</div>
+        <div class="arrow">→</div>
+        <div class="pill c-sum">Deploy Summary</div>
+      </div>
+    </div>
+
+    <!-- Perf deploy -->
+    <div class="stage">
+      <div class="stage-label sl-perf">
+        <div class="lbl-emoji">🔐</div>
+        <div class="lbl-main">Perf</div>
+        <div class="lbl-sub">environment: Perf<br>approval gate<br>Managed</div>
+      </div>
+      <div class="stage-body">
+        <div class="gate gate-yellow">🔐 GitHub Env Gate: Perf</div>
+        <div class="divider"></div>
+        <div class="pill c-auth">CI Bootstrap</div>
+        <div class="arrow">→</div>
+        <div class="pill c-auth">PAC CLI Install</div>
+        <div class="arrow">→</div>
+        <div class="pill c-gha-art">Download artifacts <span class="new-badge">GitHub</span></div>
+        <div class="arrow">→</div>
+        <div class="gate-loop">🔁 per solution</div>
+        <div class="arrow">→</div>
+        <div class="pill c-check">Verify artifact</div>
+        <div class="arrow">→</div>
+        <div class="pill c-setup">Resolve tokens</div>
+        <div class="arrow">→</div>
+        <div class="pill c-check">Verify base solutions</div>
+        <div class="arrow">→</div>
+        <div class="pill c-scan">Blocking Check <span class="mand-badge">active</span></div>
+        <div class="arrow">→</div>
+        <div class="pill c-check">Version Compare <span class="toggle-badge">active</span></div>
+        <div class="arrow">→</div>
+        <div class="pill c-deploy">Import (Managed) <span class="badge">no backup</span></div>
+        <div class="arrow">→</div>
+        <div class="pill c-pub">Publish</div>
+        <div class="arrow">→</div>
+        <div class="pill c-sum">Deploy Summary</div>
+      </div>
+    </div>
+
+    <!-- Prod deploy -->
+    <div class="stage">
+      <div class="stage-label sl-prod">
+        <div class="lbl-emoji">🔐</div>
+        <div class="lbl-main">Prod</div>
+        <div class="lbl-sub">environment: Prod<br>approval gate<br>Managed + all checks</div>
+      </div>
+      <div class="stage-body">
+        <div class="gate gate-yellow">🔐 GitHub Env Gate: Prod</div>
+        <div class="divider"></div>
+        <div class="pill c-auth">CI Bootstrap</div>
+        <div class="arrow">→</div>
+        <div class="pill c-auth">PAC CLI Install</div>
+        <div class="arrow">→</div>
+        <div class="pill c-gha-art">Download artifacts <span class="new-badge">GitHub</span></div>
+        <div class="arrow">→</div>
+        <div class="gate-loop">🔁 per solution</div>
+        <div class="arrow">→</div>
+        <div class="pill c-check">Verify artifact</div>
+        <div class="arrow">→</div>
+        <div class="pill c-setup">Resolve tokens</div>
+        <div class="arrow">→</div>
+        <div class="pill c-check">Verify base solutions</div>
+        <div class="arrow">→</div>
+        <div class="pill c-scan">Blocking Check <span class="mand-badge">active</span></div>
+        <div class="arrow">→</div>
+        <div class="pill c-check">Version Compare <span class="toggle-badge">active</span></div>
+        <div class="arrow">→</div>
+        <div class="pill c-backup">Backup <span class="toggle-badge">active</span></div>
+        <div class="arrow">→</div>
+        <div class="pill c-deploy">Import (Managed)</div>
+        <div class="arrow">→</div>
+        <div class="pill c-data">Config Data Import <span class="mand-badge">Prod only</span>
+          <div class="tt"><div class="tt-title">pac data import — Config Data</div>
+            <div class="tt-desc">Imports configuration migration data after solution import. Only enabled for Prod by default (import_config_data=true).</div>
+            <div class="tt-row"><span class="lbl">import_config_data</span><span class="src-badge sb-h">[H]</span> true (Prod only)</div>
+          </div>
+        </div>
+        <div class="arrow">→</div>
+        <div class="pill c-pub">Publish</div>
+        <div class="arrow">→</div>
+        <div class="pill c-jfrog">JFrog Tag prodDeployed <span class="prod-badge">Prod only</span>
+          <div class="tt"><div class="tt-title">Invoke-JFrogAction.ps1 — tag-prod</div>
+            <div class="tt-desc">Tags the artifact in JFrog Artifactory with <code>prodDeployed=true</code> after successful Prod deployment. Only runs for Prod (tag_prod_deployed=true).</div>
+          </div>
+        </div>
+        <div class="arrow">→</div>
+        <div class="pill c-sum">Deploy Summary</div>
+      </div>
+    </div>
+
+    <!-- Pipeline Summary -->
+    <div class="section-div">
+      <span class="sd-icon">📋</span>
+      PIPELINE SUMMARY
+      <span class="sd-sub">Always runs · downloads all job-summary-* artifacts · writes GitHub Step Summary</span>
+      <span class="sd-pill sdp-both">always()</span>
+    </div>
+    <div class="stage">
+      <div class="stage-label sl-sum">
+        <div class="lbl-emoji">📋</div>
+        <div class="lbl-main">Summary</div>
+        <div class="lbl-sub">always() · runs-on: ubuntu</div>
+      </div>
+      <div class="stage-body">
+        <div class="pill c-git">Checkout GHA-Dynamics</div>
+        <div class="arrow">→</div>
+        <div class="pill c-git">Checkout GHA-Core → .ci/</div>
+        <div class="arrow">→</div>
+        <div class="pill c-gha-art">Download job-summary-* <span class="badge">continue-on-error</span></div>
+        <div class="arrow">→</div>
+        <div class="pill c-sum">Write-PipelineSummary.ps1
+          <div class="tt"><div class="tt-title">Write-PipelineSummary.ps1</div>
+            <div class="tt-desc">Aggregates all per-job deploy summaries into a single GitHub Step Summary table showing solution versions, environment results, and overall status.</div>
+            <div class="tt-sec">📥 Inputs</div>
+            <div class="tt-row"><span class="lbl">SolutionList</span><span class="src-badge sb-o">[O]</span> from setup job</div>
+            <div class="tt-row"><span class="lbl">ExportResult</span><span class="src-badge sb-o">[O]</span> needs.stage-export.result</div>
+            <div class="tt-row"><span class="lbl">BuildResult</span><span class="src-badge sb-o">[O]</span> needs.stage-build.result</div>
+            <div class="tt-row"><span class="lbl">DeployResult</span><span class="src-badge sb-o">[O]</span> needs.stage-deploy.result</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /pipeline -->
+  </div><!-- /pipeline-wrap -->
+
+  <div class="flow-note">
+    <b>Key design decisions in this pipeline:</b>
+    <div class="fn-grid">
+      <div class="fn-item"><b>Artifact handoff:</b> Stage 2 uploads <code>solution-artifact-*</code> to GitHub storage (7-day retention). Every deploy env downloads the same ZIPs — JFrog is archival only, downloaded zero times during deploy.</div>
+      <div class="fn-item"><b>Sequential by deployOrder:</b> solutions.json <code>deployOrder</code> integer controls import sequence. <code>dependsOn</code> is documentation metadata only — no topological sort.</div>
+      <div class="fn-item"><b>Env config as structured inputs:</b> Each environment has its own named JSON input (<code>dev_config</code>, <code>intg_config</code>, …) in combined-pipeline.yml's <code>with:</code> block — no external file, no setup step PowerShell.</div>
+      <div class="fn-item"><b>Single deploy job:</b> <code>strategy.matrix + max-parallel:1 + environment:</code> collapses 12 static gate+deploy jobs into 1 job definition. GitHub Environment protection rules provide the approval gates automatically.</div>
+      <div class="fn-item"><b>JFrog Prod tag:</b> Only the Prod iteration calls JFrog (<code>tag_prod_deployed=true</code>) to mark the artifact as production-deployed. All other envs never touch JFrog.</div>
+      <div class="fn-item"><b>fail-fast:true on deploy chain:</b> If any environment fails, the entire promotion chain stops. You cannot deploy Prod if UAT failed.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     TAB 2 — ENVIRONMENT CONFIG
+     ═══════════════════════════════════════════════════════════════════════ -->
+<div id="envconfig" class="tab-panel">
+
+  <h2 class="section-h2">Per-Environment JSON Inputs — combined-pipeline.yml</h2>
+  <p style="font-size:11px;color:#4b5563;margin-bottom:12px;">
+    These inputs are defined directly in the <code>stage-deploy</code> job's <code>with:</code> block in <code>combined-pipeline.yml</code>.
+    Each is a compact JSON object. <code>$&#123;&#123; vars.PP_*_URL &#125;&#125;</code> expressions are substituted by GitHub Actions before the inputs are passed.
+    Edit these to permanently change environment defaults — no external file needed.
+  </p>
+
+  <div class="env-config-wrap">
+  <table class="env-table">
+    <thead>
+      <tr>
+        <th>Input name</th>
+        <th>name</th>
+        <th>url</th>
+        <th>previous_url</th>
+        <th>solution_type</th>
+        <th>enable_backup</th>
+        <th>enable_blocking_check</th>
+        <th>enable_version_compare</th>
+        <th>import_config_data</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>dev_config</code></td>
+        <td><span class="env-name env-dev">Dev</span></td>
+        <td><span class="env-url">vars.PP_DEV_URL</span></td>
+        <td><span class="t-false">""</span></td>
+        <td><span class="t-un">Unmanaged</span></td>
+        <td><span class="t-false">false</span></td>
+        <td><span class="t-false">false</span></td>
+        <td><span class="t-false">false</span></td>
+        <td><span class="t-false">false</span></td>
+      </tr>
+      <tr>
+        <td><code>intg_config</code></td>
+        <td><span class="env-name env-intg">Intg</span></td>
+        <td><span class="env-url">vars.PP_INTG_URL</span></td>
+        <td><span class="env-url">vars.PP_DEV_URL</span></td>
+        <td><span class="t-man">Managed</span></td>
+        <td><span class="t-false">false</span></td>
+        <td><span class="t-true">true</span></td>
+        <td><span class="t-false">false</span></td>
+        <td><span class="t-false">false</span></td>
+      </tr>
+      <tr>
+        <td><code>uat_config</code></td>
+        <td><span class="env-name env-uat">UAT</span></td>
+        <td><span class="env-url">vars.PP_UAT_URL</span></td>
+        <td><span class="env-url">vars.PP_INTG_URL</span></td>
+        <td><span class="t-man">Managed</span></td>
+        <td><span class="t-true">true</span></td>
+        <td><span class="t-true">true</span></td>
+        <td><span class="t-true">true</span></td>
+        <td><span class="t-false">false</span></td>
+      </tr>
+      <tr>
+        <td><code>frs_config</code></td>
+        <td><span class="env-name env-frs">FRS</span></td>
+        <td><span class="env-url">vars.PP_FRS_URL</span></td>
+        <td><span class="env-url">vars.PP_UAT_URL</span></td>
+        <td><span class="t-man">Managed</span></td>
+        <td><span class="t-true">true</span></td>
+        <td><span class="t-true">true</span></td>
+        <td><span class="t-true">true</span></td>
+        <td><span class="t-false">false</span></td>
+      </tr>
+      <tr>
+        <td><code>perf_config</code></td>
+        <td><span class="env-name env-perf">Perf</span></td>
+        <td><span class="env-url">vars.PP_PERF_URL</span></td>
+        <td><span class="env-url">vars.PP_FRS_URL</span></td>
+        <td><span class="t-man">Managed</span></td>
+        <td><span class="t-false">false</span></td>
+        <td><span class="t-true">true</span></td>
+        <td><span class="t-true">true</span></td>
+        <td><span class="t-false">false</span></td>
+      </tr>
+      <tr>
+        <td><code>prod_config</code></td>
+        <td><span class="env-name env-prod">Prod</span></td>
+        <td><span class="env-url">vars.PP_PROD_URL</span></td>
+        <td><span class="env-url">vars.PP_PERF_URL</span></td>
+        <td><span class="t-man">Managed</span></td>
+        <td><span class="t-true">true</span></td>
+        <td><span class="t-true">true</span></td>
+        <td><span class="t-true">true</span></td>
+        <td><span class="t-true">true</span></td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h2 class="section-h2" style="margin-top:24px;">Field Reference</h2>
+  <div class="var-grid">
+    <div class="var-card">
+      <div class="var-card-head" style="background:#f0fdf4;"><span>🏷️</span> Per-env JSON fields <span class="badge-head bh-file">JSON string input</span></div>
+      <div class="var-row"><span class="var-name">name</span><span class="var-desc">Must exactly match a GitHub Environment in repo Settings → Environments. This is what triggers the protection rule gate.</span></div>
+      <div class="var-row"><span class="var-name">url</span><span class="var-desc">Power Platform environment URL. Set via repo Variables (PP_DEV_URL etc.). Expression substituted before passing.</span></div>
+      <div class="var-row"><span class="var-name">previous_url</span><span class="var-desc">URL of the prior environment — used by Compare-SolutionVersion.ps1 for version-compare context. Empty string for Dev.</span></div>
+      <div class="var-row"><span class="var-name">solution_type</span><span class="var-desc">"Unmanaged" for Dev (makers can edit). "Managed" for all other environments.</span></div>
+      <div class="var-row"><span class="var-name">enable_backup</span><span class="var-desc">When true, exports the current solution from the environment as a backup ZIP before importing. Recommended for UAT, FRS, Prod.</span></div>
+      <div class="var-row"><span class="var-name">enable_blocking_check</span><span class="var-desc">When true, runs Invoke-BlockingCheck.ps1 to detect active flows or ownership locks. Fails the deployment if blockers found.</span></div>
+      <div class="var-row"><span class="var-name">enable_version_compare</span><span class="var-desc">When true, runs Compare-SolutionVersion.ps1. If installed version ≥ artifact version, sets skip_import=true — import, backup, and publish are all bypassed.</span></div>
+      <div class="var-row"><span class="var-name">import_config_data</span><span class="var-desc">When true, runs pac data import after solution import using config-data/{name}-data.zip. Enabled for Prod only by default.</span></div>
+    </div>
+
+    <div class="var-card">
+      <div class="var-card-head" style="background:#eff6ff;"><span>⚙️</span> Common inputs (apply to all envs) <span class="badge-head bh-input">workflow_dispatch</span></div>
+      <div class="var-row"><span class="var-name">mock_deploy</span><span class="var-desc">Dry run. No Dataverse imports, no JFrog uploads. Also skips Stage 1 export automatically.</span></div>
+      <div class="var-row"><span class="var-name">trigger_upgrade</span><span class="var-desc">Use stage-and-upgrade (holding solution) pattern: imports as holding then calls pac solution upgrade.</span></div>
+      <div class="var-row"><span class="var-name">base_solutions</span><span class="var-desc">Comma-separated solution names to verify are installed in the target environment before import begins.</span></div>
+      <div class="var-row"><span class="var-name">checker_error_level</span><span class="var-desc">Minimum severity that fails Solution Checker. Options: CriticalIssue, HighIssue (default), MediumIssue, LowIssue, InformationalIssue.</span></div>
+      <div class="var-row"><span class="var-name">solutions</span><span class="var-desc">"all" or comma-separated solution names. "all" resolves all solutions from solutions.json, sorted by deployOrder.</span></div>
+      <div class="var-row"><span class="var-name">skip_export</span><span class="var-desc">Skips Stage 1 — builds from committed src/solutions/ instead of exporting from sandbox. Useful for config-only or hotfix runs.</span></div>
+    </div>
+  </div>
+
+  <h2 class="section-h2" style="margin-top:24px;">Solution Ordering — solutions.json</h2>
+  <div class="var-card" style="max-width:700px;">
+    <div class="var-card-head" style="background:#fef3c7;"><span>📋</span> deployOrder field <span class="badge-head bh-file">solutions.json</span></div>
+    <div class="var-row"><span class="var-name">deployOrder</span><span class="var-desc">Integer. Controls sequential deploy order within each environment — lowest number imports first. No dependency enforcement — purely positional ordering.</span></div>
+    <div class="var-row"><span class="var-name">dependsOn</span><span class="var-desc">Array. Documentation metadata only — records logical prerequisites but has NO effect on deploy order. Use deployOrder for sequencing.</span></div>
+    <div style="padding:8px 14px;background:#f8fafc;border-top:1px solid #f0f2f8;font-size:9.5px;color:#64748b;font-family:monospace;">
+      Example: CoreSolution(deployOrder:1) → ExtensionA(deployOrder:2) → ExtensionB(deployOrder:3)
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     TAB 3 — VARIABLES & INPUTS
+     ═══════════════════════════════════════════════════════════════════════ -->
+<div id="vars" class="tab-panel">
+
+  <h2 class="section-h2">Configuration Precedence</h2>
+  <table class="prec-table">
+    <thead><tr><th>Rank</th><th>Source</th><th>Where defined</th><th>Overrides</th></tr></thead>
+    <tbody>
+      <tr><td><span class="prec-rank">1</span></td><td>workflow_dispatch inputs (common)</td><td>GitHub Actions UI at run time</td><td>Everything below for common settings</td></tr>
+      <tr><td><span class="prec-rank">2</span></td><td>Per-env JSON inputs (*_config in with: block)</td><td>combined-pipeline.yml stage-deploy job</td><td>Environment-specific defaults</td></tr>
+      <tr><td><span class="prec-rank">3</span></td><td>Repo Variables (vars.*)</td><td>Settings → Secrets and variables → Variables</td><td>Hardcoded fallbacks</td></tr>
+      <tr><td><span class="prec-rank">4</span></td><td>Hardcoded defaults in YAML / scripts</td><td>GHA-Core composite actions / stage YAMLs</td><td>Nothing (lowest precedence)</td></tr>
+    </tbody>
+  </table>
+
+  <h2 class="section-h2" style="margin-top:24px;">GitHub Secrets</h2>
+  <div class="var-grid">
+    <div class="var-card">
+      <div class="var-card-head" style="background:#fee2e2;"><span>🔐</span> Secrets — Settings → Secrets → Actions <span class="badge-head bh-secret">Secret</span></div>
+      <div class="var-row"><span class="var-name">PP_APP_ID</span><span class="var-desc">Service principal App ID with Power Platform Administrator role on all environments.</span></div>
+      <div class="var-row"><span class="var-name">PP_CLIENT_SECRET</span><span class="var-desc">Service principal client secret. Used for PAC CLI auth and Azure OIDC.</span></div>
+      <div class="var-row"><span class="var-name">PP_TENANT_ID</span><span class="var-desc">Azure AD tenant ID for the service principal.</span></div>
+      <div class="var-row"><span class="var-name">GHA_CORE_PAT</span><span class="var-desc">Personal Access Token with repo:read scope on ppudot2-cloud/GHA-Core. Used for cross-repo checkout.</span></div>
+      <div class="var-row"><span class="var-name">JFROG_TOKEN</span><span class="var-desc">JFrog Artifactory API token. Fetched from AKV by ci-bootstrap when jfrog_enabled=true.</span></div>
+    </div>
+
+    <div class="var-card">
+      <div class="var-card-head" style="background:#dbeafe;"><span>⚙️</span> Repository Variables — Settings → Variables <span class="badge-head bh-var">Variable</span></div>
+      <div class="var-row"><span class="var-name">PP_SDBX_URL</span><span class="var-desc">Sandbox (export source) environment URL.</span></div>
+      <div class="var-row"><span class="var-name">PP_DEV_URL</span><span class="var-desc">Dev environment URL.</span></div>
+      <div class="var-row"><span class="var-name">PP_INTG_URL</span><span class="var-desc">Integration environment URL.</span></div>
+      <div class="var-row"><span class="var-name">PP_UAT_URL</span><span class="var-desc">User Acceptance Testing environment URL.</span></div>
+      <div class="var-row"><span class="var-name">PP_FRS_URL</span><span class="var-desc">First Release / Staging environment URL.</span></div>
+      <div class="var-row"><span class="var-name">PP_PERF_URL</span><span class="var-desc">Performance testing environment URL.</span></div>
+      <div class="var-row"><span class="var-name">PP_PROD_URL</span><span class="var-desc">Production environment URL.</span></div>
+      <div class="var-row"><span class="var-name">PP_SOLUTION_NAME</span><span class="var-desc">Fallback solution name for single-solution repos when solutions.json has no entries.</span></div>
+      <div class="var-row"><span class="var-name">PP_BASE_SOLUTIONS</span><span class="var-desc">Default base solutions for version-compare. Overridden by base_solutions dispatch input.</span></div>
+      <div class="var-row"><span class="var-name">JFROG_URL</span><span class="var-desc">JFrog Artifactory base URL. Leave empty to skip JFrog upload entirely.</span></div>
+      <div class="var-row"><span class="var-name">JFROG_REPO</span><span class="var-desc">JFrog repository name. Default: powerplatform-solutions.</span></div>
+    </div>
+  </div>
+
+  <h2 class="section-h2" style="margin-top:24px;">GitHub Environments (Approval Gates)</h2>
+  <div class="var-card" style="max-width:700px;">
+    <div class="var-card-head" style="background:#f3e8ff;"><span>🔐</span> Settings → Environments <span class="badge-head bh-file">GitHub Environments</span></div>
+    <div class="var-row"><span class="var-name">Dev</span><span class="var-desc">Required reviewers configured here pause the pipeline before Dev deploy. Add/remove reviewers to control who approves.</span></div>
+    <div class="var-row"><span class="var-name">Intg</span><span class="var-desc">Gate before Integration deploy.</span></div>
+    <div class="var-row"><span class="var-name">UAT</span><span class="var-desc">Gate before UAT deploy.</span></div>
+    <div class="var-row"><span class="var-name">FRS</span><span class="var-desc">Gate before First Release / Staging deploy.</span></div>
+    <div class="var-row"><span class="var-name">Perf</span><span class="var-desc">Gate before Performance deploy.</span></div>
+    <div class="var-row"><span class="var-name">Prod</span><span class="var-desc">Gate before Production deploy. Highest trust — recommend multiple required reviewers.</span></div>
+    <div style="padding:8px 14px;background:#f8fafc;border-top:1px solid #f0f2f8;font-size:9.5px;color:#64748b;">
+      These names must exactly match the <code>name</code> field in each <code>*_config</code> JSON input.
+      The <code>environment:</code> key on the deploy-env job is what triggers the protection rule.
+    </div>
+  </div>
+</div>
+
+<script>
+function showTab(id, btn) {
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  btn.classList.add('active');
+}
+</script>
+</body>
+</html>

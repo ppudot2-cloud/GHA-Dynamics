@@ -1,0 +1,24 @@
+{
+  "EnvironmentVariables": [
+    {
+      "SchemaName": "new_ServiceEndpointUrl",
+      "Value": "https://frs-api.example.com"
+    },
+    {
+      "SchemaName": "new_FeatureToggleEnabled",
+      "Value": "true"
+    }
+  ],
+  "ConnectionReferences": [
+    {
+      "LogicalName": "new_SharedDataverse_00000",
+      "ConnectionId": "#{Frs_DataverseConnectionId}#",
+      "ConnectorId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+    },
+    {
+      "LogicalName": "new_SharedOffice365_00000",
+      "ConnectionId": "#{Frs_Office365ConnectionId}#",
+      "ConnectorId": "/providers/Microsoft.PowerApps/apis/shared_office365"
+    }
+  ]
+}

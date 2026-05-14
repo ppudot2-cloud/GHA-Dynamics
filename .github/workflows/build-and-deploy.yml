@@ -1,0 +1,443 @@
+# =============================================================================
+# WORKFLOW: Build and Deploy — Phase 1
+# =============================================================================
+#
+# THREE-PHASE GITFLOW PIPELINE
+# ─────────────────────────────────────────────────────────────────────────────
+#
+#   Phase 1 — THIS WORKFLOW  (manual trigger)
+#     1. Export solutions from sandbox (PP_SDBX_URL)
+#     2. Commit exported source + pipeline-context.json to feature/pipeline-{run_number}
+#     3. Build (pack ZIPs, Solution Checker, JFrog archival upload)
+#     4. Deploy → Dev (sequential, approval gate)
+#     5. Deploy → Intg (sequential, approval gate)
+#     6. Auto-create PR: feature/pipeline-{run_number} → release
+#
+#   Phase 2 — deploy-release.yml  (fires when the above PR is merged)
+#     Deploy → UAT → FRS → Perf
+#     Auto-create PR: release → main
+#
+#   Phase 3 — deploy-prod.yml  (fires when the release→main PR is merged)
+#     Deploy → Prod
+#
+# ARTIFACT HANDOFF
+#   Phase 1 uploads solution-artifact-* to GitHub artifact storage (7-day retention).
+#   Phase 2/3 download the same artifacts via source_run_id stored in pipeline-context.json.
+#   JFrog receives an archival copy once during Phase 1 build — not used for deploy downloads.
+#
+# ENVIRONMENT CONFIGURATION
+#   Each environment's settings (backup, blocking check, version compare, etc.) are
+#   defined in the named *_config JSON inputs in the stage-deploy job's with: block.
+#
+# MOCK MODE
+#   mock_deploy=true simulates the full pipeline: skips PP connections, skips git
+#   commit, skips PR creation. Useful for validating pipeline wiring without side effects.
+# =============================================================================
+
+name: Build and Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      solutions:
+        description: '"all" or comma-separated solution names'
+        required: false
+        default: 'all'
+
+      mock_deploy:
+        description: >
+          Dry run — simulate export, build, and deploy without touching Power Platform,
+          git, or JFrog. No branch is created, no PR is raised.
+        required: false
+        default: false
+        type: boolean
+
+      checker_error_level:
+        description: 'Minimum severity that fails Solution Checker'
+        required: false
+        default: 'HighIssue'
+        type: choice
+        options:
+          - CriticalIssue
+          - HighIssue
+          - MediumIssue
+          - LowIssue
+          - InformationalIssue
+
+      trigger_upgrade:
+        description: 'Use holding-solution upgrade pattern for managed imports'
+        required: false
+        default: false
+        type: boolean
+
+      base_solutions:
+        description: 'Comma-separated base solution names to verify are installed'
+        required: false
+        default: ''
+
+concurrency:
+  group: "build-and-deploy-${{ github.ref_name }}"
+  cancel-in-progress: false
+
+jobs:
+  # ============================================================================
+  # Setup — resolve solution matrix
+  # ============================================================================
+  setup:
+    name: "🔍 Setup"
+    runs-on: ubuntu-latest
+    outputs:
+      matrix:         ${{ steps.resolve.outputs.matrix }}
+      solution_list:  ${{ steps.resolve.outputs.solution_list }}
+      solution_count: ${{ steps.resolve.outputs.solution_count }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Checkout GHA-Core CI scripts
+        uses: actions/checkout@v4
+        with:
+          repository: ppudot2-cloud/GHA-Core
+          ref: main
+          path: .ci
+          token: ${{ secrets.GHA_CORE_PAT }}
+
+      - name: Resolve solution matrix
+        id: resolve
+        shell: pwsh
+        run: |
+          & .ci/templates/steps/dynamics/Resolve-SolutionMatrix.ps1 `
+            -InputSolutions    '${{ inputs.solutions || 'all' }}' `
+            -PpSolutionName    '${{ vars.PP_SOLUTION_NAME }}' `
+            -SolutionsJsonPath 'solutions.json'
+
+  # ============================================================================
+  # Stage 1 — Export from sandbox
+  # Always runs (unless mock_deploy — no real PP connection in dry-run mode).
+  # Exports each solution from PP_SDBX_URL, unpacks to source tree, uploads
+  # exported-source-<name> artifact for the build stage.
+  # ============================================================================
+  stage-export:
+    name: "📤 Export from Sandbox"
+    needs: setup
+    if: ${{ inputs.mock_deploy != true }}
+    permissions:
+      id-token: write
+      contents: read
+    uses: ppudot2-cloud/GHA-Core/.github/workflows/dynamics/stages/_stage-export.yml@main
+    with:
+      matrix:                 ${{ needs.setup.outputs.matrix }}
+      source_environment_url: ${{ vars.PP_SDBX_URL }}
+      mock_deploy:            false
+    secrets: inherit
+
+  # ============================================================================
+  # Commit exported source to feature branch
+  # Creates feature/pipeline-{run_number}, copies exported solution source into
+  # src/solutions/, writes pipeline-context.json (carries run_id for Phase 2/3
+  # artifact download), commits and pushes.
+  # Skipped in mock mode — no git writes during a dry run.
+  # ============================================================================
+  commit-to-feature-branch:
+    name: "🌿 Commit to feature/pipeline-${{ github.run_number }}"
+    needs: [setup, stage-export]
+    if: ${{ inputs.mock_deploy != true }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      feature_branch: ${{ steps.commit.outputs.feature_branch }}
+
+    steps:
+      - name: Checkout repository (full history)
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Download all exported source artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: exported-source-*
+          path: _export-src/
+          merge-multiple: false
+
+      - name: Create branch, copy source, write context, push
+        id: commit
+        shell: pwsh
+        run: |
+          $runNumber  = '${{ github.run_number }}'
+          $runAttempt = '${{ github.run_attempt }}'
+          $runId      = '${{ github.run_id }}'
+          $branch     = "feature/pipeline-$runNumber"
+
+          git config user.name  "GitHub Actions"
+          git config user.email "actions@github.com"
+
+          # Create the feature branch from the current default branch HEAD
+          git checkout -b $branch
+          Write-Host "Created branch: $branch"
+
+          # Copy each solution's exported source into src/solutions/
+          $solutions = '${{ needs.setup.outputs.solution_list }}' -split ',' |
+            ForEach-Object { $_.Trim() } | Where-Object { $_ }
+
+          foreach ($sol in $solutions) {
+            # download-artifact places each artifact in _export-src/exported-source-{name}/
+            $srcDir = "_export-src/exported-source-$sol"
+            $dstDir = "src/solutions/$sol"
+            if (Test-Path $srcDir) {
+              if (Test-Path $dstDir) { Remove-Item $dstDir -Recurse -Force }
+              Copy-Item $srcDir $dstDir -Recurse -Force
+              Write-Host "  ✓ Copied $sol → src/solutions/$sol/"
+            } else {
+              Write-Warning "  ⚠ Exported source not found for $sol at $srcDir"
+            }
+          }
+
+          # Write pipeline-context.json — read by Phase 2 and Phase 3 workflows
+          # to locate the Phase 1 artifacts for cross-run artifact download.
+          $ctx = [ordered]@{
+            runId        = $runId
+            runNumber    = $runNumber
+            runAttempt   = $runAttempt
+            solutions    = $solutions
+            solutionList = '${{ needs.setup.outputs.solution_list }}'
+            matrix       = '${{ needs.setup.outputs.matrix }}'
+            featureBranch = $branch
+            triggeredBy  = '${{ github.actor }}'
+            triggeredAt  = (Get-Date -Format 'yyyy-MM-ddTHH:mm:ssZ')
+          }
+          $ctx | ConvertTo-Json -Depth 3 | Set-Content 'pipeline-context.json' -Encoding UTF8
+          Write-Host "  ✓ Written pipeline-context.json (runId=$runId)"
+
+          # Remove the temporary download directory before committing
+          if (Test-Path '_export-src') { Remove-Item '_export-src' -Recurse -Force }
+
+          git add src/solutions/ pipeline-context.json
+          $status = git status --porcelain
+          if ($status) {
+            git commit -m "chore: export from sandbox — pipeline run #$runNumber [skip ci]"
+            git push origin $branch
+            Write-Host "  ✓ Committed and pushed to $branch"
+          } else {
+            Write-Host "  ℹ No source changes — pushing branch pointer only"
+            git push origin $branch
+          }
+
+          "feature_branch=$branch" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+  # ============================================================================
+  # Stage 2 — Build
+  # Packs solution ZIPs from the exported source, runs Solution Checker,
+  # uploads solution-artifact-* to GitHub storage (Phase 2/3 deploy handoff)
+  # and to JFrog for long-term archival.
+  # ============================================================================
+  stage-build:
+    name: "🏗️ Build"
+    needs: [setup, stage-export, commit-to-feature-branch]
+    if: |
+      always() &&
+      needs.setup.result == 'success' &&
+      (
+        (inputs.mock_deploy == true) ||
+        (needs.stage-export.result == 'success' && needs.commit-to-feature-branch.result == 'success')
+      )
+    permissions:
+      id-token: write
+      contents: read
+    uses: ppudot2-cloud/GHA-Core/.github/workflows/dynamics/stages/_stage-build.yml@main
+    with:
+      matrix:                 ${{ needs.setup.outputs.matrix }}
+      use_exported_source:    ${{ inputs.mock_deploy != true }}
+      source_environment_url: ${{ vars.PP_SDBX_URL || '' }}
+      mock_deploy:            ${{ inputs.mock_deploy == true }}
+      jfrog_url:              ${{ vars.JFROG_URL || '' }}
+      jfrog_repo:             ${{ vars.JFROG_REPO || 'powerplatform-solutions' }}
+      checker_error_level:    ${{ inputs.checker_error_level || 'HighIssue' }}
+    secrets: inherit
+
+  # ============================================================================
+  # Stage 3 — Deploy Dev + Intg
+  # Sequential promotion through the first two environments only.
+  # GitHub Environment protection rules act as approval gates.
+  # Artifacts are pulled from the current run (stage-build above).
+  # ============================================================================
+  stage-deploy:
+    name: "🚀 Deploy Dev → Intg"
+    needs: [setup, stage-build]
+    if: needs.stage-build.result == 'success'
+    permissions:
+      id-token: write
+      contents: read
+    uses: ppudot2-cloud/GHA-Core/.github/workflows/dynamics/stages/_stage-deploy-chain.yml@main
+    with:
+      matrix:          ${{ needs.setup.outputs.matrix }}
+      environments:    'Dev,Intg'
+      mock_deploy:     ${{ inputs.mock_deploy == true }}
+      trigger_upgrade: ${{ inputs.trigger_upgrade == true }}
+      base_solutions:  ${{ inputs.base_solutions || vars.PP_BASE_SOLUTIONS || '' }}
+      jfrog_url:       ${{ vars.JFROG_URL || '' }}
+      jfrog_repo:      ${{ vars.JFROG_REPO || 'powerplatform-solutions' }}
+      run_number:      ${{ github.run_number }}
+      run_attempt:     ${{ github.run_attempt }}
+
+      # Per-environment configuration — edit these to change defaults.
+      dev_config: >-
+        {"name":"Dev","url":"${{ vars.PP_DEV_URL }}","previous_url":"",
+        "solution_type":"Unmanaged","enable_backup":false,
+        "enable_blocking_check":false,"enable_version_compare":false,
+        "import_config_data":false}
+
+      intg_config: >-
+        {"name":"Intg","url":"${{ vars.PP_INTG_URL }}","previous_url":"${{ vars.PP_DEV_URL }}",
+        "solution_type":"Managed","enable_backup":false,
+        "enable_blocking_check":true,"enable_version_compare":false,
+        "import_config_data":false}
+
+      # The remaining configs are required inputs to _stage-deploy-chain but will
+      # be filtered out by environments:'Dev,Intg' — they never actually deploy.
+      uat_config: >-
+        {"name":"UAT","url":"${{ vars.PP_UAT_URL }}","previous_url":"${{ vars.PP_INTG_URL }}",
+        "solution_type":"Managed","enable_backup":true,
+        "enable_blocking_check":true,"enable_version_compare":true,
+        "import_config_data":false}
+
+      frs_config: >-
+        {"name":"FRS","url":"${{ vars.PP_FRS_URL }}","previous_url":"${{ vars.PP_UAT_URL }}",
+        "solution_type":"Managed","enable_backup":true,
+        "enable_blocking_check":true,"enable_version_compare":true,
+        "import_config_data":false}
+
+      perf_config: >-
+        {"name":"Perf","url":"${{ vars.PP_PERF_URL }}","previous_url":"${{ vars.PP_FRS_URL }}",
+        "solution_type":"Managed","enable_backup":false,
+        "enable_blocking_check":true,"enable_version_compare":true,
+        "import_config_data":false}
+
+      prod_config: >-
+        {"name":"Prod","url":"${{ vars.PP_PROD_URL }}","previous_url":"${{ vars.PP_PERF_URL }}",
+        "solution_type":"Managed","enable_backup":true,
+        "enable_blocking_check":true,"enable_version_compare":true,
+        "import_config_data":true}
+
+    secrets: inherit
+
+  # ============================================================================
+  # Create PR: feature/pipeline-{run_number} → release
+  # Fires only after Dev + Intg deployments succeed and only on real runs.
+  # A reviewer must merge this PR to trigger Phase 2 (deploy-release.yml).
+  # ============================================================================
+  create-release-pr:
+    name: "🔀 Open PR → release"
+    needs: [setup, commit-to-feature-branch, stage-deploy]
+    if: |
+      needs.stage-deploy.result == 'success' &&
+      needs.commit-to-feature-branch.result == 'success' &&
+      inputs.mock_deploy != true
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      contents: read
+    steps:
+      - name: Create PR feature → release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          FEATURE="${{ needs.commit-to-feature-branch.outputs.feature_branch }}"
+          PR_URL=$(gh pr create \
+            --repo "${{ github.repository }}" \
+            --head "$FEATURE" \
+            --base "release" \
+            --title "Release: pipeline run #${{ github.run_number }}" \
+            --body "## ✅ Phase 1 complete — ready for UAT/FRS/Perf
+
+          **Pipeline run:** [#${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+          **Branch:** \`$FEATURE\`
+          **Solutions:** ${{ needs.setup.outputs.solution_list }}
+          **Triggered by:** @${{ github.actor }}
+
+          ### Pre-merge checklist
+          - [x] Exported from sandbox: \`${{ vars.PP_SDBX_URL }}\`
+          - [x] Solution Checker: passed
+          - [x] Dev deployment: success
+          - [x] Intg deployment: success
+
+          Merging this PR will automatically trigger **deploy-release.yml**:
+          UAT → FRS → Perf deployment, followed by a PR to \`main\`." \
+          )
+          echo "✅ PR created: $PR_URL"
+
+  # ============================================================================
+  # Pipeline Summary (always runs)
+  # ============================================================================
+  pipeline-summary:
+    name: "📋 Pipeline Summary"
+    needs: [setup, stage-export, stage-build, stage-deploy, create-release-pr]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Checkout GHA-Core CI scripts
+        uses: actions/checkout@v4
+        with:
+          repository: ppudot2-cloud/GHA-Core
+          ref: main
+          path: .ci
+          token: ${{ secrets.GHA_CORE_PAT }}
+
+      - name: Download all job summary records
+        uses: actions/download-artifact@v4
+        with:
+          pattern: "job-summary-*"
+          path: job-summaries/
+          merge-multiple: true
+        continue-on-error: true
+
+      - name: Write pipeline summary
+        shell: pwsh
+        run: |
+          & .ci/templates/steps/dynamics/Write-PipelineSummary.ps1 `
+            -SolutionList    '${{ needs.setup.outputs.solution_list }}' `
+            -SolutionCount   '${{ needs.setup.outputs.solution_count }}' `
+            -RunNumber       '${{ github.run_number }}' `
+            -RefName         '${{ github.ref_name }}' `
+            -CommitSha       '${{ github.sha }}' `
+            -ExportResult    '${{ needs.stage-export.result }}' `
+            -BuildResult     '${{ needs.stage-build.result }}' `
+            -DeployResult    '${{ needs.stage-deploy.result }}' `
+            -JobSummariesDir 'job-summaries'
+
+      - name: Send failure notification
+        if: >
+          needs.stage-export.result == 'failure' ||
+          needs.stage-build.result  == 'failure' ||
+          needs.stage-deploy.result == 'failure'
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: ${{ secrets.MAIL_SERVER }}
+          server_port:    ${{ secrets.MAIL_PORT }}
+          username:       ${{ secrets.MAIL_USERNAME }}
+          password:       ${{ secrets.MAIL_PASSWORD }}
+          to:             ppudot1@gmail.com
+          from:           GitHub Actions <${{ secrets.MAIL_USERNAME }}>
+          subject:        "❌ Build and Deploy FAILED (Phase 1) — ${{ github.repository }} #${{ github.run_number }}"
+          body: |
+            Phase 1 pipeline failed for run #${{ github.run_number }}.
+
+            Repository  : ${{ github.repository }}
+            Branch      : ${{ github.ref_name }}
+            Triggered by: ${{ github.actor }}
+
+            Stage results:
+              Export  : ${{ needs.stage-export.result }}
+              Build   : ${{ needs.stage-build.result }}
+              Deploy  : ${{ needs.stage-deploy.result }}
+
+            Solutions: ${{ needs.setup.outputs.solution_list }}
+
+            ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}

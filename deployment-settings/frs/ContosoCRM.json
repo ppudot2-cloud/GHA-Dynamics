@@ -1,0 +1,18 @@
+{
+  "EnvironmentVariables": [
+    { "SchemaName": "new_CrmApiBaseUrl",         "Value": "https://crm-api-frs.contoso.com/v2" },
+    { "SchemaName": "new_MaxOpportunityAgeDays",  "Value": "90" }
+  ],
+  "ConnectionReferences": [
+    {
+      "LogicalName": "new_SharedDataverse_CRM",
+      "ConnectionId": "#{FRS_DataverseConnectionId}#",
+      "ConnectorId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+    },
+    {
+      "LogicalName": "new_SharedOffice365_CRM",
+      "ConnectionId": "#{FRS_Office365ConnectionId}#",
+      "ConnectorId": "/providers/Microsoft.PowerApps/apis/shared_office365"
+    }
+  ]
+}

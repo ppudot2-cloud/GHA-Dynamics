@@ -2,25 +2,28 @@
   "_readme": [
     "solutions.json — Power Platform solution registry for this repo.",
     "",
-    "SINGLE-SOLUTION REPO  : Add exactly one entry. Set dependsOn to [].",
-    "MULTI-SOLUTION REPO   : Add all solutions. Use dependsOn to express",
-    "                        import order (e.g. ExtensionA depends on CoreSolution).",
+    "SINGLE-SOLUTION REPO  : Add exactly one entry.",
+    "MULTI-SOLUTION REPO   : Add all solutions. Use deployOrder to control",
+    "                        the sequential import sequence (1 = first).",
     "",
     "Fields per solution:",
     "  name              — unique solution name matching the PP environment",
     "  folder            — relative path to unpacked solution source",
-    "  dependsOn         — solutions that must be deployed before this one",
+    "  deployOrder       — integer controlling sequential deploy sequence (required)",
+    "  dependsOn         — optional metadata only; documents logical prerequisites",
+    "                      but does NOT affect deploy order (use deployOrder for that)",
     "  checkerGeo        — Solution Checker geography (default: UnitedStates)",
     "  dataSchemaFile    — Configuration Migration schema XML ('' if unused)",
     "  deploymentSettings — per-environment deployment-settings.json paths",
     "",
-    "Tip: For a single-solution repo, leave dependsOn as [] and set",
+    "Tip: For a single-solution repo, set deployOrder to 1 and set",
     "     PP_SOLUTION_NAME repo variable to match the name here."
   ],
   "solutions": [
     {
       "name": "CoreSolution",
       "folder": "src/solutions/CoreSolution",
+      "deployOrder": 1,
       "dependsOn": [],
       "checkerGeo": "UnitedStates",
       "dataSchemaFile": "config/CoreSolution/data-schema.xml",
@@ -28,6 +31,7 @@
         "dev":  "deployment-settings/dev/CoreSolution.json",
         "intg": "deployment-settings/intg/CoreSolution.json",
         "uat":  "deployment-settings/uat/CoreSolution.json",
+        "frs":  "deployment-settings/frs/CoreSolution.json",
         "perf": "deployment-settings/perf/CoreSolution.json",
         "prod": "deployment-settings/prod/CoreSolution.json"
       }
@@ -35,6 +39,7 @@
     {
       "name": "ExtensionA",
       "folder": "src/solutions/ExtensionA",
+      "deployOrder": 2,
       "dependsOn": ["CoreSolution"],
       "checkerGeo": "UnitedStates",
       "dataSchemaFile": "",
@@ -42,6 +47,7 @@
         "dev":  "deployment-settings/dev/ExtensionA.json",
         "intg": "deployment-settings/intg/ExtensionA.json",
         "uat":  "deployment-settings/uat/ExtensionA.json",
+        "frs":  "deployment-settings/frs/ExtensionA.json",
         "perf": "deployment-settings/perf/ExtensionA.json",
         "prod": "deployment-settings/prod/ExtensionA.json"
       }
@@ -49,6 +55,7 @@
     {
       "name": "ExtensionB",
       "folder": "src/solutions/ExtensionB",
+      "deployOrder": 3,
       "dependsOn": ["CoreSolution"],
       "checkerGeo": "UnitedStates",
       "dataSchemaFile": "",
@@ -56,6 +63,7 @@
         "dev":  "deployment-settings/dev/ExtensionB.json",
         "intg": "deployment-settings/intg/ExtensionB.json",
         "uat":  "deployment-settings/uat/ExtensionB.json",
+        "frs":  "deployment-settings/frs/ExtensionB.json",
         "perf": "deployment-settings/perf/ExtensionB.json",
         "prod": "deployment-settings/prod/ExtensionB.json"
       }

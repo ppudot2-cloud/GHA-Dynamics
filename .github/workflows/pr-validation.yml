@@ -1,0 +1,151 @@
+# =============================================================================
+# WORKFLOW: PR Validation — Build + Solution Checker only
+# =============================================================================
+#
+# Purpose:
+#   Provides a fast build signal for pull requests to main that are NOT
+#   part of the automated three-phase pipeline.
+#
+#   Pipeline PRs (release → main) are excluded — those have already been
+#   built and deployed through Dev/Intg/UAT/FRS/Perf in Phases 1 and 2.
+#   Running pr-validation on them would be redundant.
+#
+#   Use this for: hotfixes, direct developer PRs, dependency updates, etc.
+#
+#   Three-phase pipeline PRs are handled by:
+#     Phase 1: build-and-deploy.yml  (manual)
+#     Phase 2: deploy-release.yml    (auto on feature/pipeline-* → release merge)
+#     Phase 3: deploy-prod.yml       (auto on release → main merge)
+#
+# =============================================================================
+
+name: PR Validation
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/solutions/**'
+      - 'config/**'
+      - 'solutions.json'
+      - 'deployment-settings/**'
+
+concurrency:
+  group: "pr-validation-${{ github.head_ref }}"
+  cancel-in-progress: true   # cancel stale PR builds when new commits arrive
+
+jobs:
+  # ============================================================================
+  # Setup — resolve solution matrix
+  # ============================================================================
+  setup:
+    name: "🔍 Setup"
+    runs-on: ubuntu-latest
+    # Skip when this is a pipeline-created release→main PR — it has already been
+    # built and validated through Dev/Intg/UAT/FRS/Perf in Phases 1 and 2.
+    if: github.event.pull_request.head.ref != 'release'
+    outputs:
+      matrix:         ${{ steps.resolve.outputs.matrix }}
+      solution_list:  ${{ steps.resolve.outputs.solution_list }}
+      solution_count: ${{ steps.resolve.outputs.solution_count }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Checkout GHA-Core CI scripts
+        uses: actions/checkout@v4
+        with:
+          repository: ppudot2-cloud/GHA-Core
+          ref: main
+          path: .ci
+          token: ${{ secrets.GHA_CORE_PAT }}
+
+      - name: Resolve solution matrix
+        id: resolve
+        shell: pwsh
+        run: |
+          & .ci/templates/steps/dynamics/Resolve-SolutionMatrix.ps1 `
+            -InputSolutions    'all' `
+            -PpSolutionName    '${{ vars.PP_SOLUTION_NAME }}' `
+            -SolutionsJsonPath 'solutions.json'
+
+  # ============================================================================
+  # Build — pack ZIPs + Solution Checker + upload GitHub artifacts
+  # No JFrog upload on PRs (archival only happens after merge).
+  # ============================================================================
+  stage-build:
+    name: "🏗️ Build"
+    needs: setup
+    permissions:
+      id-token: write
+      contents: read
+    uses: ppudot2-cloud/GHA-Core/.github/workflows/dynamics/stages/_stage-build.yml@main
+    with:
+      matrix:                 ${{ needs.setup.outputs.matrix }}
+      mock_deploy:            false
+      jfrog_url:              ''        # no JFrog upload on PRs
+      jfrog_repo:             ${{ vars.JFROG_REPO || 'powerplatform-solutions' }}
+      source_environment_url: ${{ vars.PP_SDBX_URL || '' }}
+      checker_error_level:    ${{ vars.PP_CHECKER_ERROR_LEVEL || 'HighIssue' }}
+    secrets: inherit
+
+  # ============================================================================
+  # Summary (always runs)
+  # ============================================================================
+  build-summary:
+    name: "📋 Build Summary"
+    needs: [setup, stage-build]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Checkout GHA-Core CI scripts
+        uses: actions/checkout@v4
+        with:
+          repository: ppudot2-cloud/GHA-Core
+          ref: main
+          path: .ci
+          token: ${{ secrets.GHA_CORE_PAT }}
+
+      - name: Write build summary
+        shell: pwsh
+        run: |
+          & .ci/templates/steps/dynamics/Write-PipelineSummary.ps1 `
+            -SolutionList    '${{ needs.setup.outputs.solution_list }}' `
+            -SolutionCount   '${{ needs.setup.outputs.solution_count }}' `
+            -RunNumber       '${{ github.run_number }}' `
+            -RefName         '${{ github.head_ref }}' `
+            -CommitSha       '${{ github.sha }}' `
+            -ExportResult    'skipped' `
+            -BuildResult     '${{ needs.stage-build.result }}' `
+            -DeployResult    'skipped' `
+            -JobSummariesDir 'job-summaries'
+
+      # Notify on build failure in PR
+      - name: Send failure notification
+        if: needs.stage-build.result == 'failure'
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: ${{ secrets.MAIL_SERVER }}
+          server_port:    ${{ secrets.MAIL_PORT }}
+          username:       ${{ secrets.MAIL_USERNAME }}
+          password:       ${{ secrets.MAIL_PASSWORD }}
+          to:             ppudot1@gmail.com
+          from:           GitHub Actions <${{ secrets.MAIL_USERNAME }}>
+          subject:        "❌ PR Validation FAILED — ${{ github.repository }} #${{ github.run_number }}"
+          body: |
+            PR build failed for pull request #${{ github.event.pull_request.number }}.
+
+            PR Title    : ${{ github.event.pull_request.title }}
+            Branch      : ${{ github.head_ref }} → ${{ github.base_ref }}
+            Commit      : ${{ github.sha }}
+            Opened by   : ${{ github.actor }}
+
+            Build result: ${{ needs.stage-build.result }}
+            Solutions   : ${{ needs.setup.outputs.solution_list }}
+
+            View the run:
+            ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}

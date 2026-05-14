@@ -10,7 +10,7 @@
 #   3. Forward everything to the reusable workflow in GHA-Core
 #
 # To change deploy logic, edit:
-#   GHA-Core/.github/workflows/_reusable-deploy-dev.yml
+#   GHA-Core/.github/workflows/dynamics/jobs/_job-deploy-dev.yml
 # =============================================================================
 
 name: Deploy to Dev
@@ -49,7 +49,7 @@ on:
 jobs:
   deploy-dev:
     name: "Deploy to Dev"
-    uses: ppudot2-cloud/GHA-Core/.github/workflows/_reusable-deploy-dev.yml@main
+    uses: ppudot2-cloud/GHA-Core/.github/workflows/dynamics/jobs/_job-deploy-dev.yml@main
     with:
       # ── User inputs ────────────────────────────────────────────────────────
       solutions:              ${{ inputs.solutions || 'all' }}

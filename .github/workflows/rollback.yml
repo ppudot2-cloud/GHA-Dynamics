@@ -11,7 +11,7 @@
 #   3. Forward everything to the reusable workflow in GHA-Core
 #
 # To change rollback logic, edit:
-#   GHA-Core/.github/workflows/_reusable-rollback.yml
+#   GHA-Core/.github/workflows/dynamics/jobs/_job-rollback.yml
 # =============================================================================
 
 name: Rollback Solution
@@ -27,6 +27,7 @@ on:
           - Dev
           - Intg
           - UAT
+          - FRS
           - Perf
           - Prod
 
@@ -57,7 +58,7 @@ on:
 jobs:
   rollback:
     name: "Rollback Solution"
-    uses: ppudot2-cloud/GHA-Core/.github/workflows/_reusable-rollback.yml@main
+    uses: ppudot2-cloud/GHA-Core/.github/workflows/dynamics/jobs/_job-rollback.yml@main
     with:
       # ── User inputs ────────────────────────────────────────────────────────
       target-environment:       ${{ inputs.target-environment }}
@@ -69,6 +70,7 @@ jobs:
       pp-dev-url:               ${{ vars.PP_DEV_URL }}
       pp-intg-url:              ${{ vars.PP_INTG_URL }}
       pp-uat-url:               ${{ vars.PP_UAT_URL }}
+      pp-frs-url:               ${{ vars.PP_FRS_URL }}
       pp-perf-url:              ${{ vars.PP_PERF_URL }}
       pp-prod-url:              ${{ vars.PP_PROD_URL }}
     secrets: inherit

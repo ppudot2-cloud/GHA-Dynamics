@@ -485,12 +485,12 @@ def main():
 
     # ── Determine which envs to run ───────────────────────────────────────────
     env_map = {
-        "all":            ["dev", "intg", "uat", "perf", "prod"],
+        "all":            ["dev", "intg", "uat", "frs", "perf", "prod"],
         "dev":            ["dev"],
         "dev-intg":       ["dev", "intg"],
         "dev-intg-uat":   ["dev", "intg", "uat"],
     }
-    envs_run = env_map.get(args.target_envs.lower(), ["dev", "intg", "uat", "perf", "prod"])
+    envs_run = env_map.get(args.target_envs.lower(), ["dev", "intg", "uat", "frs", "perf", "prod"])
     info(f"Target environments: {', '.join([e.upper() for e in envs_run])}")
 
     # ── JOB 0: Setup ─────────────────────────────────────────────────────────
@@ -513,10 +513,11 @@ def main():
     gate_reviewers = {
         "intg": "Integration Lead",
         "uat":  "QA Lead",
+        "frs":  "FRS Test Lead",
         "perf": "Perf Team Lead",
         "prod": "Release Manager",
     }
-    prev_env_map = {"intg": "dev", "uat": "intg", "perf": "uat", "prod": "perf"}
+    prev_env_map = {"intg": "dev", "uat": "intg", "frs": "uat", "perf": "frs", "prod": "perf"}
 
     for i, env in enumerate(envs_run):
         sol_type = "unmanaged" if env == "dev" else "managed"
