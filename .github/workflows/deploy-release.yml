@@ -109,6 +109,7 @@ jobs:
     permissions:
       id-token: write
       contents: read
+      actions: read    # required: cross-run artifact download (source_run_id = Phase 1 run_id)
     uses: ppudot2-cloud/GHA-Core/.github/workflows/_stage-deploy-chain.yml@main
     with:
       matrix:          ${{ needs.read-context.outputs.matrix }}
