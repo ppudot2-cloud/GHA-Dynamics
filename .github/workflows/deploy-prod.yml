@@ -2,41 +2,40 @@
 # WORKFLOW: Deploy UAT + Prod — Pipeline 2
 # =============================================================================
 #
-# Triggered automatically when a feature/pipeline-* PR is OPENED against main.
+# Triggered automatically when a feature/pipeline-* → main PR is APPROVED.
 # This is the second and final pipeline of the two-pipeline architecture:
 #
 #   Pipeline 1 — build-and-deploy.yml  → Dev + Intg + UAT + FRS + Perf
 #   Pipeline 2 — THIS WORKFLOW         → UAT (re-validation) + Prod
 #
 # HOW IT WORKS:
-#   1. Reads pipeline-context.json from the PR head branch (feature/pipeline-*).
+#   1. Fires on pull_request_review submitted with state == 'approved'
+#      for a feature/pipeline-* → main PR.
+#   2. Reads pipeline-context.json from the PR head branch (feature/pipeline-*).
 #      This file was written by Pipeline 1 and carries the run_id needed to
 #      download the built solution artifacts from that run.
-#   2. Re-deploys UAT as a final validation gate before Prod.
-#   3. Deploys Prod (requires Prod Environment approval in repo Settings).
+#   3. Re-deploys UAT as a final validation gate before Prod.
+#   4. Deploys Prod — pauses at the Prod GitHub Environment approval gate
+#      (configure required reviewers in Settings → Environments → Prod).
 #
 # TRIGGERS:
-#   pull_request (opened / synchronize / reopened)  — auto, feature/pipeline-* → main
-#   workflow_dispatch                               — manual, for re-runs or rollback
+#   pull_request_review (approved) — auto, feature/pipeline-* → main
+#   workflow_dispatch              — manual re-run or ad-hoc promotion
+#
+# NOTE ON MULTIPLE APPROVALS:
+#   If multiple reviewers approve, each triggers this workflow. Concurrency
+#   (cancel-in-progress: true) ensures only the latest run proceeds.
 #
 # ROLLBACK:
-#   Set enable_backup=true to take a pre-import backup (workflow_dispatch only).
-#   With backups enabled, use rollback.yml to restore any environment.
-#
-# PROD GATE:
-#   Configure required reviewers in Settings → Environments → Prod.
-#   The deploy job pauses there until a reviewer approves.
-#
-# CONCURRENCY:
-#   One active run per PR number — new pushes to the PR branch cancel stale runs.
+#   Set enable_backup=true (workflow_dispatch only) to take a pre-import backup.
+#   Backups enable rollback.yml to restore any environment.
 # =============================================================================
 
 name: Deploy UAT + Prod
 
 on:
-  pull_request:
-    types: [opened, synchronize, reopened]
-    branches: [main]
+  pull_request_review:
+    types: [submitted]
 
   workflow_dispatch:
     inputs:
@@ -59,21 +58,28 @@ concurrency:
 
 jobs:
   # ============================================================================
-  # Guard — only process feature/pipeline-* → main PRs
+  # Guard — only proceed when:
+  #   • PR review trigger: review approved + PR targets main + from feature/pipeline-*
+  #   • Dispatch trigger: always proceed (branch specified via input)
   # ============================================================================
   guard:
     name: "🛡️ Verify trigger"
     runs-on: ubuntu-latest
     if: |
       github.event_name == 'workflow_dispatch' ||
-      startsWith(github.event.pull_request.head.ref, 'feature/pipeline-')
+      (
+        github.event.review.state == 'approved' &&
+        github.event.pull_request.base.ref == 'main' &&
+        startsWith(github.event.pull_request.head.ref, 'feature/pipeline-')
+      )
     steps:
       - name: Confirm trigger
         shell: bash
         run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            echo "✅ Triggered by PR: ${{ github.event.pull_request.head.ref }} → main"
+          if [ "${{ github.event_name }}" = "pull_request_review" ]; then
+            echo "✅ PR approved: ${{ github.event.pull_request.head.ref }} → main"
             echo "   PR #${{ github.event.pull_request.number }}: ${{ github.event.pull_request.title }}"
+            echo "   Approved by: @${{ github.actor }}"
           else
             echo "✅ Triggered manually for branch: ${{ inputs.feature_branch }}"
           fi
@@ -98,9 +104,9 @@ jobs:
       - name: Checkout feature branch
         uses: actions/checkout@v4
         with:
-          # PR trigger: use the PR head SHA (feature/pipeline-* branch)
+          # Review trigger: use the PR head SHA (feature/pipeline-* branch)
           # Dispatch trigger: use the branch name provided as input
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || inputs.feature_branch }}
+          ref: ${{ github.event_name == 'pull_request_review' && github.event.pull_request.head.sha || inputs.feature_branch }}
           fetch-depth: 1
 
       - name: Parse pipeline-context.json
