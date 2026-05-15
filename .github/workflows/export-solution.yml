@@ -100,7 +100,7 @@ jobs:
         id: resolve
         shell: pwsh
         run: |
-          & .ci/.github/scripts/Resolve-SolutionMatrix.ps1 `
+          & .ci/templates/steps/dynamics/Resolve-SolutionMatrix.ps1 `
             -InputSolutions '${{ inputs.solutions || 'all' }}' `
             -PpSolutionName '${{ vars.PP_SOLUTION_NAME }}'
 
@@ -176,9 +176,9 @@ jobs:
         uses: microsoft/powerplatform-actions/who-am-i@v1
         with:
           environment-url: ${{ vars.PP_SDBX_URL }}
-          app-id:          ${{ secrets.APP_ID }}
-          client-secret:   ${{ secrets.CLIENT_SECRET }}
-          tenant-id:       ${{ secrets.TENANT_ID }}
+          app-id:          ${{ secrets.PP_APP_ID }}
+          client-secret:   ${{ secrets.PP_CLIENT_SECRET }}
+          tenant-id:       ${{ secrets.PP_TENANT_ID }}
 
       # ── 4b. Validate auth — SIMULATION ───────────────────────────────────────
       - name: "🧪 Validate connection — Simulation (mock_deploy)"
@@ -196,9 +196,9 @@ jobs:
         uses: microsoft/powerplatform-actions/publish-solution@v1
         with:
           environment-url:     ${{ vars.PP_SDBX_URL }}
-          app-id:              ${{ secrets.APP_ID }}
-          client-secret:       ${{ secrets.CLIENT_SECRET }}
-          tenant-id:           ${{ secrets.TENANT_ID }}
+          app-id:              ${{ secrets.PP_APP_ID }}
+          client-secret:       ${{ secrets.PP_CLIENT_SECRET }}
+          tenant-id:           ${{ secrets.PP_TENANT_ID }}
           run-asynchronously:  true
           max-async-wait-time: 60
 
@@ -218,9 +218,9 @@ jobs:
         uses: microsoft/powerplatform-actions/export-solution@v1
         with:
           environment-url: ${{ vars.PP_SDBX_URL }}
-          app-id:          ${{ secrets.APP_ID }}
-          client-secret:   ${{ secrets.CLIENT_SECRET }}
-          tenant-id:       ${{ secrets.TENANT_ID }}
+          app-id:          ${{ secrets.PP_APP_ID }}
+          client-secret:   ${{ secrets.PP_CLIENT_SECRET }}
+          tenant-id:       ${{ secrets.PP_TENANT_ID }}
           solution-name:   ${{ matrix.solution }}
           solution-output-file: "out/${{ matrix.solution }}.zip"
           managed:         false
@@ -316,9 +316,9 @@ jobs:
         uses: microsoft/powerplatform-actions/export-data@v1
         with:
           environment-url: ${{ vars.PP_SDBX_URL }}
-          app-id:          ${{ secrets.APP_ID }}
-          client-secret:   ${{ secrets.CLIENT_SECRET }}
-          tenant-id:       ${{ secrets.TENANT_ID }}
+          app-id:          ${{ secrets.PP_APP_ID }}
+          client-secret:   ${{ secrets.PP_CLIENT_SECRET }}
+          tenant-id:       ${{ secrets.PP_TENANT_ID }}
           schema-file:     ${{ vars.PP_DATA_SCHEMA_FILE }}
           data-file:       "config/${{ matrix.solution }}/config-data.zip"
           overwrite:       true
@@ -329,7 +329,7 @@ jobs:
         if: inputs.export_config_data == true && inputs.mock_deploy == true
         shell: pwsh
         run: |
-          & .ci/.github/scripts/Export-ConfigDataSim.ps1 `
+          & .ci/templates/steps/dynamics/Export-ConfigDataSim.ps1 `
             -SchemaFile           '${{ vars.PP_DATA_SCHEMA_FILE }}' `
             -OutputZipPath        "config/${{ matrix.solution }}/config-data.zip" `
             -SourceEnvironmentUrl '${{ vars.PP_SDBX_URL }}' `
@@ -358,7 +358,7 @@ jobs:
         if: inputs.mock_deploy == true
         shell: pwsh
         run: |
-          & .ci/.github/scripts/Invoke-ExportCommitSim.ps1 `
+          & .ci/templates/steps/dynamics/Invoke-ExportCommitSim.ps1 `
             -SolutionName         '${{ matrix.solution }}' `
             -BranchName           '${{ needs.setup.outputs.branch_name }}' `
             -CommitMessagePrefix  '${{ inputs.commit_message }}' `
