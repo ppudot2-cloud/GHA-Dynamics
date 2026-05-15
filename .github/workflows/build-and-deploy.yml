@@ -224,18 +224,14 @@ jobs:
             Write-Host "[MOCK] Branch '$branch' exists locally only." -ForegroundColor Cyan
 
             # Step summary
-            @"
-## 🧪 Commit to Feature Branch — Simulation
-_mock_deploy=true — no changes pushed to GitHub_
-
-**Would push to branch:** ``$branch``
-**Run ID:** $runId
-
-### Files that would be committed:
-``````
-$($diff -join "`n")
-``````
-"@ | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+            $summary  = "## Commit to Feature Branch - Simulation`n"
+            $summary += "_mock_deploy=true - no changes pushed to GitHub_`n`n"
+            $summary += "**Would push to branch:** ``$branch```n"
+            $summary += "**Run ID:** $runId`n`n"
+            $summary += "### Files that would be committed:`n``````n"
+            $summary += ($diff -join "`n")
+            $summary += "`n``````n"
+            $summary | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
           } else {
             $status = git status --porcelain
             if ($status) {
