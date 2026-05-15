@@ -41,9 +41,10 @@ jobs:
   setup:
     name: "🔍 Setup"
     runs-on: ubuntu-latest
-    # Skip when this is a pipeline-created release→main PR — it has already been
-    # built and validated through Dev/Intg/UAT/FRS/Perf in Phases 1 and 2.
-    if: github.event.pull_request.head.ref != 'release'
+    # Skip feature/pipeline-* → main PRs — those are handled by deploy-prod.yml
+    # which re-validates UAT and gates Prod. A redundant build-only check here
+    # would add noise without value.
+    if: "!startsWith(github.event.pull_request.head.ref, 'feature/pipeline-')"
     outputs:
       matrix:         ${{ steps.resolve.outputs.matrix }}
       solution_list:  ${{ steps.resolve.outputs.solution_list }}

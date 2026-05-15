@@ -1,53 +1,87 @@
 # =============================================================================
-# WORKFLOW: Deploy Prod — Phase 3
+# WORKFLOW: Deploy UAT + Prod — Pipeline 2
 # =============================================================================
 #
-# Triggered automatically when the release → main pull request is merged.
-# This is the final phase of the three-phase gitflow pipeline:
+# Triggered automatically when a feature/pipeline-* PR is OPENED against main.
+# This is the second and final pipeline of the two-pipeline architecture:
 #
-#   Phase 1 — build-and-deploy.yml  → Dev + Intg
-#   Phase 2 — deploy-release.yml    → UAT + FRS + Perf
-#   Phase 3 — THIS WORKFLOW         → Prod
+#   Pipeline 1 — build-and-deploy.yml  → Dev + Intg + UAT + FRS + Perf
+#   Pipeline 2 — THIS WORKFLOW         → UAT (re-validation) + Prod
 #
 # HOW IT WORKS:
-#   1. Reads pipeline-context.json from main (merged from release by the PR).
-#   2. Calls _stage-deploy-chain with environments:'Prod' and the Phase 1 run_id
-#      so the same built artifacts are used throughout the entire pipeline.
-#   3. Tags the JFrog artifact as prodDeployed=true after success.
+#   1. Reads pipeline-context.json from the PR head branch (feature/pipeline-*).
+#      This file was written by Pipeline 1 and carries the run_id needed to
+#      download the built solution artifacts from that run.
+#   2. Re-deploys UAT as a final validation gate before Prod.
+#   3. Deploys Prod (requires Prod Environment approval in repo Settings).
 #
-# APPROVAL GATE:
-#   The Prod GitHub Environment must have required reviewers configured in
-#   Settings → Environments → Prod. The deploy job will pause there even
-#   after the PR is merged, until a reviewer approves.
+# TRIGGERS:
+#   pull_request (opened / synchronize / reopened)  — auto, feature/pipeline-* → main
+#   workflow_dispatch                               — manual, for re-runs or rollback
+#
+# ROLLBACK:
+#   Set enable_backup=true to take a pre-import backup (workflow_dispatch only).
+#   With backups enabled, use rollback.yml to restore any environment.
+#
+# PROD GATE:
+#   Configure required reviewers in Settings → Environments → Prod.
+#   The deploy job pauses there until a reviewer approves.
+#
+# CONCURRENCY:
+#   One active run per PR number — new pushes to the PR branch cancel stale runs.
 # =============================================================================
 
-name: Deploy Prod (Phase 3)
+name: Deploy UAT + Prod
 
 on:
   pull_request:
-    types: [closed]
+    types: [opened, synchronize, reopened]
     branches: [main]
+
+  workflow_dispatch:
+    inputs:
+      feature_branch:
+        description: 'Feature branch to promote (e.g. feature/pipeline-42)'
+        required: true
+        type: string
+
+      enable_backup:
+        description: >
+          Take a pre-import backup at UAT and Prod (enables rollback via rollback.yml).
+          Default false — skip backups for faster deployments.
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  group: "deploy-prod-${{ github.event.pull_request.number || inputs.feature_branch }}"
+  cancel-in-progress: true
 
 jobs:
   # ============================================================================
-  # Guard — skip if not a merged release→main PR
+  # Guard — only process feature/pipeline-* → main PRs
   # ============================================================================
   guard:
     name: "🛡️ Verify trigger"
     runs-on: ubuntu-latest
     if: |
-      github.event.pull_request.merged == true &&
-      github.event.pull_request.head.ref == 'release'
+      github.event_name == 'workflow_dispatch' ||
+      startsWith(github.event.pull_request.head.ref, 'feature/pipeline-')
     steps:
       - name: Confirm trigger
         shell: bash
         run: |
-          echo "✅ Triggered by merged PR: release → main"
-          echo "   PR #${{ github.event.pull_request.number }}: ${{ github.event.pull_request.title }}"
-          echo "   Merged by: @${{ github.actor }}"
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "✅ Triggered by PR: ${{ github.event.pull_request.head.ref }} → main"
+            echo "   PR #${{ github.event.pull_request.number }}: ${{ github.event.pull_request.title }}"
+          else
+            echo "✅ Triggered manually for branch: ${{ inputs.feature_branch }}"
+          fi
 
   # ============================================================================
-  # Read pipeline-context.json from main
+  # Read pipeline-context.json from the feature branch
+  # Contains Phase 1 run_id (for cross-run artifact download), run_number,
+  # solution matrix, etc.
   # ============================================================================
   read-context:
     name: "📖 Read pipeline context"
@@ -61,10 +95,12 @@ jobs:
       solution_list: ${{ steps.ctx.outputs.solution_list }}
 
     steps:
-      - name: Checkout main branch
+      - name: Checkout feature branch
         uses: actions/checkout@v4
         with:
-          ref: main
+          # PR trigger: use the PR head SHA (feature/pipeline-* branch)
+          # Dispatch trigger: use the branch name provided as input
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || inputs.feature_branch }}
           fetch-depth: 1
 
       - name: Parse pipeline-context.json
@@ -73,43 +109,43 @@ jobs:
         run: |
           $ctxFile = 'pipeline-context.json'
           if (-not (Test-Path $ctxFile)) {
-            Write-Error "::error::pipeline-context.json not found on main branch."
-            Write-Error "::error::This file should have propagated from release via the merged PR."
+            Write-Error "::error::pipeline-context.json not found on the feature branch."
+            Write-Error "::error::Ensure Pipeline 1 (build-and-deploy.yml) completed successfully."
             exit 1
           }
 
           $ctx = Get-Content $ctxFile | ConvertFrom-Json
           Write-Host "Pipeline context loaded:"
-          Write-Host "  runId       : $($ctx.runId)"
-          Write-Host "  runNumber   : $($ctx.runNumber)"
-          Write-Host "  runAttempt  : $($ctx.runAttempt)"
-          Write-Host "  solutions   : $($ctx.solutionList)"
-          Write-Host "  triggeredBy : $($ctx.triggeredBy)"
-          Write-Host "  triggeredAt : $($ctx.triggeredAt)"
+          Write-Host "  runId        : $($ctx.runId)"
+          Write-Host "  runNumber    : $($ctx.runNumber)"
+          Write-Host "  runAttempt   : $($ctx.runAttempt)"
+          Write-Host "  solutions    : $($ctx.solutionList)"
+          Write-Host "  featureBranch: $($ctx.featureBranch)"
+          Write-Host "  triggeredBy  : $($ctx.triggeredBy)"
 
-          "run_id=$($ctx.runId)"             | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-          "run_number=$($ctx.runNumber)"     | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-          "run_attempt=$($ctx.runAttempt)"   | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-          "matrix=$($ctx.matrix)"            | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "run_id=$($ctx.runId)"               | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "run_number=$($ctx.runNumber)"       | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "run_attempt=$($ctx.runAttempt)"     | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "matrix=$($ctx.matrix)"              | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           "solution_list=$($ctx.solutionList)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
   # ============================================================================
-  # Stage — Deploy Prod
-  # Single environment, Prod GitHub Environment gate pauses for approval.
-  # Artifacts downloaded from Phase 1 run via source_run_id.
-  # JFrog prodDeployed tag set via tag_prod_deployed:true on the Prod env config.
+  # Deploy UAT → Prod
+  # UAT is re-deployed as a final validation gate before Prod.
+  # Prod gate pauses until a reviewer approves in Settings → Environments → Prod.
+  # Artifacts are downloaded from Pipeline 1 run via source_run_id.
   # ============================================================================
   stage-deploy:
-    name: "🚀 Deploy Prod"
+    name: "🚀 Deploy UAT → Prod"
     needs: [read-context]
     permissions:
       id-token: write
       contents: read
-      actions: read    # required: cross-run artifact download (source_run_id = Phase 1 run_id)
+      actions: read    # required: cross-run artifact download (source_run_id = Pipeline 1 run_id)
     uses: ppudot2-cloud/GHA-Core/.github/workflows/_stage-deploy-chain.yml@main
     with:
       matrix:          ${{ needs.read-context.outputs.matrix }}
-      environments:    'Prod'
+      environments:    'UAT,Prod'
       source_run_id:   ${{ needs.read-context.outputs.run_id }}
       run_number:      ${{ needs.read-context.outputs.run_number }}
       run_attempt:     ${{ needs.read-context.outputs.run_attempt }}
@@ -119,6 +155,8 @@ jobs:
       jfrog_url:       ${{ vars.JFROG_URL || '' }}
       jfrog_repo:      ${{ vars.JFROG_REPO || 'powerplatform-solutions' }}
 
+      # Dev/Intg/FRS/Perf configs are required inputs but filtered out by
+      # environments:'UAT,Prod' — they will never be deployed here.
       dev_config: >-
         {"name":"Dev","url":"${{ vars.PP_DEV_URL }}","previous_url":"",
         "solution_type":"Unmanaged","enable_backup":false,
@@ -133,13 +171,13 @@ jobs:
 
       uat_config: >-
         {"name":"UAT","url":"${{ vars.PP_UAT_URL }}","previous_url":"${{ vars.PP_INTG_URL }}",
-        "solution_type":"Managed","enable_backup":true,
+        "solution_type":"Managed","enable_backup":${{ inputs.enable_backup == true }},
         "enable_blocking_check":true,"enable_version_compare":true,
         "import_config_data":false}
 
       frs_config: >-
         {"name":"FRS","url":"${{ vars.PP_FRS_URL }}","previous_url":"${{ vars.PP_UAT_URL }}",
-        "solution_type":"Managed","enable_backup":true,
+        "solution_type":"Managed","enable_backup":false,
         "enable_blocking_check":true,"enable_version_compare":true,
         "import_config_data":false}
 
@@ -151,7 +189,7 @@ jobs:
 
       prod_config: >-
         {"name":"Prod","url":"${{ vars.PP_PROD_URL }}","previous_url":"${{ vars.PP_PERF_URL }}",
-        "solution_type":"Managed","enable_backup":true,
+        "solution_type":"Managed","enable_backup":${{ inputs.enable_backup == true }},
         "enable_blocking_check":true,"enable_version_compare":true,
         "import_config_data":true}
 
@@ -161,7 +199,7 @@ jobs:
   # Pipeline Summary (always runs)
   # ============================================================================
   pipeline-summary:
-    name: "📋 Phase 3 Summary"
+    name: "📋 Pipeline 2 Summary"
     needs: [read-context, stage-deploy]
     if: always() && needs.read-context.result != 'skipped'
     runs-on: ubuntu-latest
@@ -174,14 +212,14 @@ jobs:
           if [ "$RESULT" != "success" ]; then ICON="❌"; fi
 
           cat >> $GITHUB_STEP_SUMMARY << EOF
-          ## 🚀 Phase 3 — Prod Deployment Summary
+          ## 🚀 Pipeline 2 — UAT + Prod Deployment Summary
 
           | Field | Value |
           | --- | --- |
-          | Phase 1 run | #${{ needs.read-context.outputs.run_number }} |
+          | Pipeline 1 run | #${{ needs.read-context.outputs.run_number }} |
           | Solutions | ${{ needs.read-context.outputs.solution_list }} |
-          | Prod deploy | $ICON $RESULT |
-          | Merged by | @${{ github.actor }} |
+          | UAT + Prod deploy | $ICON $RESULT |
+          | Triggered by | @${{ github.actor }} |
           EOF
 
       - name: Send failure notification
@@ -195,17 +233,16 @@ jobs:
           password:       ${{ secrets.MAIL_PASSWORD }}
           to:             ppudot1@gmail.com
           from:           GitHub Actions <${{ secrets.MAIL_USERNAME }}>
-          subject:        "❌ PROD Deployment FAILED (Phase 3) — ${{ github.repository }} run #${{ needs.read-context.outputs.run_number }}"
+          subject:        "❌ UAT/Prod Deployment FAILED (Pipeline 2) — ${{ github.repository }} run #${{ needs.read-context.outputs.run_number }}"
           body: |
-            ⚠️ PRODUCTION DEPLOYMENT FAILED
+            ⚠️ Pipeline 2 (UAT + Prod) deployment failed.
 
             Repository   : ${{ github.repository }}
-            Phase 1 run  : #${{ needs.read-context.outputs.run_number }}
+            Pipeline 1 run: #${{ needs.read-context.outputs.run_number }}
             Solutions    : ${{ needs.read-context.outputs.solution_list }}
             Deploy result: ${{ needs.stage-deploy.result }}
-            Merged by    : @${{ github.actor }}
+            Triggered by : @${{ github.actor }}
 
-            The rollback workflow can restore the previous version:
-            ${{ github.server_url }}/${{ github.repository }}/actions/workflows/rollback.yml
+            Rollback: ${{ github.server_url }}/${{ github.repository }}/actions/workflows/rollback.yml
 
             ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
