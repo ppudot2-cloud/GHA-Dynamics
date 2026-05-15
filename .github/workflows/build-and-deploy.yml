@@ -114,37 +114,39 @@ jobs:
             -SolutionsJsonPath 'solutions.json'
 
   # ============================================================================
-  # Stage 1 — Export from sandbox
-  # Exports each solution from PP_SDBX_URL, uploads exported-source-* artifact.
-  # Skipped in mock mode.
+  # Stage 1 — Export from sandbox  (or simulate in mock mode)
+  # Real mode:  exports each solution from PP_SDBX_URL via PAC CLI.
+  # Mock mode:  export-solution action logs "[MOCK]" and reuses src/solutions/.
+  # Always runs so commit-to-feature-branch always has artifacts to work with.
   # ============================================================================
   stage-export:
     name: "📤 Export from Sandbox"
     needs: setup
-    if: ${{ inputs.mock_deploy != true }}
     permissions:
       id-token: write
       contents: read
     uses: ppudot2-cloud/GHA-Core/.github/workflows/_stage-export.yml@main
     with:
       matrix:                 ${{ needs.setup.outputs.matrix }}
-      source_environment_url: ${{ vars.PP_SDBX_URL }}
-      mock_deploy:            false
+      source_environment_url: ${{ vars.PP_SDBX_URL || 'https://mock.crm.dynamics.com' }}
+      mock_deploy:            ${{ inputs.mock_deploy == true }}
     secrets: inherit
 
   # ============================================================================
-  # Commit exported source to feature branch
-  # Creates feature/pipeline-{run_number}, copies source, writes
-  # pipeline-context.json (carries run_id for Pipeline 2 artifact handoff).
-  # Skipped in mock mode.
+  # Commit exported source to feature branch  (or simulate in mock mode)
+  # Real mode:  creates feature/pipeline-{run_number}, copies exported source,
+  #             writes pipeline-context.json, pushes, ready for Pipeline 2.
+  # Mock mode:  all git steps run locally; git push is skipped; branch name
+  #             and pipeline-context.json are written so downstream jobs have
+  #             the correct context values.
   # ============================================================================
   commit-to-feature-branch:
     name: "🌿 Commit to feature/pipeline-${{ github.run_number }}"
     needs: [setup, stage-export]
-    if: ${{ inputs.mock_deploy != true }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      actions:  read      # needed by download-artifact@v4 in same run
     outputs:
       feature_branch: ${{ steps.commit.outputs.feature_branch }}
 
@@ -162,10 +164,11 @@ jobs:
           path: _export-src/
           merge-multiple: false
 
-      - name: Create branch, copy source, write context, push
+      - name: Create branch, copy source, write context, push (or simulate)
         id: commit
         shell: pwsh
         run: |
+          $isMock     = '${{ inputs.mock_deploy }}' -eq 'true'
           $runNumber  = '${{ github.run_number }}'
           $runAttempt = '${{ github.run_attempt }}'
           $runId      = '${{ github.run_id }}'
@@ -175,7 +178,7 @@ jobs:
           git config user.email "actions@github.com"
 
           git checkout -b $branch
-          Write-Host "Created branch: $branch"
+          Write-Host "$(if ($isMock) { '[MOCK] ' })Created branch: $branch"
 
           $solutions = '${{ needs.setup.outputs.solution_list }}' -split ',' |
             ForEach-Object { $_.Trim() } | Where-Object { $_ }
@@ -203,6 +206,7 @@ jobs:
             featureBranch = $branch
             triggeredBy   = '${{ github.actor }}'
             triggeredAt   = (Get-Date -Format 'yyyy-MM-ddTHH:mm:ssZ')
+            mockDeploy    = $isMock
           }
           $ctx | ConvertTo-Json -Depth 3 | Set-Content 'pipeline-context.json' -Encoding UTF8
           Write-Host "  ✓ Written pipeline-context.json (runId=$runId)"
@@ -210,14 +214,38 @@ jobs:
           if (Test-Path '_export-src') { Remove-Item '_export-src' -Recurse -Force }
 
           git add src/solutions/ pipeline-context.json
-          $status = git status --porcelain
-          if ($status) {
-            git commit -m "chore: export from sandbox — pipeline run #$runNumber [skip ci]"
-            git push origin $branch
-            Write-Host "  ✓ Committed and pushed to $branch"
+
+          if ($isMock) {
+            # Show what would be committed but do NOT push
+            $diff = git diff --cached --stat
+            Write-Host ""
+            Write-Host "[MOCK] Skipping git push — files that would be committed:" -ForegroundColor Cyan
+            $diff | ForEach-Object { Write-Host "  $_" }
+            Write-Host "[MOCK] Branch '$branch' exists locally only." -ForegroundColor Cyan
+
+            # Step summary
+            @"
+## 🧪 Commit to Feature Branch — Simulation
+_mock_deploy=true — no changes pushed to GitHub_
+
+**Would push to branch:** ``$branch``
+**Run ID:** $runId
+
+### Files that would be committed:
+``````
+$($diff -join "`n")
+``````
+"@ | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
           } else {
-            Write-Host "  ℹ No source changes — pushing branch pointer only"
-            git push origin $branch
+            $status = git status --porcelain
+            if ($status) {
+              git commit -m "chore: export from sandbox — pipeline run #$runNumber [skip ci]"
+              git push origin $branch
+              Write-Host "  ✓ Committed and pushed to $branch"
+            } else {
+              Write-Host "  ℹ No source changes — pushing branch pointer only"
+              git push origin $branch
+            }
           }
 
           "feature_branch=$branch" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
@@ -230,19 +258,15 @@ jobs:
   stage-build:
     name: "🏗️ Build"
     needs: [setup, stage-export, commit-to-feature-branch]
-    if: |
-      always() &&
-      needs.setup.result == 'success' &&
-      (
-        (inputs.mock_deploy == true) ||
-        (needs.stage-export.result == 'success' && needs.commit-to-feature-branch.result == 'success')
-      )
+    # No mock bypass needed — stage-export and commit-to-feature-branch now always
+    # run (mock mode is handled inside each stage). Build runs when they succeed.
     permissions:
       id-token: write
       contents: read
     uses: ppudot2-cloud/GHA-Core/.github/workflows/_stage-build.yml@main
     with:
       matrix:                 ${{ needs.setup.outputs.matrix }}
+      # mock mode reuses src/solutions/ directly (no artifact download needed)
       use_exported_source:    ${{ inputs.mock_deploy != true }}
       source_environment_url: ${{ vars.PP_SDBX_URL || '' }}
       mock_deploy:            ${{ inputs.mock_deploy == true }}
@@ -325,6 +349,8 @@ jobs:
   create-main-pr:
     name: "🔀 Open PR → main"
     needs: [setup, commit-to-feature-branch, stage-deploy]
+    # Real mode: create a PR once all pre-prod deploys pass.
+    # Mock mode: skip — no branch was pushed, so there is nothing to PR.
     if: |
       needs.stage-deploy.result == 'success' &&
       needs.commit-to-feature-branch.result == 'success' &&
