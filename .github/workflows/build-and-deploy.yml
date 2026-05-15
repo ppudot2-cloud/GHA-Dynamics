@@ -272,23 +272,154 @@ jobs:
     secrets: inherit
 
   # ============================================================================
-  # Stage 3 — Deploy Dev → Intg → UAT → FRS → Perf
-  # All pre-prod environments in sequence.  Prod is intentionally excluded —
-  # it can only be deployed from a merged PR to main (Pipeline 2).
-  # GitHub Environment protection rules act as approval gates at each stage.
+  # Stage 2.5 — Pipeline Validation
+  # Runs after build, before deploy. Prints all toggles/flags so the team can
+  # confirm what is on or off before any environment is touched. Validates that
+  # required secrets and environment URLs are present (non-mock runs only).
   # ============================================================================
-  stage-deploy:
-    name: "🚀 Deploy Dev → Intg → UAT → FRS → Perf"
+  validate-pipeline:
+    name: "🔎 Validate Pipeline Config"
     needs: [setup, stage-build]
     if: needs.stage-build.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Print toggles and validate config
+        shell: pwsh
+        run: |
+          $isMock = '${{ inputs.mock_deploy }}' -eq 'true'
+
+          function Flag($v) { if ($v -eq 'true') { '🟢 ON' } else { '🔴 OFF' } }
+
+          Write-Host ""
+          Write-Host "═══════════════════════════════════════════════════════════"
+          Write-Host "   PIPELINE CONFIGURATION  —  Run #${{ github.run_number }}"
+          Write-Host "═══════════════════════════════════════════════════════════"
+          Write-Host ""
+          Write-Host "── Toggles ─────────────────────────────────────────────"
+          Write-Host ("  {0,-24} {1}" -f "mock_deploy",         (Flag '${{ inputs.mock_deploy }}'))
+          Write-Host ("  {0,-24} {1}" -f "enable_backup",       (Flag '${{ inputs.enable_backup }}'))
+          Write-Host ("  {0,-24} {1}" -f "trigger_upgrade",     (Flag '${{ inputs.trigger_upgrade }}'))
+          Write-Host ("  {0,-24} {1}" -f "checker_error_level", '${{ inputs.checker_error_level || 'HighIssue' }}')
+          Write-Host ("  {0,-24} {1}" -f "base_solutions",      '${{ inputs.base_solutions || '(none)' }}')
+          Write-Host ""
+          Write-Host "── Solutions ───────────────────────────────────────────"
+          Write-Host ("  {0,-24} {1}" -f "Count",  '${{ needs.setup.outputs.solution_count }}')
+          Write-Host ("  {0,-24} {1}" -f "List",   '${{ needs.setup.outputs.solution_list }}')
+          Write-Host ""
+          Write-Host "── Environment URLs ────────────────────────────────────"
+          $urls = [ordered]@{
+            'Sandbox (export)' = '${{ vars.PP_SDBX_URL }}'
+            'Dev'              = '${{ vars.PP_DEV_URL }}'
+            'Intg'             = '${{ vars.PP_INTG_URL }}'
+            'UAT'              = '${{ vars.PP_UAT_URL }}'
+            'FRS'              = '${{ vars.PP_FRS_URL }}'
+            'Perf'             = '${{ vars.PP_PERF_URL }}'
+            'Prod'             = '${{ vars.PP_PROD_URL }}'
+          }
+          $missingUrls = [System.Collections.Generic.List[string]]::new()
+          foreach ($e in $urls.GetEnumerator()) {
+            if ($e.Value) {
+              Write-Host ("  {0,-20} ✅  {1}" -f $e.Key, $e.Value)
+            } else {
+              Write-Host ("  {0,-20} ❌  NOT SET" -f $e.Key) -ForegroundColor Red
+              $missingUrls.Add($e.Key)
+            }
+          }
+          Write-Host ""
+          Write-Host "── Service Connections ─────────────────────────────────"
+          $ppAppIdSet    = '${{ secrets.PP_APP_ID != '' }}'     -eq 'true'
+          $ppSecretSet   = '${{ secrets.PP_CLIENT_SECRET != '' }}' -eq 'true'
+          $ppTenantSet   = '${{ secrets.PP_TENANT_ID != '' }}'  -eq 'true'
+          $ghaCorePatSet = '${{ secrets.GHA_CORE_PAT != '' }}'  -eq 'true'
+          if ($isMock) {
+            Write-Host "  PP_APP_ID            ⚠️  skipped (mock_deploy=true)"
+            Write-Host "  PP_CLIENT_SECRET     ⚠️  skipped (mock_deploy=true)"
+            Write-Host "  PP_TENANT_ID         ⚠️  skipped (mock_deploy=true)"
+          } else {
+            Write-Host ("  {0,-20} {1}" -f "PP_APP_ID",        (if ($ppAppIdSet)    { '✅  Set' } else { '❌  NOT SET' }))
+            Write-Host ("  {0,-20} {1}" -f "PP_CLIENT_SECRET", (if ($ppSecretSet)   { '✅  Set' } else { '❌  NOT SET' }))
+            Write-Host ("  {0,-20} {1}" -f "PP_TENANT_ID",     (if ($ppTenantSet)   { '✅  Set' } else { '❌  NOT SET' }))
+          }
+          Write-Host ("  {0,-20} {1}" -f "GHA_CORE_PAT",     (if ($ghaCorePatSet) { '✅  Set' } else { '❌  NOT SET' }))
+          Write-Host ""
+          Write-Host "── JFrog ───────────────────────────────────────────────"
+          $jfrogUrl = '${{ vars.JFROG_URL }}'
+          if ($jfrogUrl) {
+            Write-Host "  JFROG_URL            ✅  $jfrogUrl"
+            Write-Host "  JFROG_REPO           ${{ vars.JFROG_REPO || 'powerplatform-solutions (default)' }}"
+          } else {
+            Write-Host "  JFrog                ⚠️  Not configured (JFROG_URL not set) — archival disabled"
+          }
+          Write-Host ""
+          Write-Host "═══════════════════════════════════════════════════════════"
+
+          # ── Step summary (rendered as a table in GitHub Actions UI) ─────────
+          $md  = "## Pipeline Configuration — Run #${{ github.run_number }}`n`n"
+          $md += "### Toggles`n`n| Toggle | Value |`n|---|---|`n"
+          $md += "| mock_deploy | $(Flag '${{ inputs.mock_deploy }}') |`n"
+          $md += "| enable_backup | $(Flag '${{ inputs.enable_backup }}') |`n"
+          $md += "| trigger_upgrade | $(Flag '${{ inputs.trigger_upgrade }}') |`n"
+          $md += "| checker_error_level | ``${{ inputs.checker_error_level || 'HighIssue' }}`` |`n"
+          $md += "| base_solutions | ``${{ inputs.base_solutions || '(none)' }}`` |`n`n"
+          $md += "### Solutions (${{ needs.setup.outputs.solution_count }})`n`n"
+          $md += "${{ needs.setup.outputs.solution_list }}`n`n"
+          $md += "### Environment URLs`n`n| Environment | Status |`n|---|---|`n"
+          foreach ($e in $urls.GetEnumerator()) {
+            $status = if ($e.Value) { "✅ ``$($e.Value)``" } else { "❌ **NOT SET**" }
+            $md += "| $($e.Key) | $status |`n"
+          }
+          $md += "`n### Service Connections`n`n| Secret | Status |`n|---|---|`n"
+          if ($isMock) {
+            $md += "| PP credentials | ⚠️ Skipped (mock_deploy=true) |`n"
+          } else {
+            $md += "| PP_APP_ID | $(if ($ppAppIdSet) { '✅ Set' } else { '❌ **NOT SET**' }) |`n"
+            $md += "| PP_CLIENT_SECRET | $(if ($ppSecretSet) { '✅ Set' } else { '❌ **NOT SET**' }) |`n"
+            $md += "| PP_TENANT_ID | $(if ($ppTenantSet) { '✅ Set' } else { '❌ **NOT SET**' }) |`n"
+          }
+          $md += "| GHA_CORE_PAT | $(if ($ghaCorePatSet) { '✅ Set' } else { '❌ **NOT SET**' }) |`n"
+          if ($jfrogUrl) {
+            $md += "`n### JFrog`n`n✅ Configured — ``$jfrogUrl```n"
+          } else {
+            $md += "`n### JFrog`n`n⚠️ Not configured — archival disabled`n"
+          }
+          $md | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+
+          # ── Fail non-mock if credentials or URLs are missing ─────────────────
+          if (-not $isMock) {
+            $errors = [System.Collections.Generic.List[string]]::new()
+            if (-not $ppAppIdSet)    { $errors.Add('PP_APP_ID secret is not set') }
+            if (-not $ppSecretSet)   { $errors.Add('PP_CLIENT_SECRET secret is not set') }
+            if (-not $ppTenantSet)   { $errors.Add('PP_TENANT_ID secret is not set') }
+            if ($missingUrls.Count -gt 0) {
+              $errors.Add("Environment URLs not configured: $($missingUrls -join ', ')")
+            }
+            if ($errors.Count -gt 0) {
+              Write-Host ""
+              foreach ($err in $errors) { Write-Host "  ❌ $err" -ForegroundColor Red }
+              Write-Error "Pipeline validation failed — fix the above before deploying"
+              exit 1
+            }
+          }
+          Write-Host "  ✅ Validation passed"
+
+  # ============================================================================
+  # Stage 3a — Deploy Dev + Intg + UAT  (parallel, individual gates)
+  # PR creation depends ONLY on this block — PR is opened as soon as UAT passes.
+  # ============================================================================
+  stage-deploy-preprod:
+    name: "🚀 Deploy Dev / Intg / UAT"
+    needs: [setup, validate-pipeline]
+    if: needs.validate-pipeline.result == 'success'
     permissions:
       id-token: write
       contents: read
-      actions:  read    # required: download-artifact@v4 with explicit run-id needs actions:read
+      actions:  read
     uses: ppudot2-cloud/GHA-Core/.github/workflows/_stage-deploy-chain.yml@main
     with:
       matrix:          ${{ needs.setup.outputs.matrix }}
-      environments:    'Dev,Intg,UAT,FRS,Perf'
+      environments:    'Dev,Intg,UAT'
       mock_deploy:     ${{ inputs.mock_deploy == true }}
       trigger_upgrade: ${{ inputs.trigger_upgrade == true }}
       base_solutions:  ${{ inputs.base_solutions || vars.PP_BASE_SOLUTIONS || '' }}
@@ -327,8 +458,69 @@ jobs:
         "enable_blocking_check":true,"enable_version_compare":true,
         "import_config_data":false}
 
-      # Prod config is a required input to _stage-deploy-chain but is filtered
-      # out by environments:'Dev,Intg,UAT,FRS,Perf' — it will never be deployed.
+      prod_config: >-
+        {"name":"Prod","url":"${{ vars.PP_PROD_URL }}","previous_url":"${{ vars.PP_PERF_URL }}",
+        "solution_type":"Managed","enable_backup":${{ inputs.enable_backup == true }},
+        "enable_blocking_check":true,"enable_version_compare":true,
+        "import_config_data":true}
+
+    secrets: inherit
+
+  # ============================================================================
+  # Stage 3b — Deploy FRS + Perf  (parallel, individual gates)
+  # Runs concurrently with stage-deploy-preprod — both start after validate-pipeline.
+  # FRS/Perf do NOT block PR creation; the PR opens as soon as UAT passes.
+  # ============================================================================
+  stage-deploy-extended:
+    name: "🚀 Deploy FRS / Perf"
+    needs: [setup, validate-pipeline]
+    if: needs.validate-pipeline.result == 'success'
+    permissions:
+      id-token: write
+      contents: read
+      actions:  read
+    uses: ppudot2-cloud/GHA-Core/.github/workflows/_stage-deploy-chain.yml@main
+    with:
+      matrix:          ${{ needs.setup.outputs.matrix }}
+      environments:    'FRS,Perf'
+      mock_deploy:     ${{ inputs.mock_deploy == true }}
+      trigger_upgrade: ${{ inputs.trigger_upgrade == true }}
+      base_solutions:  ${{ inputs.base_solutions || vars.PP_BASE_SOLUTIONS || '' }}
+      jfrog_url:       ${{ vars.JFROG_URL || '' }}
+      jfrog_repo:      ${{ vars.JFROG_REPO || 'powerplatform-solutions' }}
+      run_number:      ${{ github.run_number }}
+      run_attempt:     ${{ github.run_attempt }}
+
+      dev_config: >-
+        {"name":"Dev","url":"${{ vars.PP_DEV_URL }}","previous_url":"",
+        "solution_type":"Unmanaged","enable_backup":${{ inputs.enable_backup == true }},
+        "enable_blocking_check":false,"enable_version_compare":false,
+        "import_config_data":false}
+
+      intg_config: >-
+        {"name":"Intg","url":"${{ vars.PP_INTG_URL }}","previous_url":"${{ vars.PP_DEV_URL }}",
+        "solution_type":"Managed","enable_backup":${{ inputs.enable_backup == true }},
+        "enable_blocking_check":true,"enable_version_compare":false,
+        "import_config_data":false}
+
+      uat_config: >-
+        {"name":"UAT","url":"${{ vars.PP_UAT_URL }}","previous_url":"${{ vars.PP_INTG_URL }}",
+        "solution_type":"Managed","enable_backup":${{ inputs.enable_backup == true }},
+        "enable_blocking_check":true,"enable_version_compare":true,
+        "import_config_data":false}
+
+      frs_config: >-
+        {"name":"FRS","url":"${{ vars.PP_FRS_URL }}","previous_url":"${{ vars.PP_UAT_URL }}",
+        "solution_type":"Managed","enable_backup":${{ inputs.enable_backup == true }},
+        "enable_blocking_check":true,"enable_version_compare":true,
+        "import_config_data":false}
+
+      perf_config: >-
+        {"name":"Perf","url":"${{ vars.PP_PERF_URL }}","previous_url":"${{ vars.PP_FRS_URL }}",
+        "solution_type":"Managed","enable_backup":${{ inputs.enable_backup == true }},
+        "enable_blocking_check":true,"enable_version_compare":true,
+        "import_config_data":false}
+
       prod_config: >-
         {"name":"Prod","url":"${{ vars.PP_PROD_URL }}","previous_url":"${{ vars.PP_PERF_URL }}",
         "solution_type":"Managed","enable_backup":${{ inputs.enable_backup == true }},
@@ -339,16 +531,15 @@ jobs:
 
   # ============================================================================
   # Create PR: feature/pipeline-{run_number} → main
-  # Opens after Perf succeeds. Merging (or opening) this PR triggers
-  # deploy-prod.yml which gates UAT re-validation then Prod deployment.
+  # Opens as soon as UAT passes (stage-deploy-preprod covers Dev + Intg + UAT).
+  # FRS and Perf (stage-deploy-extended) continue independently — PR does not
+  # wait for them. Merging this PR triggers deploy-prod.yml (UAT re-val + Prod).
   # ============================================================================
   create-main-pr:
     name: "🔀 Open PR → main"
-    needs: [setup, commit-to-feature-branch, stage-deploy]
-    # Real mode: create a PR once all pre-prod deploys pass.
-    # Mock mode: skip — no branch was pushed, so there is nothing to PR.
+    needs: [setup, commit-to-feature-branch, stage-deploy-preprod]
     if: |
-      needs.stage-deploy.result == 'success' &&
+      needs.stage-deploy-preprod.result == 'success' &&
       needs.commit-to-feature-branch.result == 'success' &&
       inputs.mock_deploy != true
     runs-on: ubuntu-latest
@@ -367,24 +558,22 @@ jobs:
             --head "$FEATURE" \
             --base "main" \
             --title "Release: pipeline run #${{ github.run_number }}" \
-            --body "## ✅ All pre-prod environments passed — ready for Prod
+            --body "## ✅ UAT passed — ready for Prod
 
           **Pipeline run:** [#${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
           **Branch:** \`$FEATURE\`
           **Solutions:** ${{ needs.setup.outputs.solution_list }}
           **Triggered by:** @${{ github.actor }}
 
-          ### Pre-merge checklist
-          - [x] Exported from sandbox: \`${{ vars.PP_SDBX_URL }}\`
+          ### Gate status at PR creation
           - [x] Solution Checker: passed
-          - [x] Dev deployment: success
-          - [x] Intg deployment: success
-          - [x] UAT deployment: success
-          - [x] FRS deployment: success
-          - [x] Perf deployment: success
+          - [x] Dev: success
+          - [x] Intg: success
+          - [x] UAT: success
+          - [ ] FRS: running in parallel (not required for this PR)
+          - [ ] Perf: running in parallel (not required for this PR)
 
-          Opening this PR automatically triggers **deploy-prod.yml**:
-          UAT re-validation → Prod deployment (both gated for approval)." \
+          Merging this PR triggers **deploy-prod.yml** (UAT re-validation → Prod, both gated)." \
           )
           echo "✅ PR created: $PR_URL"
 
@@ -393,7 +582,7 @@ jobs:
   # ============================================================================
   pipeline-summary:
     name: "📋 Pipeline Summary"
-    needs: [setup, stage-export, stage-build, stage-deploy, create-main-pr]
+    needs: [setup, stage-export, stage-build, validate-pipeline, stage-deploy-preprod, stage-deploy-extended, create-main-pr]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -427,15 +616,16 @@ jobs:
             -CommitSha       '${{ github.sha }}' `
             -ExportResult    '${{ needs.stage-export.result }}' `
             -BuildResult     '${{ needs.stage-build.result }}' `
-            -DeployResult    '${{ needs.stage-deploy.result }}' `
+            -DeployResult    '${{ needs.stage-deploy-preprod.result }}' `
             -JobSummariesDir 'job-summaries'
 
       - name: Send failure notification
         if: >
-          needs.stage-export.result == 'failure' ||
-          needs.stage-build.result  == 'failure' ||
-          needs.stage-deploy.result == 'failure'
-        continue-on-error: true   # mail secrets optional — don't fail the job if not configured
+          needs.stage-export.result          == 'failure' ||
+          needs.stage-build.result           == 'failure' ||
+          needs.stage-deploy-preprod.result  == 'failure' ||
+          needs.stage-deploy-extended.result == 'failure'
+        continue-on-error: true
         uses: dawidd6/action-send-mail@v3
         with:
           server_address: ${{ secrets.MAIL_SERVER }}
@@ -453,9 +643,10 @@ jobs:
             Triggered by: ${{ github.actor }}
 
             Stage results:
-              Export  : ${{ needs.stage-export.result }}
-              Build   : ${{ needs.stage-build.result }}
-              Deploy  : ${{ needs.stage-deploy.result }}
+              Export              : ${{ needs.stage-export.result }}
+              Build               : ${{ needs.stage-build.result }}
+              Deploy Dev/Intg/UAT : ${{ needs.stage-deploy-preprod.result }}
+              Deploy FRS/Perf     : ${{ needs.stage-deploy-extended.result }}
 
             Solutions: ${{ needs.setup.outputs.solution_list }}
 
