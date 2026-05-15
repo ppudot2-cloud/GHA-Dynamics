@@ -264,6 +264,7 @@ jobs:
     permissions:
       id-token: write
       contents: read
+      actions:  read    # required: download-artifact@v4 with explicit run-id needs actions:read
     uses: ppudot2-cloud/GHA-Core/.github/workflows/_stage-deploy-chain.yml@main
     with:
       matrix:          ${{ needs.setup.outputs.matrix }}
