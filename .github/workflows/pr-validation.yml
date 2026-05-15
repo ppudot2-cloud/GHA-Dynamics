@@ -127,6 +127,7 @@ jobs:
       # Notify on build failure in PR
       - name: Send failure notification
         if: needs.stage-build.result == 'failure'
+        continue-on-error: true   # mail secrets optional — don't fail the job if not configured
         uses: dawidd6/action-send-mail@v3
         with:
           server_address: ${{ secrets.MAIL_SERVER }}
