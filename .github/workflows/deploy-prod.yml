@@ -127,85 +127,134 @@ jobs:
           "solution_list=$($ctx.solutionList)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
   # ============================================================================
-  # Deploy UAT → Prod
-  # UAT is re-deployed as a final validation gate before Prod.
-  # Prod gate pauses until a reviewer approves in Settings → Environments → Prod.
-  # Artifacts are downloaded from Pipeline 1 run via source_run_id.
+  # Deploy UAT — re-validation gate before Prod
+  # Artifacts downloaded from Pipeline 1 run via source_run_id
   # ============================================================================
-  stage-deploy:
-    name: "🚀 Deploy UAT → Prod"
+  deploy-uat:
+    name: "🚀 Deploy | UAT"
     needs: [read-context]
+    runs-on: ubuntu-latest
+    environment: UAT
     permissions:
       id-token: write
       contents: read
-      actions: read    # required: cross-run artifact download (source_run_id = Pipeline 1 run_id)
-    uses: ppudot2-cloud/GHA-Core/.github/workflows/_stage-deploy-chain.yml@main
-    with:
-      matrix:          ${{ needs.read-context.outputs.matrix }}
-      environments:    'UAT,Prod'
-      source_run_id:   ${{ needs.read-context.outputs.run_id }}
-      run_number:      ${{ needs.read-context.outputs.run_number }}
-      run_attempt:     ${{ needs.read-context.outputs.run_attempt }}
-      mock_deploy:     false
-      base_solutions:  ${{ vars.PP_BASE_SOLUTIONS || '' }}
-      jfrog_url:       ${{ vars.JFROG_URL || '' }}
-      jfrog_repo:      ${{ vars.JFROG_REPO || 'powerplatform-solutions' }}
+      actions:  read
+    env:
+      GHA_CORE_PAT: ${{ secrets.GHA_CORE_PAT }}
+    steps:
+      - name: CI Bootstrap
+        uses: ppudot2-cloud/GHA-Core/.github/actions/ci-bootstrap@main
+        with:
+          mock_deploy:           false
+          jfrog_enabled:         false
+          azure_client_id:       ${{ vars.AZURE_CLIENT_ID }}
+          azure_tenant_id:       ${{ vars.AZURE_TENANT_ID }}
+          azure_subscription_id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          azure_key_vault_name:  ${{ vars.AZURE_KEY_VAULT_NAME }}
+      - name: Install PAC CLI
+        uses: ppudot2-cloud/GHA-Core/.github/actions/pac-install@main
+      - name: Download solution artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: solution-artifact-*
+          path: .
+          merge-multiple: true
+          run-id: ${{ needs.read-context.outputs.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Deploy all solutions → UAT
+        uses: ppudot2-cloud/GHA-Core/.github/actions/deploy-all-solutions@main
+        with:
+          solutions_json:           ${{ needs.read-context.outputs.matrix }}
+          environment_name:         UAT
+          environment_url:          ${{ vars.PP_UAT_URL }}
+          solution_type:            Managed
+          enable_backup:            ${{ inputs.enable_backup == true }}
+          enable_blocking_check:    true
+          enable_version_compare:   true
+          import_config_data:       false
+          previous_environment_url: ${{ vars.PP_INTG_URL }}
+          tag_prod_deployed:        false
+          activate_flows:           true
+          mock_deploy:              false
+          base_solutions:           ${{ vars.PP_BASE_SOLUTIONS || '' }}
+          jfrog_url:                ${{ vars.JFROG_URL || '' }}
+          jfrog_repo:               ${{ vars.JFROG_REPO || 'powerplatform-solutions' }}
+          run_number:               ${{ needs.read-context.outputs.run_number }}
+          run_attempt:              ${{ needs.read-context.outputs.run_attempt }}
 
-      # Dev/Intg/FRS/Perf configs are required inputs but filtered out by
-      # environments:'UAT,Prod' — they will never be deployed here.
-      dev_config: >-
-        {"name":"Dev","url":"${{ vars.PP_DEV_URL }}","previous_url":"",
-        "solution_type":"Unmanaged","enable_backup":false,
-        "enable_blocking_check":false,"enable_version_compare":false,
-        "import_config_data":false}
-
-      intg_config: >-
-        {"name":"Intg","url":"${{ vars.PP_INTG_URL }}","previous_url":"${{ vars.PP_DEV_URL }}",
-        "solution_type":"Managed","enable_backup":false,
-        "enable_blocking_check":true,"enable_version_compare":false,
-        "import_config_data":false}
-
-      uat_config: >-
-        {"name":"UAT","url":"${{ vars.PP_UAT_URL }}","previous_url":"${{ vars.PP_INTG_URL }}",
-        "solution_type":"Managed","enable_backup":${{ inputs.enable_backup == true }},
-        "enable_blocking_check":true,"enable_version_compare":true,
-        "import_config_data":false}
-
-      frs_config: >-
-        {"name":"FRS","url":"${{ vars.PP_FRS_URL }}","previous_url":"${{ vars.PP_UAT_URL }}",
-        "solution_type":"Managed","enable_backup":false,
-        "enable_blocking_check":true,"enable_version_compare":true,
-        "import_config_data":false}
-
-      perf_config: >-
-        {"name":"Perf","url":"${{ vars.PP_PERF_URL }}","previous_url":"${{ vars.PP_FRS_URL }}",
-        "solution_type":"Managed","enable_backup":false,
-        "enable_blocking_check":true,"enable_version_compare":true,
-        "import_config_data":false}
-
-      prod_config: >-
-        {"name":"Prod","url":"${{ vars.PP_PROD_URL }}","previous_url":"${{ vars.PP_PERF_URL }}",
-        "solution_type":"Managed","enable_backup":${{ inputs.enable_backup == true }},
-        "enable_blocking_check":true,"enable_version_compare":true,
-        "import_config_data":true}
-
-    secrets: inherit
+  # ============================================================================
+  # Deploy Prod — gated by Prod GitHub Environment approval
+  # Only starts after UAT succeeds
+  # ============================================================================
+  deploy-prod:
+    name: "🚀 Deploy | Prod"
+    needs: [read-context, deploy-uat]
+    if: needs.deploy-uat.result == 'success'
+    runs-on: ubuntu-latest
+    environment: Prod
+    permissions:
+      id-token: write
+      contents: read
+      actions:  read
+    env:
+      GHA_CORE_PAT: ${{ secrets.GHA_CORE_PAT }}
+    steps:
+      - name: CI Bootstrap
+        uses: ppudot2-cloud/GHA-Core/.github/actions/ci-bootstrap@main
+        with:
+          mock_deploy:           false
+          jfrog_enabled:         ${{ vars.JFROG_URL != '' }}
+          azure_client_id:       ${{ vars.AZURE_CLIENT_ID }}
+          azure_tenant_id:       ${{ vars.AZURE_TENANT_ID }}
+          azure_subscription_id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          azure_key_vault_name:  ${{ vars.AZURE_KEY_VAULT_NAME }}
+      - name: Install PAC CLI
+        uses: ppudot2-cloud/GHA-Core/.github/actions/pac-install@main
+      - name: Download solution artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: solution-artifact-*
+          path: .
+          merge-multiple: true
+          run-id: ${{ needs.read-context.outputs.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Deploy all solutions → Prod
+        uses: ppudot2-cloud/GHA-Core/.github/actions/deploy-all-solutions@main
+        with:
+          solutions_json:           ${{ needs.read-context.outputs.matrix }}
+          environment_name:         Prod
+          environment_url:          ${{ vars.PP_PROD_URL }}
+          solution_type:            Managed
+          enable_backup:            ${{ inputs.enable_backup == true }}
+          enable_blocking_check:    true
+          enable_version_compare:   true
+          import_config_data:       true
+          previous_environment_url: ${{ vars.PP_PERF_URL }}
+          tag_prod_deployed:        true
+          activate_flows:           true
+          mock_deploy:              false
+          base_solutions:           ${{ vars.PP_BASE_SOLUTIONS || '' }}
+          jfrog_url:                ${{ vars.JFROG_URL || '' }}
+          jfrog_repo:               ${{ vars.JFROG_REPO || 'powerplatform-solutions' }}
+          run_number:               ${{ needs.read-context.outputs.run_number }}
+          run_attempt:              ${{ needs.read-context.outputs.run_attempt }}
 
   # ============================================================================
   # Pipeline Summary (always runs)
   # ============================================================================
   pipeline-summary:
     name: "📋 Pipeline 2 Summary"
-    needs: [read-context, stage-deploy]
+    needs: [read-context, deploy-uat, deploy-prod]
     if: always() && needs.read-context.result != 'skipped'
     runs-on: ubuntu-latest
     steps:
       - name: Write summary
         shell: bash
         run: |
-          RESULT="${{ needs.stage-deploy.result }}"
+          UAT_RESULT="${{ needs.deploy-uat.result }}"
+          PROD_RESULT="${{ needs.deploy-prod.result }}"
           ICON="✅"
-          if [ "$RESULT" != "success" ]; then ICON="❌"; fi
+          if [ "$UAT_RESULT" != "success" ] || [ "$PROD_RESULT" != "success" ]; then ICON="❌"; fi
 
           cat >> $GITHUB_STEP_SUMMARY << EOF
           ## 🚀 Pipeline 2 — UAT + Prod Deployment Summary
@@ -214,13 +263,14 @@ jobs:
           | --- | --- |
           | Pipeline 1 run | #${{ needs.read-context.outputs.run_number }} |
           | Solutions | ${{ needs.read-context.outputs.solution_list }} |
-          | UAT + Prod deploy | $ICON $RESULT |
+          | UAT deploy | ${{ needs.deploy-uat.result }} |
+          | Prod deploy | ${{ needs.deploy-prod.result }} |
           | Triggered by | @${{ github.actor }} |
           EOF
 
       - name: Send failure notification
-        if: needs.stage-deploy.result == 'failure'
-        continue-on-error: true   # mail secrets optional — don't fail the job if not configured
+        if: needs.deploy-uat.result == 'failure' || needs.deploy-prod.result == 'failure'
+        continue-on-error: true
         uses: dawidd6/action-send-mail@v3
         with:
           server_address: ${{ secrets.MAIL_SERVER }}
@@ -233,11 +283,12 @@ jobs:
           body: |
             ⚠️ Pipeline 2 (UAT + Prod) deployment failed.
 
-            Repository   : ${{ github.repository }}
+            Repository    : ${{ github.repository }}
             Pipeline 1 run: #${{ needs.read-context.outputs.run_number }}
-            Solutions    : ${{ needs.read-context.outputs.solution_list }}
-            Deploy result: ${{ needs.stage-deploy.result }}
-            Triggered by : @${{ github.actor }}
+            Solutions     : ${{ needs.read-context.outputs.solution_list }}
+            UAT result    : ${{ needs.deploy-uat.result }}
+            Prod result   : ${{ needs.deploy-prod.result }}
+            Triggered by  : @${{ github.actor }}
 
             Rollback: ${{ github.server_url }}/${{ github.repository }}/actions/workflows/rollback.yml
 
