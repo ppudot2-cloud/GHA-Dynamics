@@ -58,12 +58,6 @@ on:
           - LowIssue
           - InformationalIssue
 
-      trigger_upgrade:
-        description: 'Use holding-solution upgrade pattern for managed imports'
-        required: false
-        default: false
-        type: boolean
-
       base_solutions:
         description: 'Comma-separated base solution names to verify are installed'
         required: false
@@ -192,7 +186,6 @@ jobs:
       checker_error_level:    ${{ inputs.checker_error_level || 'HighIssue' }}
       # ── Validate job context (vars cannot cross repo boundaries) ────────────
       enable_backup:          ${{ inputs.enable_backup == true }}
-      trigger_upgrade:        ${{ inputs.trigger_upgrade == true }}
       base_solutions:         ${{ inputs.base_solutions || '' }}
       solution_count:         ${{ needs.setup.outputs.solution_count }}
       solution_list:          ${{ needs.setup.outputs.solution_list }}
@@ -260,7 +253,6 @@ jobs:
           import_config_data:       false
           previous_environment_url: ''
           tag_prod_deployed:        false
-          trigger_upgrade:          ${{ inputs.trigger_upgrade == true }}
           activate_flows:           true
           mock_deploy:              ${{ inputs.mock_deploy == true }}
           base_solutions:           ${{ inputs.base_solutions || vars.PP_BASE_SOLUTIONS || '' }}
@@ -314,7 +306,6 @@ jobs:
           import_config_data:       false
           previous_environment_url: ${{ vars.PP_DEV_URL }}
           tag_prod_deployed:        false
-          trigger_upgrade:          ${{ inputs.trigger_upgrade == true }}
           activate_flows:           true
           mock_deploy:              ${{ inputs.mock_deploy == true }}
           base_solutions:           ${{ inputs.base_solutions || vars.PP_BASE_SOLUTIONS || '' }}
@@ -368,7 +359,6 @@ jobs:
           import_config_data:       false
           previous_environment_url: ${{ vars.PP_INTG_URL }}
           tag_prod_deployed:        false
-          trigger_upgrade:          ${{ inputs.trigger_upgrade == true }}
           activate_flows:           true
           mock_deploy:              ${{ inputs.mock_deploy == true }}
           base_solutions:           ${{ inputs.base_solutions || vars.PP_BASE_SOLUTIONS || '' }}
@@ -422,7 +412,6 @@ jobs:
           import_config_data:       false
           previous_environment_url: ${{ vars.PP_UAT_URL }}
           tag_prod_deployed:        false
-          trigger_upgrade:          ${{ inputs.trigger_upgrade == true }}
           activate_flows:           true
           mock_deploy:              ${{ inputs.mock_deploy == true }}
           base_solutions:           ${{ inputs.base_solutions || vars.PP_BASE_SOLUTIONS || '' }}
@@ -476,7 +465,6 @@ jobs:
           import_config_data:       false
           previous_environment_url: ${{ vars.PP_FRS_URL }}
           tag_prod_deployed:        false
-          trigger_upgrade:          ${{ inputs.trigger_upgrade == true }}
           activate_flows:           true
           mock_deploy:              ${{ inputs.mock_deploy == true }}
           base_solutions:           ${{ inputs.base_solutions || vars.PP_BASE_SOLUTIONS || '' }}
