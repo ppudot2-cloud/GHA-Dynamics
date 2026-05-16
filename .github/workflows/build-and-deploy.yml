@@ -263,8 +263,8 @@ jobs:
 
   deploy-intg:
     name: "🚀 Deploy | Intg"
-    needs: [setup, stage-build]
-    if: needs.stage-build.result == 'success'
+    needs: [setup, stage-build, deploy-dev]
+    if: needs.deploy-dev.result == 'success'
     runs-on: ubuntu-latest
     environment: Intg
     permissions:
@@ -316,8 +316,8 @@ jobs:
 
   deploy-uat:
     name: "🚀 Deploy | UAT"
-    needs: [setup, stage-build]
-    if: needs.stage-build.result == 'success'
+    needs: [setup, stage-build, deploy-intg]
+    if: needs.deploy-intg.result == 'success'
     runs-on: ubuntu-latest
     environment: UAT
     permissions:
@@ -369,8 +369,8 @@ jobs:
 
   deploy-frs:
     name: "🚀 Deploy | FRS"
-    needs: [setup, stage-build]
-    if: needs.stage-build.result == 'success'
+    needs: [setup, stage-build, deploy-uat]
+    if: needs.deploy-uat.result == 'success'
     runs-on: ubuntu-latest
     environment: FRS
     permissions:
@@ -422,8 +422,8 @@ jobs:
 
   deploy-perf:
     name: "🚀 Deploy | Perf"
-    needs: [setup, stage-build]
-    if: needs.stage-build.result == 'success'
+    needs: [setup, stage-build, deploy-frs]
+    if: needs.deploy-frs.result == 'success'
     runs-on: ubuntu-latest
     environment: Perf
     permissions:
