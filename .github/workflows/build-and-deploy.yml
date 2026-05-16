@@ -498,7 +498,10 @@ jobs:
     steps:
       - name: Create PR feature → main
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # GITHUB_TOKEN is blocked when "Allow GitHub Actions to create and approve
+          # pull requests" is disabled in repo settings. GHA_CORE_PAT (a real PAT)
+          # bypasses that restriction.
+          GH_TOKEN: ${{ secrets.GHA_CORE_PAT }}
         shell: bash
         run: |
           FEATURE="${{ needs.stage-export.outputs.feature_branch }}"
