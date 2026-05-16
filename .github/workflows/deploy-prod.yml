@@ -31,8 +31,7 @@ name: Deploy UAT + Prod
 
 on:
   pull_request:
-    types: [closed]
-    branches: [main]
+    types: [closed]   # fires for all PRs closed in repo — guard filters to feature/* → main merges only
 
   workflow_dispatch:
     inputs:
@@ -60,21 +59,43 @@ jobs:
   guard:
     name: "🛡️ Verify trigger"
     runs-on: ubuntu-latest
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      (github.event.pull_request.merged == true &&
-       startsWith(github.event.pull_request.head.ref, 'feature/pipeline-'))
+    # Always run guard so we can log what GitHub sent — actual gate is inside the step
     steps:
-      - name: Confirm trigger
+      - name: Evaluate and gate trigger
         shell: bash
         run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            echo "✅ PR merged: ${{ github.event.pull_request.head.ref }} → main"
-            echo "   PR #${{ github.event.pull_request.number }}: ${{ github.event.pull_request.title }}"
-            echo "   Merged by: @${{ github.actor }}"
-          else
-            echo "✅ Triggered manually by: @${{ github.actor }}"
+          EVENT="${{ github.event_name }}"
+          MERGED="${{ github.event.pull_request.merged }}"
+          BASE="${{ github.event.pull_request.base.ref }}"
+          HEAD="${{ github.event.pull_request.head.ref }}"
+
+          echo "event_name : $EVENT"
+          echo "pr.merged  : $MERGED"
+          echo "pr.base    : $BASE"
+          echo "pr.head    : $HEAD"
+          echo "actor      : ${{ github.actor }}"
+
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            echo "✅ Manual dispatch — proceeding"
+            exit 0
           fi
+
+          if [ "$MERGED" != "true" ]; then
+            echo "⏭ PR was closed without merging — skipping"
+            exit 1
+          fi
+
+          if [ "$BASE" != "main" ]; then
+            echo "⏭ PR targets '$BASE', not main — skipping"
+            exit 1
+          fi
+
+          if [[ "$HEAD" != feature/pipeline-* ]]; then
+            echo "⏭ PR head '$HEAD' is not a feature/pipeline-* branch — skipping"
+            exit 1
+          fi
+
+          echo "✅ PR #${{ github.event.pull_request.number }} merged: $HEAD → main — proceeding"
 
   # ============================================================================
   # Read pipeline-context.json from main (the merge commit).
