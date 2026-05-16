@@ -89,9 +89,15 @@ jobs:
     name: "🔍 Setup"
     runs-on: ubuntu-latest
     outputs:
-      matrix:         ${{ steps.resolve.outputs.matrix }}
-      solution_list:  ${{ steps.resolve.outputs.solution_list }}
-      solution_count: ${{ steps.resolve.outputs.solution_count }}
+      matrix:           ${{ steps.resolve.outputs.matrix }}
+      solution_list:    ${{ steps.resolve.outputs.solution_list }}
+      solution_count:   ${{ steps.resolve.outputs.solution_count }}
+      # Secret-presence flags — pre-evaluated here because secrets.* is not
+      # accessible in reusable workflow `with:` blocks (only in run: / env:).
+      pp_app_id_set:    ${{ steps.check-creds.outputs.pp_app_id_set }}
+      pp_secret_set:    ${{ steps.check-creds.outputs.pp_secret_set }}
+      pp_tenant_set:    ${{ steps.check-creds.outputs.pp_tenant_set }}
+      gha_core_pat_set: ${{ steps.check-creds.outputs.gha_core_pat_set }}
 
     steps:
       - name: Checkout repository
@@ -113,6 +119,23 @@ jobs:
             -InputSolutions    '${{ inputs.solutions || 'all' }}' `
             -PpSolutionName    '${{ vars.PP_SOLUTION_NAME }}' `
             -SolutionsJsonPath 'solutions.json'
+
+      - name: Check credential presence
+        id: check-creds
+        shell: pwsh
+        run: |
+          # Evaluate secret presence in a run: step (the only place secrets.* is allowed).
+          # Outputs are true/false strings consumed by stage-build's validate job.
+          $r = @{
+            pp_app_id_set    = ('${{ secrets.PP_APP_ID }}'         -ne '')
+            pp_secret_set    = ('${{ secrets.PP_CLIENT_SECRET }}'  -ne '')
+            pp_tenant_set    = ('${{ secrets.PP_TENANT_ID }}'      -ne '')
+            gha_core_pat_set = ('${{ secrets.GHA_CORE_PAT }}'      -ne '')
+          }
+          foreach ($k in $r.Keys) {
+            "$k=$($r[$k].ToString().ToLower())" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+            Write-Host "  $k = $($r[$k])"
+          }
 
   # ============================================================================
   # Stage 1 — Export from sandbox  (or simulate in mock mode)
@@ -180,10 +203,10 @@ jobs:
       pp_frs_url:             ${{ vars.PP_FRS_URL || '' }}
       pp_perf_url:            ${{ vars.PP_PERF_URL || '' }}
       pp_prod_url:            ${{ vars.PP_PROD_URL || '' }}
-      pp_app_id_set:          ${{ secrets.PP_APP_ID != '' }}
-      pp_secret_set:          ${{ secrets.PP_CLIENT_SECRET != '' }}
-      pp_tenant_set:          ${{ secrets.PP_TENANT_ID != '' }}
-      gha_core_pat_set:       ${{ secrets.GHA_CORE_PAT != '' }}
+      pp_app_id_set:          ${{ needs.setup.outputs.pp_app_id_set == 'true' }}
+      pp_secret_set:          ${{ needs.setup.outputs.pp_secret_set == 'true' }}
+      pp_tenant_set:          ${{ needs.setup.outputs.pp_tenant_set == 'true' }}
+      gha_core_pat_set:       ${{ needs.setup.outputs.gha_core_pat_set == 'true' }}
     secrets: inherit
 
   # ============================================================================
