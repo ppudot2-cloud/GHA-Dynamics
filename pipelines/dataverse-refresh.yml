@@ -1,0 +1,172 @@
+# =============================================================================
+# dataverse-refresh.yml
+#
+# Purpose : Connects to each Dataverse org listed in the config JSON file,
+#           retrieves credentials from Azure Key Vault, and verifies the
+#           connection is healthy.
+#
+# Trigger : Manual dispatch OR on a daily schedule (see schedules below).
+#           Run from ADO Pipelines UI or via az pipelines run CLI.
+#
+# Inputs  : environment parameter selects which JSON config file to load:
+#             dev  → config/connections.dev.json
+#             prod → config/connections.prod.json
+#
+# Requires: An Azure Resource Manager service connection registered under
+#           Project Settings → Service connections. Set the name in the
+#           serviceConnection variable below.
+#           The service principal must have Key Vault Secrets User role
+#           on every vault referenced in the chosen config file.
+#
+# Service connection setup:
+#   1. ADO → Project Settings → Service connections → New service connection
+#   2. Choose "Azure Resource Manager" → Service principal (automatic)
+#   3. Select your subscription and resource group
+#   4. Name it (e.g. "sc-d365-keyvault-prod") and save
+#   5. Paste that exact name into the serviceConnection variable below
+#   6. Go to the service connection → Security → Pipeline permissions
+#      and grant access to this pipeline
+# =============================================================================
+
+trigger: none
+
+# NOTE: ADO scheduled runs always use the parameter DEFAULT value — they cannot
+# be parameterised. The default below is set to "prod" so the daily schedule
+# targets production. If you trigger manually and want dev, select it in the UI.
+schedules:
+  - cron: '0 6 * * *'
+    displayName: Daily prod refresh (06:00 UTC)
+    branches:
+      include:
+        - main
+    always: true   # Run even if no code has changed since last run
+
+parameters:
+  - name: environment
+    displayName: Target Environment
+    type: string
+    default: prod        # FIX: Changed from "dev" to "prod" so the scheduled
+    values:              #      run targets prod (schedules always use the default)
+      - dev
+      - prod
+
+variables:
+  # Derives the config file path from the environment parameter at compile time.
+  # Result: config/connections.dev.json or config/connections.prod.json
+  configFile: config/connections.${{ parameters.environment }}.json
+
+  # ── SERVICE CONNECTION ───────────────────────────────────────────────────────
+  # Set this to the exact name of your ARM service connection in ADO.
+  # Project Settings → Service connections → copy the Name field exactly.
+  # Example: "sc-d365-keyvault-prod"
+  serviceConnection: 'your-arm-service-connection'
+  # ────────────────────────────────────────────────────────────────────────────
+
+pool:
+  vmImage: windows-latest
+
+jobs:
+  - job: RefreshDataverseTokens
+    displayName: Refresh Dataverse Connections (${{ parameters.environment }})
+    timeoutInMinutes: 90  # FIX: Raised from 60. Worst case: 40 entries × 3 retries
+                          #      × 20s delay = ~40 min + connection time + agent startup
+
+    steps:
+
+      # -----------------------------------------------------------------------
+      # Step 1 — Check out the repo so the config JSON and script are available
+      # on the agent at $(Build.SourcesDirectory).
+      # -----------------------------------------------------------------------
+      - checkout: self
+        displayName: Checkout repository
+
+      # -----------------------------------------------------------------------
+      # Step 2 — Validate the config file against its JSON schema before doing
+      # any network work. Catches missing fields or typos at the cheapest point.
+      #
+      # FIX: Switched from "script:" (cmd.exe) to "pwsh" task for consistent
+      #      quoting behaviour. Fixed ajv-cli plugin flag: in v5+ the correct
+      #      flag is "-c" (require module), NOT "--plugins" which does not exist
+      #      and would abort every run with "unknown option" error.
+      #      Replaced --silent with --no-fund --no-audit to reduce npm noise
+      #      without hiding genuine install errors.
+      # -----------------------------------------------------------------------
+      - task: PowerShell@2
+        displayName: Install JSON schema validator
+        inputs:
+          targetType: inline
+          pwsh: true
+          script: npm install -g ajv-cli@5 ajv-formats --no-fund --no-audit
+
+      - task: PowerShell@2
+        displayName: Validate config file against schema
+        inputs:
+          targetType: inline
+          pwsh: true
+          failOnStderr: true
+          script: |
+            ajv validate `
+              --spec=draft7 `
+              -c ajv-formats `
+              -s "$(Build.SourcesDirectory)/config/connections.schema.json" `
+              -d "$(Build.SourcesDirectory)/$(configFile)"
+
+      # -----------------------------------------------------------------------
+      # Step 3 — Create an empty placeholder results file before the main task
+      # runs. This ensures the PublishBuildArtifacts step (Step 5) never fails
+      # trying to publish a non-existent file if the script crashes early.
+      # FIX: Added to prevent artifact publish failure masking the real error.
+      # -----------------------------------------------------------------------
+      - task: PowerShell@2
+        displayName: Initialise results placeholder
+        inputs:
+          targetType: inline
+          pwsh: true
+          script: |
+            $placeholder = @{
+              buildId     = "$(Build.BuildId)"
+              environment = "${{ parameters.environment }}"
+              runAt       = (Get-Date -Format 'o')
+              status      = "pipeline_did_not_complete"
+              total       = 0
+              passed      = 0
+              failed      = 0
+              results     = @()
+            }
+            $dir = "$(Build.ArtifactStagingDirectory)"
+            if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+            $placeholder | ConvertTo-Json -Depth 3 | Set-Content "$dir/refresh-results.json" -Encoding UTF8
+
+      # -----------------------------------------------------------------------
+      # Step 4 — Run the PowerShell script.
+      # AzurePowerShell@5 handles Azure authentication via the service
+      # connection — no Connect-AzAccount call needed inside the script.
+      # -----------------------------------------------------------------------
+      - task: AzurePowerShell@5
+        displayName: Invoke Dataverse Refresh
+        inputs:
+          azureSubscription: $(serviceConnection)   # Set the value in the variable above
+          ScriptType: FilePath
+          ScriptPath: scripts/Invoke-DataverseRefresh.ps1
+          ScriptArguments: >-
+            -ConfigFile "$(Build.SourcesDirectory)/$(configFile)"
+            -Environment "${{ parameters.environment }}"
+            -OutputPath "$(Build.ArtifactStagingDirectory)/refresh-results.json"
+          azurePowerShellVersion: LatestVersion
+          pwsh: true
+        env:
+          BUILD_ID: $(Build.BuildId)
+
+      # -----------------------------------------------------------------------
+      # Step 5 — Publish the results JSON as a downloadable pipeline artifact.
+      # condition: always() ensures this runs even on partial failure so you
+      # always get a results file to inspect.
+      # The placeholder created in Step 3 guarantees the file always exists.
+      # -----------------------------------------------------------------------
+      - task: PublishBuildArtifacts@1
+        displayName: Publish refresh results
+        condition: always()
+        inputs:
+          PathtoPublish: $(Build.ArtifactStagingDirectory)/refresh-results.json
+          ArtifactName: dataverse-refresh-results
+          publishLocation: Container

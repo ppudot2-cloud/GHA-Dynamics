@@ -7,11 +7,12 @@
 #
 #   Pipeline 1 — THIS WORKFLOW  (manual trigger)
 #     1. Export solutions from sandbox (PP_SDBX_URL)
-#     2. Commit exported source + pipeline-context.json to feature/pipeline-{run_number}
-#     3. Build (pack ZIPs, Solution Checker, JFrog archival)
-#     4. Deploy → Dev → Intg → UAT → FRS → Perf  (sequential, approval gates)
+#        └─ Commit exported source + pipeline-context.json to feature/pipeline-{run_number}
+#     2. Build (pack ZIPs, Solution Checker, JFrog archival)
+#        └─ Validate pipeline config (toggles, URLs, service connections)
+#     3. Deploy → Dev → Intg → UAT → FRS → Perf  (parallel, individual approval gates)
 #        ↳ Prod is BLOCKED — only deployable from a PR to main (Pipeline 2)
-#     5. Auto-create PR: feature/pipeline-{run_number} → main
+#     4. Auto-create PR: feature/pipeline-{run_number} → main  (after UAT passes)
 #
 #   Pipeline 2 — deploy-prod.yml  (fires when the above PR is opened)
 #     Deploy → UAT (re-validation) → Prod  (approval gates)
@@ -115,296 +116,86 @@ jobs:
 
   # ============================================================================
   # Stage 1 — Export from sandbox  (or simulate in mock mode)
-  # Real mode:  exports each solution from PP_SDBX_URL via PAC CLI.
-  # Mock mode:  export-solution action logs "[MOCK]" and reuses src/solutions/.
-  # Always runs so commit-to-feature-branch always has artifacts to work with.
+  #
+  # Contains two jobs (visible as a collapsible group in the GitHub Actions UI):
+  #   📤 Export | <SolutionName>  — one per solution, run in parallel
+  #   🌿 Commit to feature/pipeline-{run_number}  — runs after all exports finish
+  #
+  # Real mode:  exports each solution from PP_SDBX_URL via PAC CLI, then pushes
+  #             a feature branch with the exported source.
+  # Mock mode:  export-solution action logs "[MOCK]" and reuses src/solutions/;
+  #             git operations (branch + push) always run for real.
   # ============================================================================
   stage-export:
     name: "📤 Export from Sandbox"
     needs: setup
     permissions:
       id-token: write
-      contents: read
+      contents: write   # commit job needs push access
+      actions:  read
     uses: ppudot2-cloud/GHA-Core/.github/workflows/_stage-export.yml@main
     with:
       matrix:                 ${{ needs.setup.outputs.matrix }}
+      solution_list:          ${{ needs.setup.outputs.solution_list }}
       source_environment_url: ${{ vars.PP_SDBX_URL || 'https://mock.crm.dynamics.com' }}
       mock_deploy:            ${{ inputs.mock_deploy == true }}
     secrets: inherit
 
   # ============================================================================
-  # Commit exported source to feature branch  (or simulate in mock mode)
-  # Real mode:  creates feature/pipeline-{run_number}, copies exported source,
-  #             writes pipeline-context.json, pushes, ready for Pipeline 2.
-  # Mock mode:  all git steps run locally; git push is skipped; branch name
-  #             and pipeline-context.json are written so downstream jobs have
-  #             the correct context values.
-  # ============================================================================
-  commit-to-feature-branch:
-    name: "🌿 Commit to feature/pipeline-${{ github.run_number }}"
-    needs: [setup, stage-export]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      actions:  read      # needed by download-artifact@v4 in same run
-    outputs:
-      feature_branch: ${{ steps.commit.outputs.feature_branch }}
-
-    steps:
-      - name: Checkout repository (full history)
-        uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          fetch-depth: 0
-
-      - name: Download all exported source artifacts
-        uses: actions/download-artifact@v4
-        with:
-          pattern: exported-source-*
-          path: _export-src/
-          merge-multiple: false
-
-      - name: Create branch, copy source, write context, push
-        id: commit
-        shell: pwsh
-        run: |
-          $isMock     = '${{ inputs.mock_deploy }}' -eq 'true'
-          $runNumber  = '${{ github.run_number }}'
-          $runAttempt = '${{ github.run_attempt }}'
-          $runId      = '${{ github.run_id }}'
-          $branch     = "feature/pipeline-$runNumber"
-
-          git config user.name  "GitHub Actions"
-          git config user.email "actions@github.com"
-
-          # Always branch from the latest main
-          git fetch origin main
-          git checkout -b $branch origin/main
-          Write-Host "  ✓ Created branch $branch from origin/main"
-
-          $solutions = '${{ needs.setup.outputs.solution_list }}' -split ',' |
-            ForEach-Object { $_.Trim() } | Where-Object { $_ }
-
-          foreach ($sol in $solutions) {
-            $srcDir = "_export-src/exported-source-$sol"
-            $dstDir = "src/solutions/$sol"
-            if (Test-Path $srcDir) {
-              if (Test-Path $dstDir) { Remove-Item $dstDir -Recurse -Force }
-              Copy-Item $srcDir $dstDir -Recurse -Force
-              Write-Host "  ✓ Copied $sol → src/solutions/$sol/"
-            } else {
-              Write-Warning "  ⚠ Exported source not found for $sol at $srcDir — using existing tree"
-            }
-          }
-
-          # pipeline-context.json — read by Pipeline 2 to locate Phase 1 artifacts
-          $ctx = [ordered]@{
-            runId         = $runId
-            runNumber     = $runNumber
-            runAttempt    = $runAttempt
-            solutions     = $solutions
-            solutionList  = '${{ needs.setup.outputs.solution_list }}'
-            matrix        = '${{ needs.setup.outputs.matrix }}'
-            featureBranch = $branch
-            triggeredBy   = '${{ github.actor }}'
-            triggeredAt   = (Get-Date -Format 'yyyy-MM-ddTHH:mm:ssZ')
-            mockDeploy    = $isMock
-          }
-          $ctx | ConvertTo-Json -Depth 3 | Set-Content 'pipeline-context.json' -Encoding UTF8
-          Write-Host "  ✓ Written pipeline-context.json (runId=$runId)"
-
-          if (Test-Path '_export-src') { Remove-Item '_export-src' -Recurse -Force }
-
-          git add src/solutions/ pipeline-context.json
-
-          $status = git status --porcelain
-          if ($status) {
-            $mockTag = if ($isMock) { ' [mock]' } else { '' }
-            $commitMsg = "chore: export from sandbox — pipeline run #$runNumber$mockTag [skip ci]"
-            git commit -m $commitMsg
-            Write-Host "  ✓ Committed: $commitMsg"
-          } else {
-            Write-Host "  ℹ No source changes — branch pointer only"
-          }
-
-          # Always push — mock_deploy only skips PP imports, not git operations
-          git push origin $branch
-          Write-Host "  ✓ Pushed branch $branch to origin"
-
-          "feature_branch=$branch" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-
-  # ============================================================================
   # Stage 2 — Build
+  #
+  # Contains two job groups (visible inside the Build collapsible group):
+  #   🏗️ Build — <SolutionName>  — pack ZIPs, Solution Checker, JFrog archival
+  #   🔎 Validate Pipeline Config  — prints all toggles, URLs, secret status
+  #
   # Packs ZIPs, runs Solution Checker, uploads solution-artifact-* (7-day)
   # and archives to JFrog for long-term storage.
+  # Validation runs after all builds pass — fails non-mock if secrets/URLs missing.
   # ============================================================================
   stage-build:
     name: "🏗️ Build"
-    needs: [setup, stage-export, commit-to-feature-branch]
-    # No mock bypass needed — stage-export and commit-to-feature-branch now always
-    # run (mock mode is handled inside each stage). Build runs when they succeed.
+    needs: [setup, stage-export]
     permissions:
       id-token: write
       contents: read
     uses: ppudot2-cloud/GHA-Core/.github/workflows/_stage-build.yml@main
     with:
       matrix:                 ${{ needs.setup.outputs.matrix }}
-      # mock mode reuses src/solutions/ directly (no artifact download needed)
       use_exported_source:    ${{ inputs.mock_deploy != true }}
       source_environment_url: ${{ vars.PP_SDBX_URL || '' }}
       mock_deploy:            ${{ inputs.mock_deploy == true }}
       jfrog_url:              ${{ vars.JFROG_URL || '' }}
       jfrog_repo:             ${{ vars.JFROG_REPO || 'powerplatform-solutions' }}
       checker_error_level:    ${{ inputs.checker_error_level || 'HighIssue' }}
+      # ── Validate job context (vars cannot cross repo boundaries) ────────────
+      enable_backup:          ${{ inputs.enable_backup == true }}
+      trigger_upgrade:        ${{ inputs.trigger_upgrade == true }}
+      base_solutions:         ${{ inputs.base_solutions || '' }}
+      solution_count:         ${{ needs.setup.outputs.solution_count }}
+      solution_list:          ${{ needs.setup.outputs.solution_list }}
+      pp_sdbx_url:            ${{ vars.PP_SDBX_URL || '' }}
+      pp_dev_url:             ${{ vars.PP_DEV_URL || '' }}
+      pp_intg_url:            ${{ vars.PP_INTG_URL || '' }}
+      pp_uat_url:             ${{ vars.PP_UAT_URL || '' }}
+      pp_frs_url:             ${{ vars.PP_FRS_URL || '' }}
+      pp_perf_url:            ${{ vars.PP_PERF_URL || '' }}
+      pp_prod_url:            ${{ vars.PP_PROD_URL || '' }}
+      pp_app_id_set:          ${{ secrets.PP_APP_ID != '' }}
+      pp_secret_set:          ${{ secrets.PP_CLIENT_SECRET != '' }}
+      pp_tenant_set:          ${{ secrets.PP_TENANT_ID != '' }}
+      gha_core_pat_set:       ${{ secrets.GHA_CORE_PAT != '' }}
     secrets: inherit
 
   # ============================================================================
-  # Stage 2.5 — Pipeline Validation
-  # Runs after build, before deploy. Prints all toggles/flags so the team can
-  # confirm what is on or off before any environment is touched. Validates that
-  # required secrets and environment URLs are present (non-mock runs only).
-  # ============================================================================
-  validate-pipeline:
-    name: "🔎 Validate Pipeline Config"
-    needs: [setup, stage-build]
-    if: needs.stage-build.result == 'success'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - name: Print toggles and validate config
-        shell: pwsh
-        run: |
-          $isMock = '${{ inputs.mock_deploy }}' -eq 'true'
-
-          function Flag($v) { if ($v -eq 'true') { '🟢 ON' } else { '🔴 OFF' } }
-
-          Write-Host ""
-          Write-Host "═══════════════════════════════════════════════════════════"
-          Write-Host "   PIPELINE CONFIGURATION  —  Run #${{ github.run_number }}"
-          Write-Host "═══════════════════════════════════════════════════════════"
-          Write-Host ""
-          Write-Host "── Toggles ─────────────────────────────────────────────"
-          Write-Host ("  {0,-24} {1}" -f "mock_deploy",         (Flag '${{ inputs.mock_deploy }}'))
-          Write-Host ("  {0,-24} {1}" -f "enable_backup",       (Flag '${{ inputs.enable_backup }}'))
-          Write-Host ("  {0,-24} {1}" -f "trigger_upgrade",     (Flag '${{ inputs.trigger_upgrade }}'))
-          Write-Host ("  {0,-24} {1}" -f "checker_error_level", '${{ inputs.checker_error_level || 'HighIssue' }}')
-          Write-Host ("  {0,-24} {1}" -f "base_solutions",      '${{ inputs.base_solutions || '(none)' }}')
-          Write-Host ""
-          Write-Host "── Solutions ───────────────────────────────────────────"
-          Write-Host ("  {0,-24} {1}" -f "Count",  '${{ needs.setup.outputs.solution_count }}')
-          Write-Host ("  {0,-24} {1}" -f "List",   '${{ needs.setup.outputs.solution_list }}')
-          Write-Host ""
-          Write-Host "── Environment URLs ────────────────────────────────────"
-          $urls = [ordered]@{
-            'Sandbox (export)' = '${{ vars.PP_SDBX_URL }}'
-            'Dev'              = '${{ vars.PP_DEV_URL }}'
-            'Intg'             = '${{ vars.PP_INTG_URL }}'
-            'UAT'              = '${{ vars.PP_UAT_URL }}'
-            'FRS'              = '${{ vars.PP_FRS_URL }}'
-            'Perf'             = '${{ vars.PP_PERF_URL }}'
-            'Prod'             = '${{ vars.PP_PROD_URL }}'
-          }
-          $missingUrls = [System.Collections.Generic.List[string]]::new()
-          foreach ($e in $urls.GetEnumerator()) {
-            if ($e.Value) {
-              Write-Host ("  {0,-20} ✅  {1}" -f $e.Key, $e.Value)
-            } else {
-              Write-Host ("  {0,-20} ❌  NOT SET" -f $e.Key) -ForegroundColor Red
-              $missingUrls.Add($e.Key)
-            }
-          }
-          Write-Host ""
-          Write-Host "── Service Connections ─────────────────────────────────"
-          $ppAppIdSet    = '${{ secrets.PP_APP_ID != '' }}'     -eq 'true'
-          $ppSecretSet   = '${{ secrets.PP_CLIENT_SECRET != '' }}' -eq 'true'
-          $ppTenantSet   = '${{ secrets.PP_TENANT_ID != '' }}'  -eq 'true'
-          $ghaCorePatSet = '${{ secrets.GHA_CORE_PAT != '' }}'  -eq 'true'
-          if ($isMock) {
-            Write-Host "  PP_APP_ID            ⚠️  skipped (mock_deploy=true)"
-            Write-Host "  PP_CLIENT_SECRET     ⚠️  skipped (mock_deploy=true)"
-            Write-Host "  PP_TENANT_ID         ⚠️  skipped (mock_deploy=true)"
-          } else {
-            $s1 = if ($ppAppIdSet)  { '✅  Set' } else { '❌  NOT SET' }
-            $s2 = if ($ppSecretSet) { '✅  Set' } else { '❌  NOT SET' }
-            $s3 = if ($ppTenantSet) { '✅  Set' } else { '❌  NOT SET' }
-            Write-Host ("  {0,-20} {1}" -f "PP_APP_ID",        $s1)
-            Write-Host ("  {0,-20} {1}" -f "PP_CLIENT_SECRET", $s2)
-            Write-Host ("  {0,-20} {1}" -f "PP_TENANT_ID",     $s3)
-          }
-          $s4 = if ($ghaCorePatSet) { '✅  Set' } else { '❌  NOT SET' }
-          Write-Host ("  {0,-20} {1}" -f "GHA_CORE_PAT", $s4)
-          Write-Host ""
-          Write-Host "── JFrog ───────────────────────────────────────────────"
-          $jfrogUrl = '${{ vars.JFROG_URL }}'
-          if ($jfrogUrl) {
-            Write-Host "  JFROG_URL            ✅  $jfrogUrl"
-            Write-Host "  JFROG_REPO           ${{ vars.JFROG_REPO || 'powerplatform-solutions (default)' }}"
-          } else {
-            Write-Host "  JFrog                ⚠️  Not configured (JFROG_URL not set) — archival disabled"
-          }
-          Write-Host ""
-          Write-Host "═══════════════════════════════════════════════════════════"
-
-          # ── Step summary (rendered as a table in GitHub Actions UI) ─────────
-          $md  = "## Pipeline Configuration — Run #${{ github.run_number }}`n`n"
-          $md += "### Toggles`n`n| Toggle | Value |`n|---|---|`n"
-          $md += "| mock_deploy | $(Flag '${{ inputs.mock_deploy }}') |`n"
-          $md += "| enable_backup | $(Flag '${{ inputs.enable_backup }}') |`n"
-          $md += "| trigger_upgrade | $(Flag '${{ inputs.trigger_upgrade }}') |`n"
-          $md += "| checker_error_level | ``${{ inputs.checker_error_level || 'HighIssue' }}`` |`n"
-          $md += "| base_solutions | ``${{ inputs.base_solutions || '(none)' }}`` |`n`n"
-          $md += "### Solutions (${{ needs.setup.outputs.solution_count }})`n`n"
-          $md += "${{ needs.setup.outputs.solution_list }}`n`n"
-          $md += "### Environment URLs`n`n| Environment | Status |`n|---|---|`n"
-          foreach ($e in $urls.GetEnumerator()) {
-            $status = if ($e.Value) { "✅ ``$($e.Value)``" } else { "❌ **NOT SET**" }
-            $md += "| $($e.Key) | $status |`n"
-          }
-          $md += "`n### Service Connections`n`n| Secret | Status |`n|---|---|`n"
-          if ($isMock) {
-            $md += "| PP credentials | ⚠️ Skipped (mock_deploy=true) |`n"
-          } else {
-            $md += "| PP_APP_ID | $(if ($ppAppIdSet) { '✅ Set' } else { '❌ **NOT SET**' }) |`n"
-            $md += "| PP_CLIENT_SECRET | $(if ($ppSecretSet) { '✅ Set' } else { '❌ **NOT SET**' }) |`n"
-            $md += "| PP_TENANT_ID | $(if ($ppTenantSet) { '✅ Set' } else { '❌ **NOT SET**' }) |`n"
-          }
-          $md += "| GHA_CORE_PAT | $(if ($ghaCorePatSet) { '✅ Set' } else { '❌ **NOT SET**' }) |`n"
-          if ($jfrogUrl) {
-            $md += "`n### JFrog`n`n✅ Configured — ``$jfrogUrl```n"
-          } else {
-            $md += "`n### JFrog`n`n⚠️ Not configured — archival disabled`n"
-          }
-          $md | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
-
-          # ── Fail non-mock if credentials or URLs are missing ─────────────────
-          if (-not $isMock) {
-            $errors = [System.Collections.Generic.List[string]]::new()
-            if (-not $ppAppIdSet)    { $errors.Add('PP_APP_ID secret is not set') }
-            if (-not $ppSecretSet)   { $errors.Add('PP_CLIENT_SECRET secret is not set') }
-            if (-not $ppTenantSet)   { $errors.Add('PP_TENANT_ID secret is not set') }
-            if ($missingUrls.Count -gt 0) {
-              $errors.Add("Environment URLs not configured: $($missingUrls -join ', ')")
-            }
-            if ($errors.Count -gt 0) {
-              Write-Host ""
-              foreach ($err in $errors) { Write-Host "  ❌ $err" -ForegroundColor Red }
-              Write-Error "Pipeline validation failed — fix the above before deploying"
-              exit 1
-            }
-          }
-          Write-Host "  ✅ Validation passed"
-
-  # ============================================================================
   # Stage 3 — Deploy  (5 parallel jobs, each with its own approval gate)
-  # All start immediately after validate-pipeline.
+  # All start immediately after stage-build (which includes validation).
   # create-main-pr depends ONLY on deploy-uat — FRS/Perf run independently.
   # ============================================================================
 
   deploy-dev:
     name: "🚀 Deploy | Dev"
-    needs: [setup, validate-pipeline]
-    if: needs.validate-pipeline.result == 'success'
+    needs: [setup, stage-build]
+    if: needs.stage-build.result == 'success'
     runs-on: ubuntu-latest
     environment: Dev
     permissions:
@@ -456,8 +247,8 @@ jobs:
 
   deploy-intg:
     name: "🚀 Deploy | Intg"
-    needs: [setup, validate-pipeline]
-    if: needs.validate-pipeline.result == 'success'
+    needs: [setup, stage-build]
+    if: needs.stage-build.result == 'success'
     runs-on: ubuntu-latest
     environment: Intg
     permissions:
@@ -509,8 +300,8 @@ jobs:
 
   deploy-uat:
     name: "🚀 Deploy | UAT"
-    needs: [setup, validate-pipeline]
-    if: needs.validate-pipeline.result == 'success'
+    needs: [setup, stage-build]
+    if: needs.stage-build.result == 'success'
     runs-on: ubuntu-latest
     environment: UAT
     permissions:
@@ -562,8 +353,8 @@ jobs:
 
   deploy-frs:
     name: "🚀 Deploy | FRS"
-    needs: [setup, validate-pipeline]
-    if: needs.validate-pipeline.result == 'success'
+    needs: [setup, stage-build]
+    if: needs.stage-build.result == 'success'
     runs-on: ubuntu-latest
     environment: FRS
     permissions:
@@ -615,8 +406,8 @@ jobs:
 
   deploy-perf:
     name: "🚀 Deploy | Perf"
-    needs: [setup, validate-pipeline]
-    if: needs.validate-pipeline.result == 'success'
+    needs: [setup, stage-build]
+    if: needs.stage-build.result == 'success'
     runs-on: ubuntu-latest
     environment: Perf
     permissions:
@@ -673,10 +464,10 @@ jobs:
   # ============================================================================
   create-main-pr:
     name: "🔀 Open PR → main"
-    needs: [setup, commit-to-feature-branch, deploy-uat]
+    needs: [setup, stage-export, deploy-uat]
     if: |
       needs.deploy-uat.result == 'success' &&
-      needs.commit-to-feature-branch.result == 'success'
+      needs.stage-export.result == 'success'
     runs-on: ubuntu-latest
     permissions:
       pull-requests: write
@@ -687,7 +478,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
-          FEATURE="${{ needs.commit-to-feature-branch.outputs.feature_branch }}"
+          FEATURE="${{ needs.stage-export.outputs.feature_branch }}"
           MOCK_LABEL="${{ inputs.mock_deploy == true && '[MOCK] ' || '' }}"
           PR_URL=$(gh pr create \
             --repo "${{ github.repository }}" \
@@ -719,7 +510,7 @@ jobs:
   # ============================================================================
   pipeline-summary:
     name: "📋 Pipeline Summary"
-    needs: [setup, stage-export, stage-build, validate-pipeline, deploy-dev, deploy-intg, deploy-uat, deploy-frs, deploy-perf, create-main-pr]
+    needs: [setup, stage-export, stage-build, deploy-dev, deploy-intg, deploy-uat, deploy-frs, deploy-perf, create-main-pr]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -753,7 +544,7 @@ jobs:
             -CommitSha       '${{ github.sha }}' `
             -ExportResult    '${{ needs.stage-export.result }}' `
             -BuildResult     '${{ needs.stage-build.result }}' `
-            -DeployResult    '${{ needs.stage-deploy-preprod.result }}' `
+            -DeployResult    '${{ needs.deploy-uat.result }}' `
             -JobSummariesDir 'job-summaries'
 
       - name: Send failure notification

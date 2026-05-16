@@ -1,0 +1,12 @@
+{
+  "artifact-name": "solution-ExtensionA-99",
+  "solution-name": "ExtensionA",
+  "solution-version": "1.0.99.0",
+  "run-number": 99,
+  "files": [
+    "ExtensionA_unmanaged.zip",
+    "ExtensionA_managed.zip",
+    "config-data.zip"
+  ],
+  "created-at": "2026-05-14T11:27:37.239798"
+}

@@ -1,0 +1,12 @@
+{
+  "artifact-name": "solution-ContosoCRM-55",
+  "solution-name": "ContosoCRM",
+  "solution-version": "1.0.55.0",
+  "run-number": 55,
+  "files": [
+    "ContosoCRM_unmanaged.zip",
+    "ContosoCRM_managed.zip",
+    "config-data.zip"
+  ],
+  "created-at": "2026-05-14T01:54:28.633766"
+}
