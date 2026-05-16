@@ -261,6 +261,7 @@ jobs:
           previous_environment_url: ''
           tag_prod_deployed:        false
           trigger_upgrade:          ${{ inputs.trigger_upgrade == true }}
+          activate_flows:           true
           mock_deploy:              ${{ inputs.mock_deploy == true }}
           base_solutions:           ${{ inputs.base_solutions || vars.PP_BASE_SOLUTIONS || '' }}
           jfrog_url:                ${{ vars.JFROG_URL || '' }}
@@ -314,6 +315,7 @@ jobs:
           previous_environment_url: ${{ vars.PP_DEV_URL }}
           tag_prod_deployed:        false
           trigger_upgrade:          ${{ inputs.trigger_upgrade == true }}
+          activate_flows:           true
           mock_deploy:              ${{ inputs.mock_deploy == true }}
           base_solutions:           ${{ inputs.base_solutions || vars.PP_BASE_SOLUTIONS || '' }}
           jfrog_url:                ${{ vars.JFROG_URL || '' }}
@@ -367,6 +369,7 @@ jobs:
           previous_environment_url: ${{ vars.PP_INTG_URL }}
           tag_prod_deployed:        false
           trigger_upgrade:          ${{ inputs.trigger_upgrade == true }}
+          activate_flows:           true
           mock_deploy:              ${{ inputs.mock_deploy == true }}
           base_solutions:           ${{ inputs.base_solutions || vars.PP_BASE_SOLUTIONS || '' }}
           jfrog_url:                ${{ vars.JFROG_URL || '' }}
@@ -420,6 +423,7 @@ jobs:
           previous_environment_url: ${{ vars.PP_UAT_URL }}
           tag_prod_deployed:        false
           trigger_upgrade:          ${{ inputs.trigger_upgrade == true }}
+          activate_flows:           true
           mock_deploy:              ${{ inputs.mock_deploy == true }}
           base_solutions:           ${{ inputs.base_solutions || vars.PP_BASE_SOLUTIONS || '' }}
           jfrog_url:                ${{ vars.JFROG_URL || '' }}
@@ -473,6 +477,7 @@ jobs:
           previous_environment_url: ${{ vars.PP_FRS_URL }}
           tag_prod_deployed:        false
           trigger_upgrade:          ${{ inputs.trigger_upgrade == true }}
+          activate_flows:           true
           mock_deploy:              ${{ inputs.mock_deploy == true }}
           base_solutions:           ${{ inputs.base_solutions || vars.PP_BASE_SOLUTIONS || '' }}
           jfrog_url:                ${{ vars.JFROG_URL || '' }}
