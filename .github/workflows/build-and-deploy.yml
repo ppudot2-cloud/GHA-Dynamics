@@ -164,7 +164,7 @@ jobs:
           path: _export-src/
           merge-multiple: false
 
-      - name: Create branch, copy source, write context, push (or simulate)
+      - name: Create branch, copy source, write context, push
         id: commit
         shell: pwsh
         run: |
@@ -177,8 +177,10 @@ jobs:
           git config user.name  "GitHub Actions"
           git config user.email "actions@github.com"
 
-          git checkout -b $branch
-          Write-Host "$(if ($isMock) { '[MOCK] ' })Created branch: $branch"
+          # Always branch from the latest main
+          git fetch origin main
+          git checkout -b $branch origin/main
+          Write-Host "  ✓ Created branch $branch from origin/main"
 
           $solutions = '${{ needs.setup.outputs.solution_list }}' -split ',' |
             ForEach-Object { $_.Trim() } | Where-Object { $_ }
@@ -191,11 +193,11 @@ jobs:
               Copy-Item $srcDir $dstDir -Recurse -Force
               Write-Host "  ✓ Copied $sol → src/solutions/$sol/"
             } else {
-              Write-Warning "  ⚠ Exported source not found for $sol at $srcDir"
+              Write-Warning "  ⚠ Exported source not found for $sol at $srcDir — using existing tree"
             }
           }
 
-          # pipeline-context.json — read by Pipeline 2 to find Phase 1 artifacts
+          # pipeline-context.json — read by Pipeline 2 to locate Phase 1 artifacts
           $ctx = [ordered]@{
             runId         = $runId
             runNumber     = $runNumber
@@ -215,34 +217,19 @@ jobs:
 
           git add src/solutions/ pipeline-context.json
 
-          if ($isMock) {
-            # Show what would be committed but do NOT push
-            $diff = git diff --cached --stat
-            Write-Host ""
-            Write-Host "[MOCK] Skipping git push — files that would be committed:" -ForegroundColor Cyan
-            $diff | ForEach-Object { Write-Host "  $_" }
-            Write-Host "[MOCK] Branch '$branch' exists locally only." -ForegroundColor Cyan
-
-            # Step summary
-            $summary  = "## Commit to Feature Branch - Simulation`n"
-            $summary += "_mock_deploy=true - no changes pushed to GitHub_`n`n"
-            $summary += "**Would push to branch:** ``$branch```n"
-            $summary += "**Run ID:** $runId`n`n"
-            $summary += "### Files that would be committed:`n``````n"
-            $summary += ($diff -join "`n")
-            $summary += "`n``````n"
-            $summary | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+          $status = git status --porcelain
+          if ($status) {
+            $mockTag = if ($isMock) { ' [mock]' } else { '' }
+            $commitMsg = "chore: export from sandbox — pipeline run #$runNumber$mockTag [skip ci]"
+            git commit -m $commitMsg
+            Write-Host "  ✓ Committed: $commitMsg"
           } else {
-            $status = git status --porcelain
-            if ($status) {
-              git commit -m "chore: export from sandbox — pipeline run #$runNumber [skip ci]"
-              git push origin $branch
-              Write-Host "  ✓ Committed and pushed to $branch"
-            } else {
-              Write-Host "  ℹ No source changes — pushing branch pointer only"
-              git push origin $branch
-            }
+            Write-Host "  ℹ No source changes — branch pointer only"
           }
+
+          # Always push — mock_deploy only skips PP imports, not git operations
+          git push origin $branch
+          Write-Host "  ✓ Pushed branch $branch to origin"
 
           "feature_branch=$branch" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
@@ -689,8 +676,7 @@ jobs:
     needs: [setup, commit-to-feature-branch, deploy-uat]
     if: |
       needs.deploy-uat.result == 'success' &&
-      needs.commit-to-feature-branch.result == 'success' &&
-      inputs.mock_deploy != true
+      needs.commit-to-feature-branch.result == 'success'
     runs-on: ubuntu-latest
     permissions:
       pull-requests: write
@@ -702,17 +688,19 @@ jobs:
         shell: bash
         run: |
           FEATURE="${{ needs.commit-to-feature-branch.outputs.feature_branch }}"
+          MOCK_LABEL="${{ inputs.mock_deploy == true && '[MOCK] ' || '' }}"
           PR_URL=$(gh pr create \
             --repo "${{ github.repository }}" \
             --head "$FEATURE" \
             --base "main" \
-            --title "Release: pipeline run #${{ github.run_number }}" \
+            --title "${MOCK_LABEL}Release: pipeline run #${{ github.run_number }}" \
             --body "## ✅ UAT passed — ready for Prod
 
           **Pipeline run:** [#${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
           **Branch:** \`$FEATURE\`
           **Solutions:** ${{ needs.setup.outputs.solution_list }}
           **Triggered by:** @${{ github.actor }}
+          **Mock deploy:** ${{ inputs.mock_deploy }}
 
           ### Gate status at PR creation
           - [x] Solution Checker: passed
