@@ -37,6 +37,12 @@ on:
 
   workflow_dispatch:
     inputs:
+      mock_deploy:
+        description: 'Simulate UAT + Prod deployment without touching Dataverse (no Azure login, no imports)'
+        required: false
+        default: false
+        type: boolean
+
       enable_backup:
         description: >
           Take a pre-import backup at UAT and Prod (enables rollback via rollback.yml).
@@ -142,7 +148,7 @@ jobs:
       - name: CI Bootstrap
         uses: ppudot2-cloud/GHA-Core/.github/actions/ci-bootstrap@main
         with:
-          mock_deploy:           false
+          mock_deploy:           ${{ inputs.mock_deploy == true }}
           jfrog_enabled:         false
           azure_client_id:       ${{ vars.AZURE_CLIENT_ID }}
           azure_tenant_id:       ${{ vars.AZURE_TENANT_ID }}
@@ -172,7 +178,7 @@ jobs:
           previous_environment_url: ${{ vars.PP_INTG_URL }}
           tag_prod_deployed:        false
           activate_flows:           true
-          mock_deploy:              false
+          mock_deploy:              ${{ inputs.mock_deploy == true }}
           base_solutions:           ${{ vars.PP_BASE_SOLUTIONS || '' }}
           jfrog_url:                ${{ vars.JFROG_URL || '' }}
           jfrog_repo:               ${{ vars.JFROG_REPO || 'powerplatform-solutions' }}
@@ -199,7 +205,7 @@ jobs:
       - name: CI Bootstrap
         uses: ppudot2-cloud/GHA-Core/.github/actions/ci-bootstrap@main
         with:
-          mock_deploy:           false
+          mock_deploy:           ${{ inputs.mock_deploy == true }}
           jfrog_enabled:         ${{ vars.JFROG_URL != '' }}
           azure_client_id:       ${{ vars.AZURE_CLIENT_ID }}
           azure_tenant_id:       ${{ vars.AZURE_TENANT_ID }}
@@ -229,7 +235,7 @@ jobs:
           previous_environment_url: ${{ vars.PP_PERF_URL }}
           tag_prod_deployed:        true
           activate_flows:           true
-          mock_deploy:              false
+          mock_deploy:              ${{ inputs.mock_deploy == true }}
           base_solutions:           ${{ vars.PP_BASE_SOLUTIONS || '' }}
           jfrog_url:                ${{ vars.JFROG_URL || '' }}
           jfrog_repo:               ${{ vars.JFROG_REPO || 'powerplatform-solutions' }}
