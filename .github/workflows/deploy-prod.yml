@@ -2,29 +2,25 @@
 # WORKFLOW: Deploy UAT + Prod — Pipeline 2
 # =============================================================================
 #
-# Triggered automatically when a feature/pipeline-* → main PR is APPROVED.
+# Triggered automatically when a feature/pipeline-* → main PR is MERGED.
 # This is the second and final pipeline of the two-pipeline architecture:
 #
-#   Pipeline 1 — build-and-deploy.yml  → Dev + Intg + UAT + FRS + Perf
-#   Pipeline 2 — THIS WORKFLOW         → UAT (re-validation) + Prod
+#   Pipeline 1 — build-and-deploy.yml  → Dev + Intg (builds, exports, deploys non-prod)
+#   Pipeline 2 — THIS WORKFLOW         → UAT (final gate) + Prod
 #
 # HOW IT WORKS:
-#   1. Fires on pull_request_review submitted with state == 'approved'
-#      for a feature/pipeline-* → main PR.
-#   2. Reads pipeline-context.json from the PR head branch (feature/pipeline-*).
-#      This file was written by Pipeline 1 and carries the run_id needed to
-#      download the built solution artifacts from that run.
-#   3. Re-deploys UAT as a final validation gate before Prod.
+#   1. Fires on pull_request closed+merged targeting main from feature/pipeline-*.
+#   2. Checks out main (the merge commit) and reads pipeline-context.json.
+#      This file was committed to the feature branch by Pipeline 1 and is now
+#      on main after merge. It carries the run_id needed to download built
+#      solution artifacts from that Pipeline 1 run.
+#   3. Deploys UAT as a final validation gate before Prod.
 #   4. Deploys Prod — pauses at the Prod GitHub Environment approval gate
 #      (configure required reviewers in Settings → Environments → Prod).
 #
 # TRIGGERS:
-#   pull_request_review (approved) — auto, feature/pipeline-* → main
-#   workflow_dispatch              — manual re-run or ad-hoc promotion
-#
-# NOTE ON MULTIPLE APPROVALS:
-#   If multiple reviewers approve, each triggers this workflow. Concurrency
-#   (cancel-in-progress: true) ensures only the latest run proceeds.
+#   pull_request (merged) — auto, feature/pipeline-* → main
+#   workflow_dispatch     — manual re-run or ad-hoc promotion
 #
 # ROLLBACK:
 #   Set enable_backup=true (workflow_dispatch only) to take a pre-import backup.
@@ -34,16 +30,12 @@
 name: Deploy UAT + Prod
 
 on:
-  pull_request_review:
-    types: [submitted]
+  pull_request:
+    types: [closed]
+    branches: [main]
 
   workflow_dispatch:
     inputs:
-      feature_branch:
-        description: 'Feature branch to promote (e.g. feature/pipeline-42)'
-        required: true
-        type: string
-
       enable_backup:
         description: >
           Take a pre-import backup at UAT and Prod (enables rollback via rollback.yml).
@@ -52,50 +44,43 @@ on:
         default: false
         type: boolean
 
-# Required so pull_request_review events can read PR head/base refs
 permissions:
   contents: read
-  pull-requests: read
 
 concurrency:
-  group: "deploy-prod-${{ github.event.pull_request.number || inputs.feature_branch }}"
+  group: "deploy-prod-${{ github.event.pull_request.number || github.run_id }}"
   cancel-in-progress: true
 
 jobs:
   # ============================================================================
   # Guard — only proceed when:
-  #   • PR review trigger: review approved + PR targets main + from feature/pipeline-*
-  #   • Dispatch trigger: always proceed (branch specified via input)
+  #   • PR trigger: PR was merged (not just closed) + from feature/pipeline-*
+  #   • Dispatch trigger: always proceed
   # ============================================================================
   guard:
     name: "🛡️ Verify trigger"
     runs-on: ubuntu-latest
-    # Single-line expression avoids YAML literal-block newline parsing issues
     if: >-
       github.event_name == 'workflow_dispatch' ||
-      (github.event.review.state == 'approved' &&
-       github.event.pull_request.base.ref == 'main' &&
+      (github.event.pull_request.merged == true &&
        startsWith(github.event.pull_request.head.ref, 'feature/pipeline-'))
     steps:
       - name: Confirm trigger
         shell: bash
         run: |
-          echo "Event      : ${{ github.event_name }}"
-          echo "Review state: ${{ github.event.review.state }}"
-          echo "PR base    : ${{ github.event.pull_request.base.ref }}"
-          echo "PR head    : ${{ github.event.pull_request.head.ref }}"
-          if [ "${{ github.event_name }}" = "pull_request_review" ]; then
-            echo "✅ PR approved: ${{ github.event.pull_request.head.ref }} → main"
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "✅ PR merged: ${{ github.event.pull_request.head.ref }} → main"
             echo "   PR #${{ github.event.pull_request.number }}: ${{ github.event.pull_request.title }}"
-            echo "   Approved by: @${{ github.actor }}"
+            echo "   Merged by: @${{ github.actor }}"
           else
-            echo "✅ Triggered manually for branch: ${{ inputs.feature_branch }}"
+            echo "✅ Triggered manually by: @${{ github.actor }}"
           fi
 
   # ============================================================================
-  # Read pipeline-context.json from the feature branch
-  # Contains Phase 1 run_id (for cross-run artifact download), run_number,
-  # solution matrix, etc.
+  # Read pipeline-context.json from main (the merge commit).
+  # The file was written by Pipeline 1 on the feature branch and landed on
+  # main when the PR was merged. It carries the run_id needed to download
+  # the built solution artifacts from the original Pipeline 1 run.
   # ============================================================================
   read-context:
     name: "📖 Read pipeline context"
@@ -109,12 +94,10 @@ jobs:
       solution_list: ${{ steps.ctx.outputs.solution_list }}
 
     steps:
-      - name: Checkout feature branch
+      - name: Checkout main (merge commit)
         uses: actions/checkout@v4
         with:
-          # Review trigger: use the PR head SHA (feature/pipeline-* branch)
-          # Dispatch trigger: use the branch name provided as input
-          ref: ${{ github.event_name == 'pull_request_review' && github.event.pull_request.head.sha || inputs.feature_branch }}
+          ref: main
           fetch-depth: 1
 
       - name: Parse pipeline-context.json
@@ -123,8 +106,8 @@ jobs:
         run: |
           $ctxFile = 'pipeline-context.json'
           if (-not (Test-Path $ctxFile)) {
-            Write-Error "::error::pipeline-context.json not found on the feature branch."
-            Write-Error "::error::Ensure Pipeline 1 (build-and-deploy.yml) completed successfully."
+            Write-Error "::error::pipeline-context.json not found on main."
+            Write-Error "::error::Ensure Pipeline 1 (build-and-deploy.yml) completed and the feature branch was merged."
             exit 1
           }
 
@@ -164,7 +147,6 @@ jobs:
       run_number:      ${{ needs.read-context.outputs.run_number }}
       run_attempt:     ${{ needs.read-context.outputs.run_attempt }}
       mock_deploy:     false
-      trigger_upgrade: false
       base_solutions:  ${{ vars.PP_BASE_SOLUTIONS || '' }}
       jfrog_url:       ${{ vars.JFROG_URL || '' }}
       jfrog_repo:      ${{ vars.JFROG_REPO || 'powerplatform-solutions' }}
