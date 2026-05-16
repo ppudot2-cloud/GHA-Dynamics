@@ -52,6 +52,11 @@ on:
         default: false
         type: boolean
 
+# Required so pull_request_review events can read PR head/base refs
+permissions:
+  contents: read
+  pull-requests: read
+
 concurrency:
   group: "deploy-prod-${{ github.event.pull_request.number || inputs.feature_branch }}"
   cancel-in-progress: true
@@ -65,17 +70,20 @@ jobs:
   guard:
     name: "🛡️ Verify trigger"
     runs-on: ubuntu-latest
-    if: |
+    # Single-line expression avoids YAML literal-block newline parsing issues
+    if: >-
       github.event_name == 'workflow_dispatch' ||
-      (
-        github.event.review.state == 'approved' &&
-        github.event.pull_request.base.ref == 'main' &&
-        startsWith(github.event.pull_request.head.ref, 'feature/pipeline-')
-      )
+      (github.event.review.state == 'approved' &&
+       github.event.pull_request.base.ref == 'main' &&
+       startsWith(github.event.pull_request.head.ref, 'feature/pipeline-'))
     steps:
       - name: Confirm trigger
         shell: bash
         run: |
+          echo "Event      : ${{ github.event_name }}"
+          echo "Review state: ${{ github.event.review.state }}"
+          echo "PR base    : ${{ github.event.pull_request.base.ref }}"
+          echo "PR head    : ${{ github.event.pull_request.head.ref }}"
           if [ "${{ github.event_name }}" = "pull_request_review" ]; then
             echo "✅ PR approved: ${{ github.event.pull_request.head.ref }} → main"
             echo "   PR #${{ github.event.pull_request.number }}: ${{ github.event.pull_request.title }}"
