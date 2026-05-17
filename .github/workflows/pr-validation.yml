@@ -81,7 +81,7 @@ jobs:
     permissions:
       id-token: write
       contents: read
-    uses: ppudot2-cloud/GHA-Core/.github/workflows/_stage-build.yml@main
+    uses: ppudot2-cloud/GHA-Core/.github/workflows/dynamics/_stage-build.yml@main
     with:
       matrix:                 ${{ needs.setup.outputs.matrix }}
       mock_deploy:            false
