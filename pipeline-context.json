@@ -1,6 +1,6 @@
 {
-  "runId": "25972059874",
-  "runNumber": "26",
+  "runId": "25979300763",
+  "runNumber": "28",
   "runAttempt": "1",
   "solutions": [
     "CoreSolution",
@@ -9,8 +9,8 @@
   ],
   "solutionList": "CoreSolution, ExtensionA, ExtensionB",
   "matrix": "{\"solution\":[{\"name\":\"CoreSolution\",\"source_folder\":\"src/solutions/CoreSolution\",\"checker_geo\":\"UnitedStates\",\"data_schema_file\":\"config/CoreSolution/data-schema.xml\",\"deployment_settings_prefix\":\"deployment-settings\"},{\"name\":\"ExtensionA\",\"source_folder\":\"src/solutions/ExtensionA\",\"checker_geo\":\"UnitedStates\",\"data_schema_file\":\"\",\"deployment_settings_prefix\":\"deployment-settings\"},{\"name\":\"ExtensionB\",\"source_folder\":\"src/solutions/ExtensionB\",\"checker_geo\":\"UnitedStates\",\"data_schema_file\":\"\",\"deployment_settings_prefix\":\"deployment-settings\"}]}",
-  "featureBranch": "feature/pipeline-26",
+  "featureBranch": "feature/pipeline-28",
   "triggeredBy": "ppudot2-cloud",
-  "triggeredAt": "2026-05-16T20:26:35Z",
+  "triggeredAt": "2026-05-17T02:38:18Z",
   "mockDeploy": true
 }
