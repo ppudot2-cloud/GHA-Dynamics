@@ -203,4 +203,4 @@ python3 scripts/simulate-pipeline.py --solutions all --target-envs DEV,INTG --ru
 | `Login failed: The process '/usr/bin/az' failed` | Azure OIDC misconfigured | Check federated credentials on App Registration match your repo/environment names exactly |
 | `who-am-i` step fails | PP service principal not registered in the target environment | Add the App Registration as Application User with System Administrator role |
 | `Solution package type did not match requested type` | `<Managed>0</Managed>` tag present in Solution.xml | Handled automatically by `Remove-ManagedTag.ps1` — check the pack step ran |
-| Pipeline 2 does not trigger after PR merge | `pipeline-context.json` not in the merged commit | Confirm `create-main-pr` job succeeded and committed the file to the feature branch |
+| Pipeline 2 does not trigger after PR merge | PR head branch does not start with `feature/pipeline-*` | Confirm `create-main-pr` job succeeded and the feature branch follows the naming convention. Also confirm `pipeline-context.json` was committed to the feature branch before the PR was opened |

@@ -61,7 +61,7 @@ setup → stage-export → stage-build → deploy-dev    ┐
 ### `deploy-prod.yml` — Pipeline 2
 
 **Path:** `.github/workflows/deploy-prod.yml`
-**Trigger:** `push` to `main` when `pipeline-context.json` changes (fires when feature branch PR is merged)
+**Trigger:** `pull_request` closed+merged to `main` from a `feature/pipeline-*` branch (fires when Pipeline 1's PR is merged)
 **Also trigger:** `workflow_dispatch` (for manual re-runs or ad-hoc Prod promotion)
 **Purpose:** Final promotion to UAT (re-validation) and Production. Downloads build artifacts from Pipeline 1 run.
 
@@ -527,9 +527,9 @@ In mock mode: logs what would have been uploaded/tagged without making network c
 **Lifecycle:**
 - Pipeline 1 writes this file to the feature branch after UAT deploy succeeds
 - The file is committed and pushed as part of the `create-main-pr` job
-- When the PR is merged, `pipeline-context.json` changes on `main`
-- Pipeline 2's `push: paths: pipeline-context.json` trigger fires
-- Pipeline 2's `read-context` job parses `runId` to download build artifacts from Pipeline 1
+- When the PR is merged, `pipeline-context.json` lands on `main` as part of the merge commit
+- Pipeline 2's `pull_request: closed+merged` trigger fires (guard checks `head.ref` starts with `feature/pipeline-*`)
+- Pipeline 2's `read-context` job checks out `main`, parses `runId`, and downloads build artifacts from Pipeline 1
 
 ---
 
