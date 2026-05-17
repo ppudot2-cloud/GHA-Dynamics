@@ -20,8 +20,8 @@
 # ROLLBACK
 #   Set enable_backup=true to take a pre-import backup at every environment.
 #   Backups are stored as GitHub artifacts (backup-{env}-v{run_number}).
-#   To restore: run rollback.yml and supply the run number.
-#   Default is false — no backups are taken (faster deployments).
+#   If a deploy fails, the pipeline automatically re-imports the backup (inline rollback).
+#   Default is false — no backups taken. Recommended: true for UAT/FRS/Perf/Prod.
 #
 # ARTIFACT HANDOFF
 #   Phase 1 uploads solution-artifact-* (7-day retention).
@@ -65,8 +65,9 @@ on:
 
       enable_backup:
         description: >
-          Take a pre-import backup at every environment (enables rollback via rollback.yml).
-          Default false — skip backups for faster deployments.
+          Take a pre-import backup at every environment before upgrading.
+          If deploy fails, the pipeline auto-restores from backup (inline rollback).
+          Default false — skip backups for faster deployments. Recommended: true for UAT/FRS/Perf/Prod.
         required: false
         default: false
         type: boolean

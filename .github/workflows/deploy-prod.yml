@@ -24,7 +24,7 @@
 #
 # ROLLBACK:
 #   Set enable_backup=true (workflow_dispatch only) to take a pre-import backup.
-#   Backups enable rollback.yml to restore any environment.
+#   If a deploy fails, the pipeline automatically re-imports the backup (inline rollback).
 # =============================================================================
 
 name: Deploy UAT + Prod
@@ -45,7 +45,8 @@ on:
 
       enable_backup:
         description: >
-          Take a pre-import backup at UAT and Prod (enables rollback via rollback.yml).
+          Take a pre-import backup at UAT and Prod before upgrading.
+          If deploy fails, the pipeline auto-restores from backup (inline rollback).
           Default false — skip backups for faster deployments.
         required: false
         default: false
@@ -292,7 +293,5 @@ jobs:
             UAT result    : ${{ needs.deploy-uat.result }}
             Prod result   : ${{ needs.deploy-prod.result }}
             Triggered by  : @${{ github.actor }}
-
-            Rollback: ${{ github.server_url }}/${{ github.repository }}/actions/workflows/rollback.yml
 
             ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
