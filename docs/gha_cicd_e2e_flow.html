@@ -257,17 +257,6 @@
       <div class="flow-box fb-context">Summary<br>report</div>
     </div>
 
-    <div class="pipeline-row">
-      <div class="pipeline-label pl-util">Rollback<br><span style="font-weight:400;font-size:10px">rollback</span></div>
-      <div class="arrow-right">▶</div>
-      <div class="flow-box fb-trigger">dispatch<br>CONFIRM</div>
-      <div class="arrow-right">→</div>
-      <div class="flow-box fb-gate">🔐 Env gate<br>(UAT/Prod)</div>
-      <div class="arrow-right">→</div>
-      <div class="flow-box fb-action">Download<br>backup artifact</div>
-      <div class="arrow-right">→</div>
-      <div class="flow-box fb-deploy">Import<br>backup ZIP</div>
-    </div>
   </div>
 
   <div class="info">
@@ -326,14 +315,15 @@
         <tr><td class="step-num">4</td><td class="step-name">Blocking check</td><td class="mock-yes">✓</td><td><code>Invoke-BlockingCheck.ps1</code> — abort if in-progress async operations detected</td></tr>
         <tr><td class="step-num">5</td><td class="step-name">Version compare</td><td class="mock-yes">✓</td><td><code>Compare-SolutionVersion.ps1</code> — compare version against previous environment; set skip_import flag if already at this version</td></tr>
         <tr><td class="step-num">6</td><td class="step-name">Find solution</td><td class="mock-yes">✓</td><td>PAC solution list → detect if solution already exists → auto-determines upgrade vs first-install</td></tr>
-        <tr><td class="step-num">7</td><td class="step-name">Backup</td><td class="mock-no">sim</td><td>PAC solution export → saves backup ZIP to <code>backup/{name}_{env}_backup.zip</code></td></tr>
-        <tr><td class="step-num">8</td><td class="step-name">Import solution</td><td class="mock-no">sim</td><td>PAC solution import (unmanaged for Dev, managed for others). Auto-selects upgrade pattern if solution exists.</td></tr>
+        <tr><td class="step-num">7</td><td class="step-name">Backup</td><td class="mock-no">sim</td><td>Only on upgrades (solution already exists). PAC solution export → <code>backup/{name}_{env}_backup.zip</code>. Skipped on first installs — nothing to back up.</td></tr>
+        <tr><td class="step-num">8</td><td class="step-name">Import solution</td><td class="mock-no">sim</td><td>PAC solution import (unmanaged for Dev, managed for others). Auto-selects holding/upgrade pattern if solution exists, standard install if new.</td></tr>
+        <tr><td class="step-num">⚠️</td><td class="step-name" style="color:#b45309;font-weight:600">Auto-rollback on failure</td><td class="mock-no">sim</td><td>If import fails AND <code>enable_backup=true</code> AND backup ZIP exists: immediately re-imports backup to restore previous version. No manual action required. First-install failures are not rolled back.</td></tr>
         <tr><td class="step-num">9</td><td class="step-name">Import config data</td><td class="mock-no">sim</td><td>If <code>import_config_data=true</code> and data ZIP exists, PAC data import into target env</td></tr>
-        <tr><td class="step-num">10</td><td class="step-name">Publish customizations</td><td class="mock-no">sim</td><td>PAC solution publish (Dev/unmanaged only)</td></tr>
-        <tr><td class="step-num">11</td><td class="step-name">Activate Cloud Flows</td><td class="mock-no">sim</td><td>PAC flow list → PAC flow enable for each flow in the solution</td></tr>
+        <tr><td class="step-num">10</td><td class="step-name">Publish customizations</td><td class="mock-no">sim</td><td>PAC solution publish (Dev/unmanaged only; skipped for upgrade pattern — upgrade publishes automatically)</td></tr>
+        <tr><td class="step-num">11</td><td class="step-name">Activate Cloud Flows</td><td class="mock-no">sim</td><td>PAC flow list → PAC flow enable for each inactive flow in the solution</td></tr>
         <tr><td class="step-num">12</td><td class="step-name">JFrog Prod tag</td><td class="mock-no">sim</td><td>Prod only — calls <code>Invoke-JFrogAction.ps1 tag-prod</code> to mark artifact as <code>prodDeployed=true</code></td></tr>
         <tr><td class="step-num">13</td><td class="step-name">Deploy summary</td><td class="mock-yes">✓</td><td><code>Write-DeploySummary.ps1</code> → writes per-solution deploy table to Step Summary</td></tr>
-        <tr><td class="step-num">—</td><td class="step-name">Upload backup artifact</td><td class="mock-no">skip</td><td>After loop — uploads <code>backup-{env}-v{run}</code> artifact (enables rollback)</td></tr>
+        <tr><td class="step-num">—</td><td class="step-name">Upload backup artifact</td><td class="mock-no">skip</td><td>After loop — uploads <code>backup-{env}-v{run}</code> GitHub artifact (30-day retention) for audit. Only present when <code>enable_backup=true</code>.</td></tr>
       </tbody>
     </table>
   </div>
@@ -425,20 +415,22 @@
   </div>
 
   <div class="detail-section">
-    <h3><span class="badge badge-util">Utility</span> rollback.yml → _job-rollback.yml</h3>
+    <h3><span class="badge badge-util">Automatic Rollback</span> Built into deploy-all-solutions</h3>
+    <div class="note" style="margin-top:0;margin-bottom:12px;">
+      There is no standalone rollback workflow. Recovery is fully automatic inside the deploy pipeline.
+    </div>
     <table class="step-table">
-      <thead><tr><th>#</th><th>Step</th><th>What it does</th></tr></thead>
+      <thead><tr><th>Condition</th><th>Behaviour</th></tr></thead>
       <tbody>
-        <tr><td class="step-num">1</td><td class="step-name">Safety guard</td><td>Abort unless <code>confirm-rollback=CONFIRM</code>. Requires explicit confirmation to prevent accidental rollbacks.</td></tr>
-        <tr><td class="step-num">2</td><td class="step-name">Resolve environment config</td><td>Map environment name → URL. Determine solution type (Dev=unmanaged, others=managed).</td></tr>
-        <tr><td class="step-num">3</td><td class="step-name">Download backup artifact</td><td>Downloads <code>backup-{env}-v{run-number}</code> artifact uploaded during the original deploy.</td></tr>
-        <tr><td class="step-num">4</td><td class="step-name">Locate backup ZIP</td><td>Finds <code>{SolutionName}_{Env}_backup.zip</code> in the downloaded artifact.</td></tr>
-        <tr><td class="step-num">5</td><td class="step-name">Azure Login + AKV</td><td>OIDC login, fetch PP credentials from AKV.</td></tr>
-        <tr><td class="step-num">6</td><td class="step-name">Import backup</td><td>PAC solution import of the backup ZIP (force-overwrite, activate-plugins, run-asynchronously).</td></tr>
-        <tr><td class="step-num">7</td><td class="step-name">Publish (Dev only)</td><td>PAC solution publish if target is Dev.</td></tr>
+        <tr><td class="step-name"><code>enable_backup=true</code> + upgrade + import fails</td><td>Pipeline immediately re-imports <code>backup/{name}_{env}_backup.zip</code> to restore the previous version. Logged clearly in Step Summary. No manual action needed.</td></tr>
+        <tr><td class="step-name"><code>enable_backup=false</code> + import fails</td><td>Job fails. Environment left in partial state. Re-run the pipeline with a fix.</td></tr>
+        <tr><td class="step-name">First install + import fails</td><td>No rollback — there is no previous version to restore to. Solution is simply absent from the environment.</td></tr>
+        <tr><td class="step-name">Auto-rollback also fails</td><td>Both failures are logged. Environment flagged as needing manual intervention.</td></tr>
       </tbody>
     </table>
-    <div class="note" style="margin-top:10px;"><strong>Note:</strong> Rollback re-imports the pre-deploy backup. Components removed by the original deployment are NOT restored. Use a full environment restore for that case.</div>
+    <div class="note" style="margin-top:10px;">
+      <strong>Recommendation:</strong> Set <code>enable_backup=false</code> for Dev and Intg (re-run is sufficient), and <code>enable_backup=true</code> for UAT, FRS, Perf, and Prod.
+    </div>
   </div>
 </div>
 

@@ -30,7 +30,7 @@ Navigate to **GHA-Dynamics → Settings → Environments** and create these six 
 | `UAT` | Recommended | QA lead |
 | `FRS` | Optional | Functional review team |
 | `Perf` | Optional | Performance team |
-| `Prod` | Required | Release manager — also applies to rollbacks |
+| `Prod` | Required | Release manager |
 
 ---
 
@@ -162,18 +162,17 @@ To export solutions from your sandbox:
 
 ---
 
-## Rolling Back an Environment
+## Automatic Rollback on Failure
 
-If a deployment goes wrong:
+Rollback is fully automatic — no manual workflow required.
 
-1. Go to **rollback.yml → Run workflow**
-2. Select the `target-environment`
-3. Enter the `solution-name` to roll back
-4. Enter the `run-number` of the deployment to roll back FROM
-5. Type `CONFIRM` in the confirm field
-6. Click **Run workflow**
+When `enable_backup: true` is set on a workflow run, the pipeline exports the currently installed solution from the target environment **before** importing the new version. If the import then fails, the pipeline immediately re-imports that backup to restore the previous version — all within the same GitHub Actions job.
 
-The rollback re-imports the pre-deploy backup ZIP. Backups are only available if `enable_backup: true` was set during the original deploy.
+**What gets rolled back automatically:** any failed upgrade where a backup was taken (solution already existed in the environment).
+
+**What is not rolled back:** first-time installs — there is no previous version to restore to. The environment simply remains without the solution.
+
+**Recommended configuration:** leave `enable_backup: false` for Dev and Intg (failures there are expected and a re-run is sufficient), and set `enable_backup: true` for UAT, FRS, Perf, and Prod where environment stability matters.
 
 ---
 

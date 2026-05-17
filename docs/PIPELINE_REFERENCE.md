@@ -34,7 +34,7 @@ These are the entry-point workflows — the ones you trigger or that fire automa
 | Input | Type | Default | Description |
 |---|---|---|---|
 | `mock_deploy` | boolean | false | Skip all Dataverse/JFrog operations; simulate the entire pipeline |
-| `enable_backup` | boolean | false | Take a pre-import backup at each environment (enables rollback) |
+| `enable_backup` | boolean | false | Take a pre-import backup at each environment before upgrading. If the import fails, the pipeline automatically re-imports the backup to restore the previous version. Recommended: `true` for UAT, FRS, Perf, Prod. |
 | `solution_name` | string | `''` | Deploy a specific solution only; empty = all solutions from solutions.json |
 
 **Job flow:**
@@ -130,32 +130,6 @@ setup → export (matrix, max-parallel:1) → create-pr
 
 ---
 
-### `rollback.yml` — Environment Rollback
-
-**Path:** `.github/workflows/rollback.yml`
-**Trigger:** `workflow_dispatch` only
-**Purpose:** Re-import a pre-deploy backup to roll back a specific solution on a specific environment.
-
-**Inputs:**
-
-| Input | Type | Required | Description |
-|---|---|---|---|
-| `target-environment` | choice | ✅ | Dev, Intg, UAT, FRS, Perf, Prod |
-| `solution-name` | string | ✅ | Solution unique name to roll back |
-| `run-number` | string | ✅ | Run number of the deployment to roll back FROM |
-| `deployment-settings-file` | string | No | Path to deployment settings JSON |
-| `confirm-rollback` | string | ✅ | Must be `CONFIRM` to proceed |
-
-**Key behaviours:**
-- Delegates to `_job-rollback.yml` in GHA-Core
-- Downloads `backup-{environment}-v{run-number}` artifact (uploaded during the deploy)
-- Finds `{SolutionName}_{Env}_backup.zip` within the artifact
-- Imports the backup as unmanaged (Dev) or managed (all others)
-- Respects environment approval gates — rolling back Prod requires Prod environment approval
-
-> **Note:** Rollback only restores the solution import. Components removed by the original deployment are NOT automatically restored. Use a full environment restore for that case.
-
----
 
 ## 2. GHA-Core Reusable Workflows
 
@@ -203,13 +177,6 @@ Runs the export action per solution. Outputs the feature branch name for downstr
 
 ---
 
-### `_job-rollback.yml`
-
-**Path:** `.github/workflows/_job-rollback.yml`
-**Called by:** `rollback.yml` in GHA-Dynamics
-**Purpose:** Single-environment rollback job. Full implementation of the rollback logic — safety guard, environment resolution, artifact download, backup ZIP location, Azure login, AKV fetch, PAC import.
-
----
 
 ## 3. GHA-Core Composite Actions
 
@@ -318,15 +285,17 @@ For each solution (in order):
 4. Blocking async check (`Invoke-BlockingCheck.ps1`)
 5. Version compare (`Compare-SolutionVersion.ps1`) — sets `skip_import` if already at version
 6. Find solution — detect first install vs upgrade (auto-selects import pattern)
-7. Backup — PAC solution export to `backup/{name}_{env}_backup.zip`
-8. Import — PAC import (upgrade if solution exists, standard if new)
+7. Backup — `pac solution export` to `backup/{name}_{env}_backup.zip`. **Only runs on upgrades** (solution already exists in the environment). First installs are skipped — there is no previous version to back up.
+8. Import — PAC import (holding/upgrade pattern if solution exists, standard if new install)
 9. Config data import — PAC data import if `import_config_data=true` and data ZIP exists
-10. Publish customizations — PAC publish (Dev/unmanaged only)
-11. Activate Cloud Flows — PAC flow list + PAC flow enable per flow
+10. Publish customizations — PAC publish (skipped for upgrades — upgrade pattern publishes automatically)
+11. Activate Cloud Flows — PAC flow list + PAC flow enable per inactive flow
 12. JFrog Prod tag — `Invoke-JFrogAction.ps1 tag-prod` (Prod environment only)
 13. Deploy summary — `Write-DeploySummary.ps1`
 
-After loop: uploads `backup-{env}-v{run_number}` GitHub artifact.
+On failure (catch block): if `enable_backup=true` and a backup ZIP was taken (i.e. this was an upgrade), the pipeline **immediately re-imports the backup** to restore the previous version — no manual intervention required. First-install failures are not rolled back (nothing to restore to).
+
+After loop: uploads `backup-{env}-v{run_number}` GitHub artifact (30-day retention) for audit purposes.
 
 **Key inputs:** `solutions_json`, `environment_name`, `environment_url`, `solution_type`, `enable_backup`, `enable_blocking_check`, `enable_version_compare`, `import_config_data`, `tag_prod_deployed`, `activate_flows`, `mock_deploy`, `base_solutions`, `jfrog_url`, `jfrog_repo`, `run_number`, `run_attempt`
 
