@@ -100,7 +100,7 @@ jobs:
         id: resolve
         shell: pwsh
         run: |
-          & .ci/templates/steps/dynamics/Resolve-SolutionMatrix.ps1 `
+          & .ci/.github/scripts/dynamics/Resolve-SolutionMatrix.ps1 `
             -InputSolutions '${{ inputs.solutions || 'all' }}' `
             -PpSolutionName '${{ vars.PP_SOLUTION_NAME }}'
 
@@ -329,7 +329,7 @@ jobs:
         if: inputs.export_config_data == true && inputs.mock_deploy == true
         shell: pwsh
         run: |
-          & .ci/templates/steps/dynamics/Export-ConfigDataSim.ps1 `
+          & .ci/.github/scripts/dynamics/Export-ConfigDataSim.ps1 `
             -SchemaFile           '${{ vars.PP_DATA_SCHEMA_FILE }}' `
             -OutputZipPath        "config/${{ matrix.solution }}/config-data.zip" `
             -SourceEnvironmentUrl '${{ vars.PP_SDBX_URL }}' `
@@ -358,7 +358,7 @@ jobs:
         if: inputs.mock_deploy == true
         shell: pwsh
         run: |
-          & .ci/templates/steps/dynamics/Invoke-ExportCommitSim.ps1 `
+          & .ci/.github/scripts/dynamics/Invoke-ExportCommitSim.ps1 `
             -SolutionName         '${{ matrix.solution }}' `
             -BranchName           '${{ needs.setup.outputs.branch_name }}' `
             -CommitMessagePrefix  '${{ inputs.commit_message }}' `

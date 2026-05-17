@@ -109,7 +109,7 @@ jobs:
         id: resolve
         shell: pwsh
         run: |
-          & .ci/templates/steps/dynamics/Resolve-SolutionMatrix.ps1 `
+          & .ci/.github/scripts/dynamics/Resolve-SolutionMatrix.ps1 `
             -InputSolutions    '${{ inputs.solutions || 'all' }}' `
             -PpSolutionName    '${{ vars.PP_SOLUTION_NAME }}' `
             -SolutionsJsonPath 'solutions.json'
@@ -555,7 +555,7 @@ jobs:
       - name: Write pipeline summary
         shell: pwsh
         run: |
-          & .ci/templates/steps/dynamics/Write-PipelineSummary.ps1 `
+          & .ci/.github/scripts/dynamics/Write-PipelineSummary.ps1 `
             -SolutionList    '${{ needs.setup.outputs.solution_list }}' `
             -SolutionCount   '${{ needs.setup.outputs.solution_count }}' `
             -RunNumber       '${{ github.run_number }}' `
