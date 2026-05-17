@@ -58,7 +58,7 @@ on:
 jobs:
   rollback:
     name: "Rollback Solution"
-    uses: ppudot2-cloud/GHA-Core/.github/workflows/dynamics/_job-rollback.yml@main
+    uses: ppudot2-cloud/GHA-Core/.github/workflows/_job-rollback.yml@main
     with:
       # ── User inputs ────────────────────────────────────────────────────────
       target-environment:       ${{ inputs.target-environment }}
