@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GHA — Power Platform CI/CD — E2E Pipeline Flow</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f0f4fa; color: #1a1d2e; font-size: 13px; }
+
+  .page-header { background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 100%); color: #fff; padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
+  .ph-left { display: flex; align-items: center; gap: 14px; }
+  .ph-icon { font-size: 28px; }
+  .ph-title { font-size: 17px; font-weight: 700; color: #f1f5f9; }
+  .ph-sub { font-size: 11px; color: #94a3b8; margin-top: 2px; }
+  .ph-badges { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .ph-badge { font-size: 10px; font-weight: 600; padding: 3px 10px; border-radius: 12px; }
+  .phb-blue   { background: rgba(59,130,246,.25); color: #93c5fd; border: 1px solid rgba(59,130,246,.4); }
+  .phb-green  { background: rgba(34,197,94,.2);  color: #86efac; border: 1px solid rgba(34,197,94,.35); }
+  .phb-amber  { background: rgba(245,158,11,.2); color: #fcd34d; border: 1px solid rgba(245,158,11,.35); }
+  .phb-purple { background: rgba(168,85,247,.2); color: #d8b4fe; border: 1px solid rgba(168,85,247,.35); }
+
+  .tab-bar { display: flex; gap: 2px; padding: 0 20px; background: #fff; border-bottom: 2px solid #e2e6ef; position: sticky; top: 0; z-index: 60; box-shadow: 0 2px 8px rgba(0,0,0,.06); overflow-x: auto; }
+  .tab-btn { padding: 12px 20px; border: none; background: none; color: #64748b; font-size: 12px; font-weight: 600; cursor: pointer; border-bottom: 3px solid transparent; margin-bottom: -2px; transition: color .15s, border-color .15s; white-space: nowrap; }
+  .tab-btn:hover { color: #2563eb; }
+  .tab-btn.active { color: #2563eb; border-bottom-color: #2563eb; }
+  .tab-panel { display: none; padding: 20px 24px 40px; }
+  .tab-panel.active { display: block; }
+
+  /* ── OVERVIEW / ARCH ──────────────────────────────────────────────────── */
+  .arch-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
+  @media(max-width:900px){ .arch-grid { grid-template-columns: 1fr; } }
+  .arch-card { background:#fff; border:1.5px solid #e2e6ef; border-radius:10px; padding:16px; }
+  .arch-card h3 { font-size:12px; font-weight:700; color:#1e40af; margin-bottom:10px; display:flex; align-items:center; gap:6px; }
+  .arch-card p, .arch-card li { font-size:12px; color:#374151; line-height:1.6; }
+  .arch-card ul { margin-left:16px; }
+  .arch-card li { margin-bottom:3px; }
+
+  .two-pipeline-diagram { background:#fff; border:1.5px solid #e2e6ef; border-radius:10px; padding:20px; margin-bottom:20px; overflow-x:auto; }
+  .two-pipeline-diagram h3 { font-size:13px; font-weight:700; color:#0f172a; margin-bottom:16px; }
+
+  .pipeline-row { display:flex; align-items:center; gap:0; margin-bottom:14px; min-width:900px; }
+  .pipeline-label { width:110px; flex-shrink:0; font-size:11px; font-weight:700; color:#fff; padding:6px 10px; border-radius:6px; text-align:center; line-height:1.3; }
+  .pl-p1 { background:#1d4ed8; }
+  .pl-p2 { background:#7c3aed; }
+  .pl-util { background:#0f766e; }
+
+  .arrow-right { color:#94a3b8; font-size:16px; margin:0 4px; flex-shrink:0; }
+
+  .flow-box { display:flex; flex-direction:column; align-items:center; justify-content:center; padding:6px 12px; border-radius:6px; font-size:10px; font-weight:600; text-align:center; min-width:90px; line-height:1.3; border: 1.5px solid transparent; }
+  .fb-trigger  { background:#fef3c7; color:#92400e; border-color:#fcd34d; }
+  .fb-stage    { background:#dbeafe; color:#1e3a5f; border-color:#93c5fd; }
+  .fb-deploy   { background:#d1fae5; color:#065f46; border-color:#6ee7b7; }
+  .fb-gate     { background:#fce7f3; color:#9d174d; border-color:#f9a8d4; }
+  .fb-action   { background:#ede9fe; color:#4c1d95; border-color:#c4b5fd; }
+  .fb-context  { background:#f3f4f6; color:#374151; border-color:#d1d5db; }
+  .fb-merge    { background:#fff7ed; color:#c2410c; border-color:#fed7aa; }
+  .fb-parallel { background:#ecfdf5; color:#065f46; border-color:#a7f3d0; border-style:dashed; }
+
+  .parallel-group { display:flex; flex-direction:column; gap:3px; border:1.5px dashed #10b981; border-radius:8px; padding:6px 8px; background:rgba(16,185,129,.04); }
+  .parallel-label { font-size:9px; font-weight:700; color:#065f46; text-align:center; margin-bottom:2px; }
+  .parallel-row { display:flex; gap:3px; }
+
+  /* ── PIPELINE DETAIL CARD ──────────────────────────────────────────────── */
+  .detail-section { margin-bottom:24px; }
+  .detail-section h3 { font-size:13px; font-weight:700; color:#0f172a; margin-bottom:12px; padding-bottom:6px; border-bottom:2px solid #e2e6ef; display:flex; align-items:center; gap:8px; }
+  .badge { display:inline-block; font-size:10px; font-weight:700; padding:2px 8px; border-radius:10px; }
+  .badge-p1  { background:#dbeafe; color:#1e40af; }
+  .badge-p2  { background:#ede9fe; color:#5b21b6; }
+  .badge-util{ background:#d1fae5; color:#065f46; }
+  .badge-core{ background:#fef3c7; color:#92400e; }
+
+  .step-table { width:100%; border-collapse:collapse; font-size:11px; background:#fff; border-radius:8px; overflow:hidden; box-shadow:0 1px 4px rgba(0,0,0,.06); }
+  .step-table th { background:#f8fafc; font-weight:700; color:#374151; padding:8px 12px; text-align:left; border-bottom:2px solid #e2e6ef; }
+  .step-table td { padding:7px 12px; border-bottom:1px solid #f1f5f9; vertical-align:top; }
+  .step-table tr:last-child td { border-bottom:none; }
+  .step-table tr:hover td { background:#fafbff; }
+  .step-num { font-weight:700; color:#1d4ed8; white-space:nowrap; }
+  .step-name { font-weight:600; color:#0f172a; }
+  .step-type { font-size:10px; padding:1px 6px; border-radius:8px; white-space:nowrap; }
+  .st-action { background:#dbeafe; color:#1e40af; }
+  .st-inline { background:#f3f4f6; color:#374151; }
+  .st-gha    { background:#d1fae5; color:#065f46; }
+  .st-gate   { background:#fce7f3; color:#9d174d; }
+
+  /* ── ACTIONS / SCRIPTS REFERENCE ──────────────────────────────────────── */
+  .ref-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  @media(max-width:800px){ .ref-grid { grid-template-columns:1fr; } }
+  .ref-card { background:#fff; border:1.5px solid #e2e6ef; border-radius:8px; padding:14px; }
+  .ref-card h4 { font-size:11px; font-weight:700; color:#1e40af; margin-bottom:4px; font-family:monospace; }
+  .ref-card .path { font-size:10px; color:#64748b; margin-bottom:6px; font-family:monospace; }
+  .ref-card p { font-size:11px; color:#374151; line-height:1.5; }
+
+  .script-table { width:100%; border-collapse:collapse; font-size:11px; }
+  .script-table th { background:#f8fafc; padding:7px 10px; text-align:left; border-bottom:2px solid #e2e6ef; font-weight:700; color:#374151; }
+  .script-table td { padding:6px 10px; border-bottom:1px solid #f1f5f9; vertical-align:top; }
+  .script-table tr:last-child td { border-bottom:none; }
+  .script-name { font-family:monospace; font-weight:600; color:#0f172a; font-size:11px; }
+  .mock-yes { color:#16a34a; font-weight:700; }
+  .mock-no  { color:#94a3b8; }
+
+  /* ── CONFIG FILES ─────────────────────────────────────────────────────── */
+  .config-block { background:#1e293b; color:#e2e8f0; border-radius:8px; padding:14px 16px; font-family:monospace; font-size:11px; line-height:1.7; overflow-x:auto; margin-top:8px; }
+  .config-block .key   { color:#93c5fd; }
+  .config-block .val   { color:#86efac; }
+  .config-block .cmt   { color:#64748b; }
+  .config-block .str   { color:#fcd34d; }
+
+  /* ── AUTH FLOW ───────────────────────────────────────────────────────── */
+  .auth-flow { display:flex; align-items:flex-start; gap:8px; flex-wrap:wrap; }
+  .auth-step { background:#fff; border:1.5px solid #e2e6ef; border-radius:8px; padding:10px 14px; min-width:130px; text-align:center; }
+  .auth-step .num { font-size:10px; font-weight:700; color:#2563eb; margin-bottom:4px; }
+  .auth-step .title { font-size:11px; font-weight:700; color:#0f172a; margin-bottom:3px; }
+  .auth-step .sub { font-size:10px; color:#64748b; }
+  .auth-arrow { font-size:18px; color:#94a3b8; align-self:center; }
+
+  .note { background:#fefce8; border-left:3px solid #eab308; padding:8px 12px; border-radius:0 6px 6px 0; font-size:11px; color:#713f12; margin-top:10px; }
+  .info { background:#eff6ff; border-left:3px solid #3b82f6; padding:8px 12px; border-radius:0 6px 6px 0; font-size:11px; color:#1e40af; margin-top:10px; }
+</style>
+</head>
+<body>
+
+<div class="page-header">
+  <div class="ph-left">
+    <div class="ph-icon">⚡</div>
+    <div>
+      <div class="ph-title">Power Platform CI/CD — End-to-End Pipeline Flow</div>
+      <div class="ph-sub">GHA-Core + GHA-Dynamics · Two-Pipeline Architecture · Azure OIDC + AKV</div>
+    </div>
+  </div>
+  <div class="ph-badges">
+    <span class="ph-badge phb-blue">Pipeline 1: Build &amp; Deploy</span>
+    <span class="ph-badge phb-purple">Pipeline 2: UAT + Prod</span>
+    <span class="ph-badge phb-green">Azure OIDC · No Secrets in GitHub</span>
+    <span class="ph-badge phb-amber">Mock Deploy Supported</span>
+  </div>
+</div>
+
+<div class="tab-bar">
+  <button class="tab-btn active" onclick="showTab('overview')">Overview</button>
+  <button class="tab-btn" onclick="showTab('pipeline1')">Pipeline 1 — Build &amp; Deploy</button>
+  <button class="tab-btn" onclick="showTab('pipeline2')">Pipeline 2 — UAT + Prod</button>
+  <button class="tab-btn" onclick="showTab('utilities')">Utility Workflows</button>
+  <button class="tab-btn" onclick="showTab('actions')">Composite Actions</button>
+  <button class="tab-btn" onclick="showTab('scripts')">PowerShell Scripts</button>
+  <button class="tab-btn" onclick="showTab('config')">Config &amp; Auth</button>
+</div>
+
+<!-- ═══════════════════ OVERVIEW ═══════════════════ -->
+<div class="tab-panel active" id="tab-overview">
+
+  <div class="arch-grid">
+    <div class="arch-card">
+      <h3>🏗️ Two-Repo Architecture</h3>
+      <ul>
+        <li><strong>GHA-Core</strong> — Reusable library: composite actions, reusable workflows, PowerShell scripts</li>
+        <li><strong>GHA-Dynamics</strong> — Project caller: trigger workflows, solutions.json, deployment-settings, solution source</li>
+        <li>GHA-Core is checked out at <code>.ci/</code> on every runner by <code>ci-bootstrap</code></li>
+        <li>All business logic lives in GHA-Core — GHA-Dynamics is a thin wrapper</li>
+      </ul>
+    </div>
+    <div class="arch-card">
+      <h3>🔐 Authentication — Zero Secrets in GitHub</h3>
+      <ul>
+        <li>Only <strong>one</strong> GitHub secret needed: <code>GHA_CORE_PAT</code> (to checkout GHA-Core)</li>
+        <li>Azure login via <strong>OIDC / Workload Identity Federation</strong> — no client secret stored</li>
+        <li>PP credentials (<code>pp-app-id</code>, <code>pp-client-secret</code>, <code>pp-tenant-id</code>) fetched live from <strong>Azure Key Vault</strong></li>
+        <li>GitHub Variables (non-sensitive): <code>AZURE_CLIENT_ID</code>, <code>AZURE_TENANT_ID</code>, <code>AZURE_SUBSCRIPTION_ID</code>, <code>AZURE_KEY_VAULT_NAME</code></li>
+      </ul>
+    </div>
+    <div class="arch-card">
+      <h3>📦 Two-Pipeline Architecture</h3>
+      <ul>
+        <li><strong>Pipeline 1</strong> (<code>build-and-deploy.yml</code>) — triggered by PR or dispatch. Export → Build → Deploy Dev/Intg/UAT/FRS/Perf in parallel → write <code>pipeline-context.json</code> → create PR to main</li>
+        <li><strong>Pipeline 2</strong> (<code>deploy-prod.yml</code>) — triggered automatically when PR merges to main. Reads <code>pipeline-context.json</code> → Deploy UAT (final gate) → Deploy Prod</li>
+        <li>Cross-pipeline artifact handoff via <code>pipeline-context.json</code> on main branch</li>
+      </ul>
+    </div>
+    <div class="arch-card">
+      <h3>🔄 Platform Constraints</h3>
+      <ul>
+        <li><strong>Sequential imports are mandatory</strong> — Dataverse cannot process parallel solution imports to the same environment</li>
+        <li><code>deploy-all-solutions</code> action loops solutions in <code>deployOrder</code> sequence from <code>solutions.json</code></li>
+        <li>Different environments run in parallel (Pipeline 1), but within each environment solutions are sequential</li>
+        <li>Workflows must live in <code>.github/workflows/</code> root — GitHub does not support subdirectories</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="two-pipeline-diagram">
+    <h3>Complete Pipeline Flow</h3>
+
+    <div class="pipeline-row">
+      <div class="pipeline-label pl-p1">Pipeline 1<br><span style="font-weight:400;font-size:10px">build-and-deploy</span></div>
+      <div class="arrow-right">▶</div>
+      <div class="flow-box fb-trigger">PR / dispatch<br>trigger</div>
+      <div class="arrow-right">→</div>
+      <div class="flow-box fb-stage">Setup<br>solutions.json</div>
+      <div class="arrow-right">→</div>
+      <div class="flow-box fb-stage">Export<br>_stage-export</div>
+      <div class="arrow-right">→</div>
+      <div class="flow-box fb-stage">Build ×N<br>_stage-build</div>
+      <div class="arrow-right">→</div>
+      <div class="parallel-group">
+        <div class="parallel-label">⚡ Parallel — all 5 environments simultaneously</div>
+        <div class="parallel-row">
+          <div class="flow-box fb-deploy" style="min-width:60px;font-size:10px">Dev</div>
+          <div class="flow-box fb-deploy" style="min-width:60px;font-size:10px">Intg</div>
+          <div class="flow-box fb-deploy" style="min-width:60px;font-size:10px">UAT</div>
+          <div class="flow-box fb-deploy" style="min-width:60px;font-size:10px">FRS</div>
+          <div class="flow-box fb-deploy" style="min-width:60px;font-size:10px">Perf</div>
+        </div>
+      </div>
+      <div class="arrow-right">→</div>
+      <div class="flow-box fb-context">Write<br>pipeline-context</div>
+      <div class="arrow-right">→</div>
+      <div class="flow-box fb-merge">Create PR<br>→ main</div>
+    </div>
+
+    <div class="pipeline-row">
+      <div class="pipeline-label pl-p2">Pipeline 2<br><span style="font-weight:400;font-size:10px">deploy-prod</span></div>
+      <div class="arrow-right">▶</div>
+      <div class="flow-box fb-trigger">PR merge<br>to main</div>
+      <div class="arrow-right">→</div>
+      <div class="flow-box fb-context">Read<br>pipeline-context</div>
+      <div class="arrow-right">→</div>
+      <div class="flow-box fb-gate">🔐 UAT<br>gate</div>
+      <div class="arrow-right">→</div>
+      <div class="flow-box fb-deploy">Deploy<br>UAT</div>
+      <div class="arrow-right">→</div>
+      <div class="flow-box fb-gate">🔐 Prod<br>gate</div>
+      <div class="arrow-right">→</div>
+      <div class="flow-box fb-deploy">Deploy<br>Prod</div>
+    </div>
+
+    <div class="pipeline-row">
+      <div class="pipeline-label pl-util">Export<br><span style="font-weight:400;font-size:10px">export-solution</span></div>
+      <div class="arrow-right">▶</div>
+      <div class="flow-box fb-trigger">dispatch</div>
+      <div class="arrow-right">→</div>
+      <div class="flow-box fb-stage">Setup</div>
+      <div class="arrow-right">→</div>
+      <div class="flow-box fb-action">Export × N<br>(sequential)</div>
+      <div class="arrow-right">→</div>
+      <div class="flow-box fb-action">Unpack → commit<br>to feature branch</div>
+      <div class="arrow-right">→</div>
+      <div class="flow-box fb-merge">Create PR<br>to main</div>
+    </div>
+
+    <div class="pipeline-row">
+      <div class="pipeline-label pl-util">PR Validation<br><span style="font-weight:400;font-size:10px">pr-validation</span></div>
+      <div class="arrow-right">▶</div>
+      <div class="flow-box fb-trigger">PR open/sync<br>to main</div>
+      <div class="arrow-right">→</div>
+      <div class="flow-box fb-stage">Build only<br>_stage-build</div>
+      <div class="arrow-right">→</div>
+      <div class="flow-box fb-context">Summary<br>report</div>
+    </div>
+
+    <div class="pipeline-row">
+      <div class="pipeline-label pl-util">Rollback<br><span style="font-weight:400;font-size:10px">rollback</span></div>
+      <div class="arrow-right">▶</div>
+      <div class="flow-box fb-trigger">dispatch<br>CONFIRM</div>
+      <div class="arrow-right">→</div>
+      <div class="flow-box fb-gate">🔐 Env gate<br>(UAT/Prod)</div>
+      <div class="arrow-right">→</div>
+      <div class="flow-box fb-action">Download<br>backup artifact</div>
+      <div class="arrow-right">→</div>
+      <div class="flow-box fb-deploy">Import<br>backup ZIP</div>
+    </div>
+  </div>
+
+  <div class="info">
+    <strong>Cross-pipeline handoff:</strong> Pipeline 1 writes <code>pipeline-context.json</code> to the feature branch before creating the PR. When the PR is merged to main, Pipeline 2 detects the change via <code>push: paths: pipeline-context.json</code> and reads the <code>runId</code> from the file to download the build artifacts from Pipeline 1's run.
+  </div>
+</div>
+
+<!-- ═══════════════════ PIPELINE 1 ═══════════════════ -->
+<div class="tab-panel" id="tab-pipeline1">
+  <div class="detail-section">
+    <h3><span class="badge badge-p1">Pipeline 1</span> build-and-deploy.yml — Full Build + Non-Prod Deploy</h3>
+
+    <table class="step-table">
+      <thead><tr><th>#</th><th>Job / Step</th><th>Type</th><th>What it does</th></tr></thead>
+      <tbody>
+        <tr><td class="step-num">1</td><td class="step-name">setup</td><td><span class="step-type st-inline">inline</span></td><td>Checks out repo, checkouts GHA-Core to <code>.ci/</code>, runs <code>Resolve-SolutionMatrix.ps1</code> to read <code>solutions.json</code> → outputs matrix JSON and solution list</td></tr>
+        <tr><td class="step-num">2</td><td class="step-name">stage-export<br><code>_stage-export.yml</code></td><td><span class="step-type st-action">reusable</span></td><td>Exports solution source from sandbox PP environment via PAC CLI, unpacks into <code>src/solutions/</code>, commits to feature branch. Runs per-solution sequentially.</td></tr>
+        <tr><td class="step-num">3</td><td class="step-name">stage-build<br><code>_stage-build.yml → _job-build.yml</code></td><td><span class="step-type st-action">reusable</span></td><td>Matrix build (parallel per solution): ci-bootstrap → pac-install → pack-solution (version stamp, strip Managed tag, pack ZIPs) → solution-checker → export-config-data → upload artifact → jfrog-upload</td></tr>
+        <tr><td class="step-num">4a</td><td class="step-name">deploy-dev</td><td><span class="step-type st-inline">inline</span></td><td>ci-bootstrap → pac-install → download solution-artifact-* → deploy-all-solutions (Unmanaged, Dev env). Runs <strong>in parallel</strong> with deploy-intg/uat/frs/perf.</td></tr>
+        <tr><td class="step-num">4b</td><td class="step-name">deploy-intg</td><td><span class="step-type st-inline">inline</span></td><td>ci-bootstrap → pac-install → download solution-artifact-* → deploy-all-solutions (Managed, Intg env). Parallel with others.</td></tr>
+        <tr><td class="step-num">4c</td><td class="step-name">deploy-uat</td><td><span class="step-type st-inline">inline</span></td><td>Same pattern → deploy-all-solutions (Managed, UAT env). Creates <code>pipeline-context.json</code> only when UAT succeeds.</td></tr>
+        <tr><td class="step-num">4d</td><td class="step-name">deploy-frs</td><td><span class="step-type st-inline">inline</span></td><td>Same pattern → deploy-all-solutions (Managed, FRS env). Parallel with others.</td></tr>
+        <tr><td class="step-num">4e</td><td class="step-name">deploy-perf</td><td><span class="step-type st-inline">inline</span></td><td>Same pattern → deploy-all-solutions (Managed, Perf env). Parallel with others.</td></tr>
+        <tr><td class="step-num">5</td><td class="step-name">create-main-pr</td><td><span class="step-type st-inline">inline</span></td><td>Depends on <code>deploy-uat</code> success. Writes <code>pipeline-context.json</code> (run_id, run_number, matrix) to feature branch, creates PR to main via GitHub CLI using <code>GHA_CORE_PAT</code></td></tr>
+        <tr><td class="step-num">6</td><td class="step-name">pipeline-summary</td><td><span class="step-type st-inline">inline</span></td><td>Always runs. Calls <code>Write-PipelineSummary.ps1</code>, sends failure email notification.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="detail-section">
+    <h3><span class="badge badge-core">GHA-Core</span> _stage-build.yml → _job-build.yml — Per-Solution Build Detail</h3>
+    <table class="step-table">
+      <thead><tr><th>#</th><th>Step</th><th>Type</th><th>What it does</th></tr></thead>
+      <tbody>
+        <tr><td class="step-num">1</td><td class="step-name">CI Bootstrap</td><td><span class="step-type st-action">action</span></td><td>Checkout caller repo + GHA-Core (.ci/), Azure OIDC login, fetch AKV secrets (PP_APP_ID, PP_CLIENT_SECRET, PP_TENANT_ID, JFROG_TOKEN), merge global+project vars</td></tr>
+        <tr><td class="step-num">2</td><td class="step-name">Install PAC CLI</td><td><span class="step-type st-action">action</span></td><td>Installs Microsoft Power Platform CLI and adds to PATH</td></tr>
+        <tr><td class="step-num">3</td><td class="step-name">Download exported source</td><td><span class="step-type st-gha">GHA</span></td><td>If <code>use_exported_source=true</code>, downloads the <code>exported-source-{name}</code> artifact from the export stage</td></tr>
+        <tr><td class="step-num">4</td><td class="step-name">Pack Solution</td><td><span class="step-type st-action">action</span></td><td>Read version from Solution.xml → stamp <code>Major.Minor.RunNumber.Attempt</code> → strip <code>&lt;Managed&gt;</code> tag → pack Unmanaged ZIP + Managed ZIP (real or mock)</td></tr>
+        <tr><td class="step-num">5</td><td class="step-name">Solution Checker</td><td><span class="step-type st-action">action</span></td><td>Run PAC Solution Checker against Unmanaged ZIP → generate SARIF → upload checker artifact. Always mandatory; simulated in mock mode.</td></tr>
+        <tr><td class="step-num">6</td><td class="step-name">Export Config Data</td><td><span class="step-type st-action">action</span></td><td>If <code>data_schema_file</code> provided, exports config migration data from source environment → <code>config-data/{name}-data.zip</code></td></tr>
+        <tr><td class="step-num">7</td><td class="step-name">Upload solution artifact</td><td><span class="step-type st-gha">GHA</span></td><td>Uploads <code>solution-artifact-{name}</code> to GitHub artifact storage (7-day retention). Consumed by all deploy jobs in Pipeline 1 and Pipeline 2.</td></tr>
+        <tr><td class="step-num">8</td><td class="step-name">JFrog Upload</td><td><span class="step-type st-action">action</span></td><td>If <code>jfrog_url</code> set, uploads managed+unmanaged ZIPs and SARIF to JFrog Artifactory for long-term archival. Once per build.</td></tr>
+        <tr><td class="step-num">9</td><td class="step-name">Write build summary</td><td><span class="step-type st-inline">inline</span></td><td>Calls <code>Write-BuildSummary.ps1</code> → writes markdown table to GitHub Step Summary</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="detail-section">
+    <h3><span class="badge badge-core">GHA-Core</span> deploy-all-solutions action — Per-Environment Deploy Detail</h3>
+    <table class="step-table">
+      <thead><tr><th>#</th><th>Step (per solution in deployOrder)</th><th>Mock?</th><th>What it does</th></tr></thead>
+      <tbody>
+        <tr><td class="step-num">1</td><td class="step-name">Verify artifact</td><td class="mock-yes">✓</td><td>Confirm <code>solution-artifact-{name}</code> was downloaded to workspace</td></tr>
+        <tr><td class="step-num">2</td><td class="step-name">Token substitution</td><td class="mock-yes">✓</td><td>Replace <code>#{TOKEN}#</code> placeholders in deployment-settings JSON with GitHub vars/secrets</td></tr>
+        <tr><td class="step-num">3</td><td class="step-name">Base solutions check</td><td class="mock-yes">✓</td><td>Verify prerequisite solutions are present in the target environment (PAC solution list)</td></tr>
+        <tr><td class="step-num">4</td><td class="step-name">Blocking check</td><td class="mock-yes">✓</td><td><code>Invoke-BlockingCheck.ps1</code> — abort if in-progress async operations detected</td></tr>
+        <tr><td class="step-num">5</td><td class="step-name">Version compare</td><td class="mock-yes">✓</td><td><code>Compare-SolutionVersion.ps1</code> — compare version against previous environment; set skip_import flag if already at this version</td></tr>
+        <tr><td class="step-num">6</td><td class="step-name">Find solution</td><td class="mock-yes">✓</td><td>PAC solution list → detect if solution already exists → auto-determines upgrade vs first-install</td></tr>
+        <tr><td class="step-num">7</td><td class="step-name">Backup</td><td class="mock-no">sim</td><td>PAC solution export → saves backup ZIP to <code>backup/{name}_{env}_backup.zip</code></td></tr>
+        <tr><td class="step-num">8</td><td class="step-name">Import solution</td><td class="mock-no">sim</td><td>PAC solution import (unmanaged for Dev, managed for others). Auto-selects upgrade pattern if solution exists.</td></tr>
+        <tr><td class="step-num">9</td><td class="step-name">Import config data</td><td class="mock-no">sim</td><td>If <code>import_config_data=true</code> and data ZIP exists, PAC data import into target env</td></tr>
+        <tr><td class="step-num">10</td><td class="step-name">Publish customizations</td><td class="mock-no">sim</td><td>PAC solution publish (Dev/unmanaged only)</td></tr>
+        <tr><td class="step-num">11</td><td class="step-name">Activate Cloud Flows</td><td class="mock-no">sim</td><td>PAC flow list → PAC flow enable for each flow in the solution</td></tr>
+        <tr><td class="step-num">12</td><td class="step-name">JFrog Prod tag</td><td class="mock-no">sim</td><td>Prod only — calls <code>Invoke-JFrogAction.ps1 tag-prod</code> to mark artifact as <code>prodDeployed=true</code></td></tr>
+        <tr><td class="step-num">13</td><td class="step-name">Deploy summary</td><td class="mock-yes">✓</td><td><code>Write-DeploySummary.ps1</code> → writes per-solution deploy table to Step Summary</td></tr>
+        <tr><td class="step-num">—</td><td class="step-name">Upload backup artifact</td><td class="mock-no">skip</td><td>After loop — uploads <code>backup-{env}-v{run}</code> artifact (enables rollback)</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ═══════════════════ PIPELINE 2 ═══════════════════ -->
+<div class="tab-panel" id="tab-pipeline2">
+  <div class="detail-section">
+    <h3><span class="badge badge-p2">Pipeline 2</span> deploy-prod.yml — UAT Re-validation + Production</h3>
+    <p style="font-size:12px;color:#374151;margin-bottom:14px;">
+      Triggered automatically when <code>pipeline-context.json</code> changes on <code>main</code> (i.e. the feature branch PR is merged). Downloads build artifacts from Pipeline 1 using the <code>run_id</code> stored in <code>pipeline-context.json</code>.
+    </p>
+    <table class="step-table">
+      <thead><tr><th>#</th><th>Job / Step</th><th>Type</th><th>What it does</th></tr></thead>
+      <tbody>
+        <tr><td class="step-num">1</td><td class="step-name">guard</td><td><span class="step-type st-inline">inline</span></td><td>Confirms trigger is a push to main or manual dispatch. Logs actor and commit.</td></tr>
+        <tr><td class="step-num">2</td><td class="step-name">read-context</td><td><span class="step-type st-inline">inline</span></td><td>Checks out main, parses <code>pipeline-context.json</code> → outputs <code>run_id</code>, <code>run_number</code>, <code>matrix</code>, <code>solution_list</code> for downstream jobs</td></tr>
+        <tr><td class="step-num">3</td><td class="step-name">deploy-uat</td><td><span class="step-type st-gate">env gate</span></td><td>Uses <code>environment: UAT</code> (approval gate). ci-bootstrap → pac-install → download artifacts from Pipeline 1 run via <code>run-id</code> → deploy-all-solutions (UAT, Managed)</td></tr>
+        <tr><td class="step-num">4</td><td class="step-name">deploy-prod</td><td><span class="step-type st-gate">env gate</span></td><td>Only if UAT succeeded. Uses <code>environment: Prod</code> (approval gate). Same steps → deploy-all-solutions (Prod, Managed, <code>import_config_data=true</code>, <code>tag_prod_deployed=true</code>)</td></tr>
+        <tr><td class="step-num">5</td><td class="step-name">pipeline-summary</td><td><span class="step-type st-inline">inline</span></td><td>Always runs. Writes summary table, sends failure email notification.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="note">
+    <strong>Why UAT is deployed twice:</strong> Pipeline 1 deploys UAT as a non-prod validation step (along with Dev/Intg/FRS/Perf in parallel). Pipeline 2 re-deploys UAT as the final gate before Prod — ensuring the artifacts that will hit Prod are proven on UAT in the same pipeline run that precedes Prod approval.
+  </div>
+
+  <div class="detail-section" style="margin-top:20px;">
+    <h3>Cross-Pipeline Artifact Handoff</h3>
+    <div class="auth-flow">
+      <div class="auth-step">
+        <div class="num">Pipeline 1</div>
+        <div class="title">Builds artifacts</div>
+        <div class="sub">Uploads solution-artifact-* to GitHub (run #N)</div>
+      </div>
+      <div class="auth-arrow">→</div>
+      <div class="auth-step">
+        <div class="num">Pipeline 1</div>
+        <div class="title">Writes context</div>
+        <div class="sub">pipeline-context.json with runId=N committed to feature branch</div>
+      </div>
+      <div class="auth-arrow">→</div>
+      <div class="auth-step">
+        <div class="num">PR Merge</div>
+        <div class="title">Lands on main</div>
+        <div class="sub">pipeline-context.json pushed to main triggers Pipeline 2</div>
+      </div>
+      <div class="auth-arrow">→</div>
+      <div class="auth-step">
+        <div class="num">Pipeline 2</div>
+        <div class="title">Reads context</div>
+        <div class="sub">Parses runId=N from pipeline-context.json</div>
+      </div>
+      <div class="auth-arrow">→</div>
+      <div class="auth-step">
+        <div class="num">Pipeline 2</div>
+        <div class="title">Downloads artifacts</div>
+        <div class="sub">download-artifact with run-id=N + github-token</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════ UTILITIES ═══════════════════ -->
+<div class="tab-panel" id="tab-utilities">
+  <div class="detail-section">
+    <h3><span class="badge badge-util">Utility</span> export-solution.yml — Export from Sandbox</h3>
+    <table class="step-table">
+      <thead><tr><th>#</th><th>Step</th><th>What it does</th></tr></thead>
+      <tbody>
+        <tr><td class="step-num">1</td><td class="step-name">setup</td><td>Resolve solutions to export. If <code>solution_name</code> provided, export just that one; else export all from solutions.json. Create/switch to feature branch.</td></tr>
+        <tr><td class="step-num">2</td><td class="step-name">export (matrix, sequential)</td><td>For each solution: PAC solution export (unmanaged from sandbox) → PAC solution unpack → <code>src/solutions/{name}/</code> → <code>git pull --rebase</code> → <code>git commit</code> → <code>git push</code></td></tr>
+        <tr><td class="step-num">3</td><td class="step-name">create-pr</td><td>Creates pull request from feature branch to main using GitHub CLI (<code>GHA_CORE_PAT</code>). Only if <code>create_pr=true</code> and not mock mode.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="detail-section">
+    <h3><span class="badge badge-util">Utility</span> pr-validation.yml — Build-Only PR Check</h3>
+    <table class="step-table">
+      <thead><tr><th>#</th><th>Step</th><th>What it does</th></tr></thead>
+      <tbody>
+        <tr><td class="step-num">1</td><td class="step-name">setup</td><td>Resolve solutions from solutions.json. Skip if PR is from a feature/pipeline-* branch (those are handled by the main pipelines).</td></tr>
+        <tr><td class="step-num">2</td><td class="step-name">stage-build</td><td>Full build pipeline (<code>_stage-build.yml</code>) — pack, solution-checker, export-config-data. No deploy step.</td></tr>
+        <tr><td class="step-num">3</td><td class="step-name">summary</td><td><code>Write-PipelineSummary.ps1</code> → PR check summary table.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="detail-section">
+    <h3><span class="badge badge-util">Utility</span> rollback.yml → _job-rollback.yml</h3>
+    <table class="step-table">
+      <thead><tr><th>#</th><th>Step</th><th>What it does</th></tr></thead>
+      <tbody>
+        <tr><td class="step-num">1</td><td class="step-name">Safety guard</td><td>Abort unless <code>confirm-rollback=CONFIRM</code>. Requires explicit confirmation to prevent accidental rollbacks.</td></tr>
+        <tr><td class="step-num">2</td><td class="step-name">Resolve environment config</td><td>Map environment name → URL. Determine solution type (Dev=unmanaged, others=managed).</td></tr>
+        <tr><td class="step-num">3</td><td class="step-name">Download backup artifact</td><td>Downloads <code>backup-{env}-v{run-number}</code> artifact uploaded during the original deploy.</td></tr>
+        <tr><td class="step-num">4</td><td class="step-name">Locate backup ZIP</td><td>Finds <code>{SolutionName}_{Env}_backup.zip</code> in the downloaded artifact.</td></tr>
+        <tr><td class="step-num">5</td><td class="step-name">Azure Login + AKV</td><td>OIDC login, fetch PP credentials from AKV.</td></tr>
+        <tr><td class="step-num">6</td><td class="step-name">Import backup</td><td>PAC solution import of the backup ZIP (force-overwrite, activate-plugins, run-asynchronously).</td></tr>
+        <tr><td class="step-num">7</td><td class="step-name">Publish (Dev only)</td><td>PAC solution publish if target is Dev.</td></tr>
+      </tbody>
+    </table>
+    <div class="note" style="margin-top:10px;"><strong>Note:</strong> Rollback re-imports the pre-deploy backup. Components removed by the original deployment are NOT restored. Use a full environment restore for that case.</div>
+  </div>
+</div>
+
+<!-- ═══════════════════ ACTIONS ═══════════════════ -->
+<div class="tab-panel" id="tab-actions">
+  <p style="font-size:12px;color:#374151;margin-bottom:16px;">All composite actions live in <code>GHA-Core/.github/actions/dynamics/</code>. They are referenced as <code>ppudot2-cloud/GHA-Core/.github/actions/dynamics/{name}@main</code>.</p>
+  <div class="ref-grid">
+    <div class="ref-card">
+      <h4>ci-bootstrap</h4>
+      <div class="path">.github/actions/dynamics/ci-bootstrap/action.yml</div>
+      <p>Shared first step for every job. Checks out caller repo (full history), checks out GHA-Core to <code>.ci/</code>, performs Azure OIDC login, fetches AKV secrets (PP credentials, optionally JFrog token), merges global-vars.yml + project-vars.yml into <code>$GITHUB_ENV</code>. Skips Azure/AKV steps in mock mode.</p>
+    </div>
+    <div class="ref-card">
+      <h4>pac-install</h4>
+      <div class="path">.github/actions/dynamics/pac-install/action.yml</div>
+      <p>Installs Microsoft Power Platform CLI via <code>microsoft/powerplatform-actions/actions-install@v1</code> and adds to PATH. No inputs required.</p>
+    </div>
+    <div class="ref-card">
+      <h4>pack-solution</h4>
+      <div class="path">.github/actions/dynamics/pack-solution/action.yml</div>
+      <p>Reads version from <code>Solution.xml</code>, stamps it to <code>Major.Minor.RunNumber.Attempt</code>, strips the <code>&lt;Managed&gt;</code> tag, packs both Unmanaged and Managed ZIPs (via PAC CLI or mock simulation). Outputs: version, artifact_name, unmanaged_zip, managed_zip, out_dir.</p>
+    </div>
+    <div class="ref-card">
+      <h4>solution-checker</h4>
+      <div class="path">.github/actions/dynamics/solution-checker/action.yml</div>
+      <p>Runs PAC Solution Checker against the unmanaged ZIP for the specified geography. Generates SARIF output. Uploads checker artifact. Always mandatory in real mode; simulated in mock mode via <code>Invoke-SolutionCheckerSim.ps1</code>.</p>
+    </div>
+    <div class="ref-card">
+      <h4>export-config-data</h4>
+      <div class="path">.github/actions/dynamics/export-config-data/action.yml</div>
+      <p>Exports configuration migration data from the source PP environment using the provided schema XML file. Writes output to <code>config-data/{name}-data.zip</code>. Skips if no schema file provided. Simulated in mock mode via <code>Export-ConfigDataSim.ps1</code>.</p>
+    </div>
+    <div class="ref-card">
+      <h4>export-solution</h4>
+      <div class="path">.github/actions/dynamics/export-solution/action.yml</div>
+      <p>Exports an unmanaged solution from a PP environment using PAC CLI. Used by the export stage in <code>_stage-export.yml</code>.</p>
+    </div>
+    <div class="ref-card">
+      <h4>import-solution</h4>
+      <div class="path">.github/actions/dynamics/import-solution/action.yml</div>
+      <p>Wraps PAC solution import for all variants: unmanaged, managed, and stage-and-upgrade (holding solution pattern). Handles deployment settings, async wait, plugin activation.</p>
+    </div>
+    <div class="ref-card">
+      <h4>deploy-all-solutions</h4>
+      <div class="path">.github/actions/dynamics/deploy-all-solutions/action.yml</div>
+      <p>The main deploy orchestrator. Loops through all solutions in <code>solutions_json</code> in <code>deployOrder</code> sequence. For each solution: token substitution → base check → blocking check → version compare → find solution → backup → import → config data → publish → activate flows → JFrog tag → deploy summary. Uploads backup artifact after loop.</p>
+    </div>
+    <div class="ref-card">
+      <h4>pre-deploy-checks</h4>
+      <div class="path">.github/actions/dynamics/pre-deploy-checks/action.yml</div>
+      <p>Runs pre-import validation: <code>Invoke-BlockingCheck.ps1</code> (abort if async operations in progress) and <code>Compare-SolutionVersion.ps1</code> (verify version progression is correct).</p>
+    </div>
+    <div class="ref-card">
+      <h4>post-deploy</h4>
+      <div class="path">.github/actions/dynamics/post-deploy/action.yml</div>
+      <p>Post-import actions: tags the JFrog artifact as <code>prodDeployed=true</code> (Prod only), writes per-solution deploy summary via <code>Write-DeploySummary.ps1</code>.</p>
+    </div>
+    <div class="ref-card">
+      <h4>jfrog-upload</h4>
+      <div class="path">.github/actions/dynamics/jfrog-upload/action.yml</div>
+      <p>Uploads managed ZIP, unmanaged ZIP, and SARIF to JFrog Artifactory for long-term archival. Runs once per build. Not used for artifact download during deploys (GitHub artifact storage is used for that).</p>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════ SCRIPTS ═══════════════════ -->
+<div class="tab-panel" id="tab-scripts">
+  <p style="font-size:12px;color:#374151;margin-bottom:16px;">All PowerShell scripts live in <code>GHA-Core/.github/scripts/dynamics/</code>. On the runner they are available at <code>.ci/.github/scripts/dynamics/</code> after <code>ci-bootstrap</code> runs.</p>
+  <table class="script-table">
+    <thead><tr><th>Script</th><th>Called by</th><th>Mock?</th><th>Purpose</th></tr></thead>
+    <tbody>
+      <tr><td class="script-name">Resolve-SolutionMatrix.ps1</td><td>setup jobs (GHA-Dynamics)</td><td class="mock-yes">✓</td><td>Reads <code>solutions.json</code>, applies topological sort by <code>deployOrder</code>, outputs GitHub Actions matrix JSON and solution_list string to <code>$GITHUB_OUTPUT</code></td></tr>
+      <tr><td class="script-name">Set-SolutionVersion.ps1</td><td>pack-solution action</td><td class="mock-yes">✓</td><td>Reads <code>Solution.xml</code>, extracts current version, computes new version as <code>Major.Minor.RunNumber.Attempt</code>, writes back to Solution.xml</td></tr>
+      <tr><td class="script-name">Remove-ManagedTag.ps1</td><td>pack-solution action</td><td class="mock-yes">✓</td><td>Removes <code>&lt;Managed&gt;0&lt;/Managed&gt;</code> from Solution.xml to prevent PAC CLI 1.40+ pack failure when building managed ZIP</td></tr>
+      <tr><td class="script-name">New-MockSolutionZip.ps1</td><td>pack-solution action</td><td class="mock-yes">mock only</td><td>Creates a minimal valid ZIP file containing a stub Solution.xml. Used in mock mode to simulate pack output without PAC CLI</td></tr>
+      <tr><td class="script-name">Invoke-SolutionCheckerSim.ps1</td><td>solution-checker action</td><td class="mock-yes">mock only</td><td>Simulates Solution Checker by validating ZIP structure and generating a mock SARIF file. No network calls.</td></tr>
+      <tr><td class="script-name">Export-ConfigDataSim.ps1</td><td>export-config-data action</td><td class="mock-yes">mock only</td><td>Parses the schema XML to verify it is valid, then creates a placeholder data ZIP. No PP environment connection.</td></tr>
+      <tr><td class="script-name">Invoke-ExportCommitSim.ps1</td><td>export-solution.yml</td><td class="mock-yes">mock only</td><td>Simulates the export-and-commit step: creates stub solution files in <code>src/solutions/</code>, stages them, creates a git commit. No PAC CLI required.</td></tr>
+      <tr><td class="script-name">Invoke-BlockingCheck.ps1</td><td>pre-deploy-checks action, deploy-all-solutions</td><td class="mock-yes">✓</td><td>Calls PAC to list in-progress async operations on the target environment. Exits with error if blocking operations found; warns if near threshold.</td></tr>
+      <tr><td class="script-name">Compare-SolutionVersion.ps1</td><td>pre-deploy-checks action, deploy-all-solutions</td><td class="mock-yes">✓</td><td>Compares solution version in the built artifact against the version currently installed in the target environment. Sets <code>skip_import</code> flag if versions match.</td></tr>
+      <tr><td class="script-name">Merge-Variables.ps1</td><td>ci-bootstrap action</td><td class="mock-yes">✓</td><td>Reads <code>GHA-Core/.github/config/global-vars.yml</code> and <code>GHA-Dynamics/.github/config/project-vars.yml</code>, merges them (project overrides global), writes all key=value pairs to <code>$GITHUB_ENV</code></td></tr>
+      <tr><td class="script-name">Invoke-JFrogAction.ps1</td><td>jfrog-upload action, post-deploy action</td><td class="mock-yes">✓</td><td>Handles two operations: <code>upload</code> (push ZIPs to Artifactory with metadata) and <code>tag-prod</code> (set <code>prodDeployed=true;deployedDate=</code> property on existing artifact)</td></tr>
+      <tr><td class="script-name">Write-BuildSummary.ps1</td><td>_job-build.yml</td><td class="mock-yes">✓</td><td>Writes a markdown table summarising the build job (version stamped, packs, checker mode, config data mode, JFrog upload) to <code>$GITHUB_STEP_SUMMARY</code>. Optionally writes a JSON record for the consolidated pipeline summary.</td></tr>
+      <tr><td class="script-name">Write-DeploySummary.ps1</td><td>post-deploy action, deploy-all-solutions</td><td class="mock-yes">✓</td><td>Writes a per-solution, per-environment deploy result table (import outcome, version, backup, config data, flows activated) to <code>$GITHUB_STEP_SUMMARY</code>.</td></tr>
+      <tr><td class="script-name">Write-PipelineSummary.ps1</td><td>pipeline-summary jobs (GHA-Dynamics)</td><td class="mock-yes">✓</td><td>Aggregates all job JSON records and writes the final consolidated pipeline summary table (export, build, all deploy results per solution) to <code>$GITHUB_STEP_SUMMARY</code>.</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ═══════════════════ CONFIG & AUTH ═══════════════════ -->
+<div class="tab-panel" id="tab-config">
+
+  <div class="detail-section">
+    <h3>Authentication Flow — Zero Long-Lived Secrets</h3>
+    <div class="auth-flow">
+      <div class="auth-step">
+        <div class="num">Step 1</div>
+        <div class="title">GitHub OIDC</div>
+        <div class="sub">Runner requests JWT from GitHub's OIDC provider</div>
+      </div>
+      <div class="auth-arrow">→</div>
+      <div class="auth-step">
+        <div class="num">Step 2</div>
+        <div class="title">Azure AD</div>
+        <div class="sub">JWT validated against Federated Identity Credential on App Registration</div>
+      </div>
+      <div class="auth-arrow">→</div>
+      <div class="auth-step">
+        <div class="num">Step 3</div>
+        <div class="title">Access Token</div>
+        <div class="sub">Azure issues short-lived access token (no client secret used)</div>
+      </div>
+      <div class="auth-arrow">→</div>
+      <div class="auth-step">
+        <div class="num">Step 4</div>
+        <div class="title">Key Vault</div>
+        <div class="sub"><code>az keyvault secret show</code> fetches PP credentials</div>
+      </div>
+      <div class="auth-arrow">→</div>
+      <div class="auth-step">
+        <div class="num">Step 5</div>
+        <div class="title">PP Actions</div>
+        <div class="sub">PP_APP_ID + PP_CLIENT_SECRET + PP_TENANT_ID used for all PAC CLI calls</div>
+      </div>
+    </div>
+
+    <div style="margin-top:16px;">
+      <strong style="font-size:12px;">GitHub Variables required per repo:</strong>
+      <table class="step-table" style="margin-top:8px;">
+        <thead><tr><th>Variable</th><th>Example</th><th>Purpose</th></tr></thead>
+        <tbody>
+          <tr><td><code>AZURE_CLIENT_ID</code></td><td><code>xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx</code></td><td>App Registration client ID for OIDC</td></tr>
+          <tr><td><code>AZURE_TENANT_ID</code></td><td><code>xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx</code></td><td>Your Azure AD tenant ID (NOT Contoso demo)</td></tr>
+          <tr><td><code>AZURE_SUBSCRIPTION_ID</code></td><td><code>xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx</code></td><td>Azure subscription containing the Key Vault</td></tr>
+          <tr><td><code>AZURE_KEY_VAULT_NAME</code></td><td><code>my-pp-keyvault</code></td><td>Azure Key Vault holding PP credentials</td></tr>
+          <tr><td><code>PP_DEV_URL</code></td><td><code>https://org-dev.crm.dynamics.com</code></td><td>Dev environment URL</td></tr>
+          <tr><td><code>PP_INTG_URL</code></td><td><code>https://org-intg.crm.dynamics.com</code></td><td>Integration environment URL</td></tr>
+          <tr><td><code>PP_UAT_URL</code></td><td><code>https://org-uat.crm.dynamics.com</code></td><td>UAT environment URL</td></tr>
+          <tr><td><code>PP_FRS_URL</code></td><td><code>https://org-frs.crm.dynamics.com</code></td><td>FRS environment URL</td></tr>
+          <tr><td><code>PP_PERF_URL</code></td><td><code>https://org-perf.crm.dynamics.com</code></td><td>Perf environment URL</td></tr>
+          <tr><td><code>PP_PROD_URL</code></td><td><code>https://org.crm.dynamics.com</code></td><td>Production environment URL</td></tr>
+          <tr><td><code>PP_SDBX_URL</code></td><td><code>https://org-sdbx.crm.dynamics.com</code></td><td>Sandbox URL (export-solution.yml only)</td></tr>
+          <tr><td><code>JFROG_URL</code></td><td><code>https://myorg.jfrog.io/artifactory</code></td><td>JFrog base URL (optional)</td></tr>
+          <tr><td><code>JFROG_REPO</code></td><td><code>powerplatform-solutions</code></td><td>JFrog repository name (optional)</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div style="margin-top:14px;">
+      <strong style="font-size:12px;">Federated Identity Credentials required on App Registration (Azure Portal):</strong>
+      <table class="step-table" style="margin-top:8px;">
+        <thead><tr><th>Entity type</th><th>Value</th><th>When used</th></tr></thead>
+        <tbody>
+          <tr><td>Branch</td><td><code>main</code></td><td>Pipeline 2 (deploy-prod), read-context job</td></tr>
+          <tr><td>Environment</td><td><code>Dev</code></td><td>Pipeline 1, deploy-dev job</td></tr>
+          <tr><td>Environment</td><td><code>Intg</code></td><td>Pipeline 1, deploy-intg job</td></tr>
+          <tr><td>Environment</td><td><code>UAT</code></td><td>Pipeline 1 + Pipeline 2, deploy-uat job</td></tr>
+          <tr><td>Environment</td><td><code>FRS</code></td><td>Pipeline 1, deploy-frs job</td></tr>
+          <tr><td>Environment</td><td><code>Perf</code></td><td>Pipeline 1, deploy-perf job</td></tr>
+          <tr><td>Environment</td><td><code>Prod</code></td><td>Pipeline 2, deploy-prod job</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="detail-section">
+    <h3>Key Configuration Files</h3>
+    <div class="ref-grid">
+      <div class="ref-card">
+        <h4>solutions.json</h4>
+        <div class="path">GHA-Dynamics/solutions.json</div>
+        <p>Single source of truth for the solution registry. Defines name, source folder, deploy order, deployment settings paths per environment, and config migration schema. Read by <code>Resolve-SolutionMatrix.ps1</code> to build the GitHub Actions matrix.</p>
+      </div>
+      <div class="ref-card">
+        <h4>pipeline-context.json</h4>
+        <div class="path">GHA-Dynamics/pipeline-context.json</div>
+        <p>Written by Pipeline 1 after UAT deploy. Contains <code>runId</code>, <code>runNumber</code>, <code>runAttempt</code>, <code>matrix</code>, <code>solutionList</code>, <code>featureBranch</code>, <code>triggeredBy</code>. Committed to the feature branch; lands on main when PR is merged. Pipeline 2 uses <code>runId</code> to download artifacts from Pipeline 1.</p>
+      </div>
+      <div class="ref-card">
+        <h4>deployment-settings/{env}/{SolutionName}.json</h4>
+        <div class="path">GHA-Dynamics/deployment-settings/</div>
+        <p>Per-solution, per-environment variable overrides injected at import time. Contains <code>EnvironmentVariables</code> and <code>ConnectionReferences</code>. Token placeholders <code>#{TOKEN}#</code> are replaced at runtime from GitHub Variables/Secrets by <code>deploy-all-solutions</code>.</p>
+      </div>
+      <div class="ref-card">
+        <h4>config/{SolutionName}/data-schema.xml</h4>
+        <div class="path">GHA-Dynamics/config/</div>
+        <p>Configuration Migration Tool schema XML defining which entities and records to export/import. Referenced in <code>solutions.json</code> via <code>dataSchemaFile</code>. Used by <code>export-config-data</code> action and imported by <code>deploy-all-solutions</code> when <code>import_config_data=true</code>.</p>
+      </div>
+      <div class="ref-card">
+        <h4>global-vars.yml</h4>
+        <div class="path">GHA-Core/.github/config/global-vars.yml</div>
+        <p>Org-wide default variable values. Merged first by <code>Merge-Variables.ps1</code>. Project-level values in <code>project-vars.yml</code> override these. Ensures consistent defaults across all GHA-Dynamics repos.</p>
+      </div>
+      <div class="ref-card">
+        <h4>project-vars.yml</h4>
+        <div class="path">GHA-Dynamics/.github/config/project-vars.yml</div>
+        <p>Project-specific variable overrides. Values here take precedence over <code>global-vars.yml</code>. Used for project-specific feature flags, timeouts, or config values that vary per project.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function showTab(id) {
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + id).classList.add('active');
+  event.target.classList.add('active');
+}
+</script>
+</body>
+</html>
