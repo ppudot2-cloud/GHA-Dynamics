@@ -458,7 +458,6 @@ This file is the single source of truth for solution deployment configuration:
       "folder": "src/solutions/CoreSolution",
       "deployOrder": 1,
       "dependsOn": [],
-      "checkerGeo": "UnitedStates",
       "dataSchemaFile": "config/CoreSolution/data-schema.xml",
       "deploymentSettings": {
         "dev":  "deployment-settings/dev/CoreSolution.json",
@@ -479,7 +478,6 @@ This file is the single source of truth for solution deployment configuration:
 | `folder` | ✅ | Relative path to unpacked solution source |
 | `deployOrder` | ✅ | Integer; controls sequential import order within each environment |
 | `dependsOn` | No | Documentation only; does not affect deploy order |
-| `checkerGeo` | No | Solution Checker geography; defaults to `UnitedStates` |
 | `dataSchemaFile` | No | Path to config migration schema XML; empty string if unused |
 | `deploymentSettings` | No | Per-environment deployment settings JSON paths |
 

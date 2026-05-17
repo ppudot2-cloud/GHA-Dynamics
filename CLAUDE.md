@@ -63,7 +63,6 @@ Approval gates = GitHub Environment protection rules. Adding/removing required r
 
 - `dependsOn`: drives topological sort in `compute-solutions.py` → controls deploy order
 - `deploymentSettings`: per-env JSON paths; passed to `_reusable-deploy` as `settings_file` input
-- `checkerGeo`: Solution Checker geography (e.g. `UnitedStates`) — overrides the org-wide default
 
 ## Required GitHub secrets and variables
 

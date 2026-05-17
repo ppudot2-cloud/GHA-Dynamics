@@ -163,7 +163,7 @@ Runs the export action per solution. Outputs the feature branch name for downstr
 **Called by:** `_stage-build.yml` (one instance per solution in the matrix)
 **Purpose:** Single-solution build job. Orchestrates: ci-bootstrap → pac-install → optional artifact download → pack-solution → solution-checker → export-config-data → upload artifact → jfrog-upload → write summary.
 
-**Key inputs:** `solution_name`, `solution_source_folder`, `use_exported_source`, `checker_geo`, `checker_error_level`, `data_schema_file`, `source_environment_url`, `mock_deploy`, `jfrog_url`, `jfrog_repo`
+**Key inputs:** `solution_name`, `solution_source_folder`, `use_exported_source`, `checker_error_level`, `data_schema_file`, `source_environment_url`, `mock_deploy`, `jfrog_url`, `jfrog_repo`
 
 **Outputs:** `solution_version`, `artifact_name`, `unmanaged_zip`, `managed_zip`, `checker_artifact_name`
 
@@ -233,7 +233,7 @@ Steps:
 Real mode: `microsoft/powerplatform-actions/check-solution@v1` → generates SARIF → uploads checker artifact
 Mock mode: `Invoke-SolutionCheckerSim.ps1` → validates ZIP structure → generates mock SARIF
 
-**Inputs:** `solution_name`, `unmanaged_zip`, `managed_zip`, `checker_geo`, `checker_error_level`, `checker_artifact_name`, `mock_deploy`, `out_dir`
+**Inputs:** `solution_name`, `unmanaged_zip`, `managed_zip`, `checker_error_level`, `checker_artifact_name`, `mock_deploy`, `out_dir`
 
 ---
 
@@ -446,7 +446,7 @@ In mock mode: logs what would have been uploaded/tagged without making network c
 **Called by:** `_job-build.yml` write-build-summary step
 **Purpose:** Writes a markdown table to `$GITHUB_STEP_SUMMARY` summarising the build job: version stamped, pack mode, Solution Checker mode, config data mode, JFrog upload status. Optionally writes a JSON record file for later aggregation by `Write-PipelineSummary.ps1`.
 
-**Parameters:** `-SolutionName`, `-SolutionVersion`, `-ArtifactName`, `-RunNumber`, `-MockDeploy`, `-CheckerGeo`, `-DataSchemaFile`, `-EnableJFrogUpload`, `-JFrogUrl`, `-JFrogRepo`, `-JsonOutputPath`
+**Parameters:** `-SolutionName`, `-SolutionVersion`, `-ArtifactName`, `-RunNumber`, `-MockDeploy`, `-DataSchemaFile`, `-EnableJFrogUpload`, `-JFrogUrl`, `-JFrogRepo`, `-JsonOutputPath`
 
 ---
 
@@ -483,7 +483,6 @@ In mock mode: logs what would have been uploaded/tagged without making network c
       "folder": "src/solutions/CoreSolution",  // Path to unpacked source
       "deployOrder": 1,                   // Sequential deploy position (1 = first)
       "dependsOn": [],                    // Documentation only, no functional effect
-      "checkerGeo": "UnitedStates",       // Solution Checker geography
       "dataSchemaFile": "config/CoreSolution/data-schema.xml",  // Empty = skip
       "deploymentSettings": {
         "dev":  "deployment-settings/dev/CoreSolution.json",

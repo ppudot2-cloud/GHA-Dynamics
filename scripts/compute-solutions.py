@@ -165,7 +165,6 @@ def flatten(sol: dict) -> dict:
     return {
         "name":           sol["name"],
         "folder":         sol["folder"],
-        "checkerGeo":     sol.get("checkerGeo", "UnitedStates"),
         "dataSchemaFile": sol.get("dataSchemaFile", ""),
         # Per-environment deployment-settings paths
         "devSettings":    ds.get("dev",  ""),

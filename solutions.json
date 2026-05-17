@@ -12,7 +12,6 @@
     "  deployOrder       — integer controlling sequential deploy sequence (required)",
     "  dependsOn         — optional metadata only; documents logical prerequisites",
     "                      but does NOT affect deploy order (use deployOrder for that)",
-    "  checkerGeo        — Solution Checker geography (default: UnitedStates)",
     "  dataSchemaFile    — Configuration Migration schema XML ('' if unused)",
     "  deploymentSettings — per-environment deployment-settings.json paths",
     "",
@@ -25,7 +24,7 @@
       "folder": "src/solutions/CoreSolution",
       "deployOrder": 1,
       "dependsOn": [],
-      "checkerGeo": "UnitedStates",
+
       "dataSchemaFile": "config/CoreSolution/data-schema.xml",
       "deploymentSettings": {
         "dev":  "deployment-settings/dev/CoreSolution.json",
@@ -41,7 +40,7 @@
       "folder": "src/solutions/ExtensionA",
       "deployOrder": 2,
       "dependsOn": ["CoreSolution"],
-      "checkerGeo": "UnitedStates",
+
       "dataSchemaFile": "",
       "deploymentSettings": {
         "dev":  "deployment-settings/dev/ExtensionA.json",
@@ -57,7 +56,7 @@
       "folder": "src/solutions/ExtensionB",
       "deployOrder": 3,
       "dependsOn": ["CoreSolution"],
-      "checkerGeo": "UnitedStates",
+
       "dataSchemaFile": "",
       "deploymentSettings": {
         "dev":  "deployment-settings/dev/ExtensionB.json",

@@ -78,7 +78,6 @@ Edit `solutions.json` in the root of GHA-Dynamics to describe your solutions:
       "folder": "src/solutions/MySolution",
       "deployOrder": 1,
       "dependsOn": [],
-      "checkerGeo": "UnitedStates",
       "dataSchemaFile": "",
       "deploymentSettings": {
         "dev":  "deployment-settings/dev/MySolution.json",
