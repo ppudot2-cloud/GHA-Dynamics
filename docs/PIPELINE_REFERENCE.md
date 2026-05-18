@@ -26,7 +26,7 @@ These are the entry-point workflows — the ones you trigger or that fire automa
 ### `build-and-deploy.yml` — Pipeline 1
 
 **Path:** `.github/workflows/build-and-deploy.yml`
-**Trigger:** `workflow_dispatch` or PR to `main` touching `src/solutions/**` or `solutions.json`
+**Trigger:** `workflow_dispatch` (manual) or `push` to any `feature/**` branch (paths-ignore: pipeline-context.json)
 **Purpose:** Full build pipeline for non-production environments. Exports from sandbox, builds all solutions, deploys to Dev/Intg/UAT/FRS/Perf in parallel, then creates a PR to main.
 
 **Inputs:**
@@ -35,7 +35,8 @@ These are the entry-point workflows — the ones you trigger or that fire automa
 |---|---|---|---|
 | `mock_deploy` | boolean | false | Skip all Dataverse/JFrog operations; simulate the entire pipeline |
 | `enable_backup` | boolean | false | Take a pre-import backup at each environment before upgrading. If the import fails, the pipeline automatically re-imports the backup to restore the previous version. Recommended: `true` for UAT, FRS, Perf, Prod. |
-| `solution_name` | string | `''` | Deploy a specific solution only; empty = all solutions from solutions.json |
+| `solutions` | string | `all` | "all" or comma-separated solution names to build and deploy |
+| `skip_export` | boolean | false | Skip sandbox export — build from source already committed to the current branch. Set automatically when triggered by a push event. |
 
 **Job flow:**
 ```
@@ -50,10 +51,11 @@ setup → stage-export → stage-build → deploy-dev    ┐
 
 **Key behaviours:**
 - `setup` runs `Resolve-SolutionMatrix.ps1` to read `solutions.json` and build the GitHub Actions matrix
-- `stage-export` calls `_stage-export.yml` — only runs if `export_from_sandbox` input is true
+- `stage-export` calls `_stage-export.yml`; when triggered by a push event or when `skip_export=true`, the export jobs are skipped — the commit job still runs to write `pipeline-context.json` to the existing branch
 - `stage-build` calls `_stage-build.yml` which fans out to `_job-build.yml` per solution
 - All 5 deploy jobs run in parallel; each internally deploys solutions **sequentially** (Dataverse constraint)
-- `create-main-pr` writes `pipeline-context.json` to the feature branch then opens a PR to main via `gh pr create`
+- `pipeline-context.json` is written by **stage-export's commit job** during the export stage
+- `create-main-pr` opens a PR to main via `gh pr create` after UAT deploy succeeds
 - `pipeline-summary` calls `Write-PipelineSummary.ps1` and sends failure email if any job failed
 
 ---
@@ -61,7 +63,7 @@ setup → stage-export → stage-build → deploy-dev    ┐
 ### `deploy-prod.yml` — Pipeline 2
 
 **Path:** `.github/workflows/deploy-prod.yml`
-**Trigger:** `pull_request` closed+merged to `main` from a `feature/pipeline-*` branch (fires when Pipeline 1's PR is merged)
+**Trigger:** `pull_request` closed+merged to `main` from a `feature/*` branch (fires when Pipeline 1's PR is merged)
 **Also trigger:** `workflow_dispatch` (for manual re-runs or ad-hoc Prod promotion)
 **Purpose:** Final promotion to UAT (re-validation) and Production. Downloads build artifacts from Pipeline 1 run.
 
@@ -78,6 +80,7 @@ guard → read-context → deploy-uat → deploy-prod → pipeline-summary
 ```
 
 **Key behaviours:**
+- `guard` job checks `head.ref` starts with `feature/` — rejects merges from non-feature branches
 - `read-context` checks out main, parses `pipeline-context.json`, outputs `run_id` used to download artifacts
 - `deploy-uat` uses `environment: UAT` — pauses for approval if UAT has required reviewers configured
 - `deploy-prod` uses `environment: Prod` — pauses for Prod approval; only runs if UAT succeeded
@@ -123,7 +126,7 @@ setup → export (matrix, max-parallel:1) → create-pr
 **Purpose:** Validate that a PR builds successfully before merge. Build only — no deploy.
 
 **Key behaviours:**
-- Skips if PR is from a `feature/pipeline-*` branch (those are Pipeline 1 PRs; only human code changes need validation)
+- Skips if PR is from a `feature/*` branch (those are Pipeline 1 PRs; only human code changes need validation)
 - Runs the full build chain (`_stage-build.yml`) including Solution Checker
 - Writes a build summary via `Write-PipelineSummary.ps1`
 - Failure blocks the PR merge (configure as a required status check in branch protection)
@@ -139,9 +142,9 @@ These workflows are called via `uses: ppudot2-cloud/GHA-Core/.github/workflows/{
 
 **Path:** `.github/workflows/_stage-export.yml`
 **Called by:** `build-and-deploy.yml` stage-export job
-**Purpose:** Export stage — exports solutions from sandbox and commits to the feature branch.
+**Purpose:** Export stage — exports solutions from sandbox and commits to the feature branch. Supports a `skip_export` input.
 
-Runs the export action per solution. Outputs the feature branch name for downstream jobs.
+Supports two modes: **normal** (exports from sandbox, creates `feature/pipeline-{N}` branch) and **skip_export** (source already committed; the commit job only writes `pipeline-context.json` to the existing branch). Outputs the feature branch name for downstream jobs.
 
 ---
 
@@ -517,17 +520,17 @@ In mock mode: logs what would have been uploaded/tagged without making network c
   "runAttempt": "1",
   "matrix": "[{\"name\":\"CoreSolution\",...}]",
   "solutionList": "CoreSolution, ExtensionA, ExtensionB",
-  "featureBranch": "feature/pipeline-42",
+  "featureBranch": "feature/my-export",
+  "exportMode": "real (exported from sandbox)",
   "triggeredBy": "username",
   "timestamp": "2026-05-17T10:30:00Z"
 }
 ```
 
 **Lifecycle:**
-- Pipeline 1 writes this file to the feature branch after UAT deploy succeeds
-- The file is committed and pushed as part of the `create-main-pr` job
+- Pipeline 1's **stage-export commit job** writes this file to the feature branch during the export stage
 - When the PR is merged, `pipeline-context.json` lands on `main` as part of the merge commit
-- Pipeline 2's `pull_request: closed+merged` trigger fires (guard checks `head.ref` starts with `feature/pipeline-*`)
+- Pipeline 2's `pull_request: closed+merged` trigger fires (guard checks `head.ref` starts with `feature/`)
 - Pipeline 2's `read-context` job checks out `main`, parses `runId`, and downloads build artifacts from Pipeline 1
 
 ---
@@ -592,7 +595,6 @@ Store `PROD_DataverseConnectionId` as a GitHub Variable (non-sensitive) or Secre
 # Org-wide defaults — override in project-vars.yml as needed
 PP_CHECKER_ERROR_LEVEL: "CriticalIssueCount"
 PP_MAX_ASYNC_WAIT_MINUTES: "120"
-SOLUTION_CHECKER_GEO: "UnitedStates"
 ```
 
 ### `project-vars.yml`

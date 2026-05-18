@@ -114,12 +114,14 @@ Always run mock mode first to validate the entire wiring without touching Datave
 
 Watch the jobs:
 - `setup` — reads solutions.json, builds matrix
-- `stage-export` — simulates export (no sandbox connection)
+- `stage-export` — simulates export (or skips export entirely if `skip_export=true` or triggered by push to feature branch)
 - `stage-build` — simulates build per solution (no PAC CLI)
 - `deploy-dev`, `deploy-intg`, `deploy-uat`, `deploy-frs`, `deploy-perf` — all run in parallel, all simulated
 - `create-main-pr` — creates a real PR on GitHub (this step runs for real even in mock mode)
 
 Check the **Summary** tab for the consolidated pipeline report.
+
+> **Note:** To skip sandbox export entirely (manual export mode), set `skip_export: true` — the pipeline will build from source already committed to the branch.
 
 ---
 
@@ -158,6 +160,39 @@ To export solutions from your sandbox:
 2. Leave `solution_name` empty to export all, or enter a specific solution name
 3. Set `mock_deploy: true` for a dry-run (no sandbox connection)
 4. The workflow commits the exported source to a feature branch and optionally creates a PR
+
+---
+
+## Manual Export Workflow (skip_export)
+
+Use this when you want to export a solution locally and commit the source yourself, bypassing the sandbox-to-pipeline connection.
+
+**Option A — Auto-trigger via push:**
+```bash
+# 1. Install PAC CLI
+pac install latest
+
+# 2. Authenticate to your sandbox
+pac auth create --url https://yourorg-sdbx.crm.dynamics.com
+
+# 3. Export the solution as unmanaged
+pac solution export --name MySolution --path MySolution.zip --managed false
+
+# 4. Unpack into the repo
+pac solution unpack --zipfile MySolution.zip --folder src/solutions/MySolution --processCanvasApps
+
+# 5. Commit and push to a feature branch — pipeline fires automatically
+git checkout -b feature/my-manual-export
+git add src/solutions/MySolution
+git commit -m "chore: export MySolution"
+git push origin feature/my-manual-export
+```
+The push to `feature/*` triggers `build-and-deploy.yml` automatically with skip_export mode. The pipeline skips the sandbox export stage, writes `pipeline-context.json` to your branch, then builds and deploys normally.
+
+**Option B — Manual dispatch:**
+Dispatch `build-and-deploy.yml` from your feature branch with `skip_export: true`. Identical result, but you control exactly when the pipeline fires.
+
+**Branch naming:** Any `feature/*` branch works. The `create-main-pr` job and Pipeline 2 both accept any `feature/*` branch.
 
 ---
 
@@ -202,4 +237,5 @@ python3 scripts/simulate-pipeline.py --solutions all --target-envs DEV,INTG --ru
 | `Login failed: The process '/usr/bin/az' failed` | Azure OIDC misconfigured | Check federated credentials on App Registration match your repo/environment names exactly |
 | `who-am-i` step fails | PP service principal not registered in the target environment | Add the App Registration as Application User with System Administrator role |
 | `Solution package type did not match requested type` | `<Managed>0</Managed>` tag present in Solution.xml | Handled automatically by `Remove-ManagedTag.ps1` — check the pack step ran |
-| Pipeline 2 does not trigger after PR merge | PR head branch does not start with `feature/pipeline-*` | Confirm `create-main-pr` job succeeded and the feature branch follows the naming convention. Also confirm `pipeline-context.json` was committed to the feature branch before the PR was opened |
+| Pipeline 2 does not trigger after PR merge | PR head branch does not start with `feature/` | Confirm `create-main-pr` job succeeded and the feature branch starts with `feature/`. Also confirm `pipeline-context.json` was committed to the feature branch by the stage-export commit job. |
+| `Push to feature branch did not trigger the pipeline` | Branch name does not match `feature/**` pattern | Rename to `feature/your-name` — the push trigger only watches branches starting with `feature/`. Also check that `paths-ignore: pipeline-context.json` is not interfering (only `.json` context file is ignored). |

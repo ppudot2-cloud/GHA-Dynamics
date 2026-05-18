@@ -171,7 +171,7 @@
     <div class="arch-card">
       <h3>📦 Two-Pipeline Architecture</h3>
       <ul>
-        <li><strong>Pipeline 1</strong> (<code>build-and-deploy.yml</code>) — triggered by PR or dispatch. Export → Build → Deploy Dev/Intg/UAT/FRS/Perf in parallel → write <code>pipeline-context.json</code> → create PR to main</li>
+        <li><strong>Pipeline 1</strong> (<code>build-and-deploy.yml</code>) — triggered by <code>workflow_dispatch</code> or push to <code>feature/**</code>. Export stage writes <code>pipeline-context.json</code> to the feature branch → Build → Deploy Dev/Intg/UAT/FRS/Perf in parallel → create PR to main. Use <code>skip_export=true</code> (or push a manually-exported branch) to bypass sandbox export.</li>
         <li><strong>Pipeline 2</strong> (<code>deploy-prod.yml</code>) — triggered automatically when PR merges to main. Reads <code>pipeline-context.json</code> → Deploy UAT (final gate) → Deploy Prod</li>
         <li>Cross-pipeline artifact handoff via <code>pipeline-context.json</code> on main branch</li>
       </ul>
@@ -193,11 +193,11 @@
     <div class="pipeline-row">
       <div class="pipeline-label pl-p1">Pipeline 1<br><span style="font-weight:400;font-size:10px">build-and-deploy</span></div>
       <div class="arrow-right">▶</div>
-      <div class="flow-box fb-trigger">PR / dispatch<br>trigger</div>
+      <div class="flow-box fb-trigger">dispatch /<br>push feature/**</div>
       <div class="arrow-right">→</div>
       <div class="flow-box fb-stage">Setup<br>solutions.json</div>
       <div class="arrow-right">→</div>
-      <div class="flow-box fb-stage">Export<br>_stage-export</div>
+      <div class="flow-box fb-stage">Export +<br>context.json</div>
       <div class="arrow-right">→</div>
       <div class="flow-box fb-stage">Build ×N<br>_stage-build</div>
       <div class="arrow-right">→</div>
@@ -211,8 +211,6 @@
           <div class="flow-box fb-deploy" style="min-width:60px;font-size:10px">Perf</div>
         </div>
       </div>
-      <div class="arrow-right">→</div>
-      <div class="flow-box fb-context">Write<br>pipeline-context</div>
       <div class="arrow-right">→</div>
       <div class="flow-box fb-merge">Create PR<br>→ main</div>
     </div>
@@ -260,7 +258,7 @@
   </div>
 
   <div class="info">
-    <strong>Cross-pipeline handoff:</strong> Pipeline 1 writes <code>pipeline-context.json</code> to the feature branch before creating the PR. When the PR is merged to main, Pipeline 2 detects the change via <code>push: paths: pipeline-context.json</code> and reads the <code>runId</code> from the file to download the build artifacts from Pipeline 1's run.
+    <strong>Cross-pipeline handoff:</strong> The export stage (<code>_stage-export.yml</code>) writes <code>pipeline-context.json</code> to the feature branch during Pipeline 1. When the feature branch PR is merged to main, Pipeline 2 is triggered via a <code>pull_request</code> closed+merged event targeting <code>main</code> from any <code>feature/*</code> branch. It reads <code>runId</code> from <code>pipeline-context.json</code> on main to download the build artifacts from Pipeline 1's run.
   </div>
 </div>
 
@@ -277,10 +275,10 @@
         <tr><td class="step-num">3</td><td class="step-name">stage-build<br><code>_stage-build.yml → _job-build.yml</code></td><td><span class="step-type st-action">reusable</span></td><td>Matrix build (parallel per solution): ci-bootstrap → pac-install → pack-solution (version stamp, strip Managed tag, pack ZIPs) → solution-checker → export-config-data → upload artifact → jfrog-upload</td></tr>
         <tr><td class="step-num">4a</td><td class="step-name">deploy-dev</td><td><span class="step-type st-inline">inline</span></td><td>ci-bootstrap → pac-install → download solution-artifact-* → deploy-all-solutions (Unmanaged, Dev env). Runs <strong>in parallel</strong> with deploy-intg/uat/frs/perf.</td></tr>
         <tr><td class="step-num">4b</td><td class="step-name">deploy-intg</td><td><span class="step-type st-inline">inline</span></td><td>ci-bootstrap → pac-install → download solution-artifact-* → deploy-all-solutions (Managed, Intg env). Parallel with others.</td></tr>
-        <tr><td class="step-num">4c</td><td class="step-name">deploy-uat</td><td><span class="step-type st-inline">inline</span></td><td>Same pattern → deploy-all-solutions (Managed, UAT env). Creates <code>pipeline-context.json</code> only when UAT succeeds.</td></tr>
+        <tr><td class="step-num">4c</td><td class="step-name">deploy-uat</td><td><span class="step-type st-inline">inline</span></td><td>Same pattern → deploy-all-solutions (Managed, UAT env). Parallel with others.</td></tr>
         <tr><td class="step-num">4d</td><td class="step-name">deploy-frs</td><td><span class="step-type st-inline">inline</span></td><td>Same pattern → deploy-all-solutions (Managed, FRS env). Parallel with others.</td></tr>
         <tr><td class="step-num">4e</td><td class="step-name">deploy-perf</td><td><span class="step-type st-inline">inline</span></td><td>Same pattern → deploy-all-solutions (Managed, Perf env). Parallel with others.</td></tr>
-        <tr><td class="step-num">5</td><td class="step-name">create-main-pr</td><td><span class="step-type st-inline">inline</span></td><td>Depends on <code>deploy-uat</code> success. Writes <code>pipeline-context.json</code> (run_id, run_number, matrix) to feature branch, creates PR to main via GitHub CLI using <code>GHA_CORE_PAT</code></td></tr>
+        <tr><td class="step-num">5</td><td class="step-name">create-main-pr</td><td><span class="step-type st-inline">inline</span></td><td>Depends on all non-prod deploy stages. Creates PR from the feature branch to main via GitHub CLI using <code>GHA_CORE_PAT</code>. <code>pipeline-context.json</code> (run_id, run_number, matrix) was already committed to the feature branch by the export stage.</td></tr>
         <tr><td class="step-num">6</td><td class="step-name">pipeline-summary</td><td><span class="step-type st-inline">inline</span></td><td>Always runs. Calls <code>Write-PipelineSummary.ps1</code>, sends failure email notification.</td></tr>
       </tbody>
     </table>
@@ -334,12 +332,12 @@
   <div class="detail-section">
     <h3><span class="badge badge-p2">Pipeline 2</span> deploy-prod.yml — UAT Re-validation + Production</h3>
     <p style="font-size:12px;color:#374151;margin-bottom:14px;">
-      Triggered automatically when <code>pipeline-context.json</code> changes on <code>main</code> (i.e. the feature branch PR is merged). Downloads build artifacts from Pipeline 1 using the <code>run_id</code> stored in <code>pipeline-context.json</code>.
+      Triggered automatically when a <code>feature/*</code> branch PR is merged to <code>main</code> (i.e. the <code>pull_request</code> closed+merged event). The guard job verifies <code>pull_request.merged == true</code> and the head branch starts with <code>feature/</code>. Downloads build artifacts from Pipeline 1 using the <code>run_id</code> stored in <code>pipeline-context.json</code>.
     </p>
     <table class="step-table">
       <thead><tr><th>#</th><th>Job / Step</th><th>Type</th><th>What it does</th></tr></thead>
       <tbody>
-        <tr><td class="step-num">1</td><td class="step-name">guard</td><td><span class="step-type st-inline">inline</span></td><td>Confirms trigger is a push to main or manual dispatch. Logs actor and commit.</td></tr>
+        <tr><td class="step-num">1</td><td class="step-name">guard</td><td><span class="step-type st-inline">inline</span></td><td>Confirms trigger is a merged PR from a <code>feature/*</code> branch or manual dispatch. Only proceeds if <code>pull_request.merged == true</code> and head branch starts with <code>feature/</code>. Logs PR number, branch, commit, and actor.</td></tr>
         <tr><td class="step-num">2</td><td class="step-name">read-context</td><td><span class="step-type st-inline">inline</span></td><td>Checks out main, parses <code>pipeline-context.json</code> → outputs <code>run_id</code>, <code>run_number</code>, <code>matrix</code>, <code>solution_list</code> for downstream jobs</td></tr>
         <tr><td class="step-num">3</td><td class="step-name">deploy-uat</td><td><span class="step-type st-gate">env gate</span></td><td>Uses <code>environment: UAT</code> (approval gate). ci-bootstrap → pac-install → download artifacts from Pipeline 1 run via <code>run-id</code> → deploy-all-solutions (UAT, Managed)</td></tr>
         <tr><td class="step-num">4</td><td class="step-name">deploy-prod</td><td><span class="step-type st-gate">env gate</span></td><td>Only if UAT succeeded. Uses <code>environment: Prod</code> (approval gate). Same steps → deploy-all-solutions (Prod, Managed, <code>import_config_data=true</code>, <code>tag_prod_deployed=true</code>)</td></tr>
@@ -362,15 +360,15 @@
       </div>
       <div class="auth-arrow">→</div>
       <div class="auth-step">
-        <div class="num">Pipeline 1</div>
+        <div class="num">Export Stage</div>
         <div class="title">Writes context</div>
-        <div class="sub">pipeline-context.json with runId=N committed to feature branch</div>
+        <div class="sub">pipeline-context.json with runId=N committed to feature branch by export commit job</div>
       </div>
       <div class="auth-arrow">→</div>
       <div class="auth-step">
         <div class="num">PR Merge</div>
         <div class="title">Lands on main</div>
-        <div class="sub">pipeline-context.json pushed to main triggers Pipeline 2</div>
+        <div class="sub">Feature branch merged to main; closed+merged PR event triggers Pipeline 2</div>
       </div>
       <div class="auth-arrow">→</div>
       <div class="auth-step">
@@ -407,7 +405,7 @@
     <table class="step-table">
       <thead><tr><th>#</th><th>Step</th><th>What it does</th></tr></thead>
       <tbody>
-        <tr><td class="step-num">1</td><td class="step-name">setup</td><td>Resolve solutions from solutions.json. Skip if PR is from a feature/pipeline-* branch (those are handled by the main pipelines).</td></tr>
+        <tr><td class="step-num">1</td><td class="step-name">setup</td><td>Resolve solutions from solutions.json. Skip if PR is from a <code>feature/*</code> branch (those are handled by the main pipelines).</td></tr>
         <tr><td class="step-num">2</td><td class="step-name">stage-build</td><td>Full build pipeline (<code>_stage-build.yml</code>) — pack, solution-checker, export-config-data. No deploy step.</td></tr>
         <tr><td class="step-num">3</td><td class="step-name">summary</td><td><code>Write-PipelineSummary.ps1</code> → PR check summary table.</td></tr>
       </tbody>
@@ -607,7 +605,7 @@
       <div class="ref-card">
         <h4>pipeline-context.json</h4>
         <div class="path">GHA-Dynamics/pipeline-context.json</div>
-        <p>Written by Pipeline 1 after UAT deploy. Contains <code>runId</code>, <code>runNumber</code>, <code>runAttempt</code>, <code>matrix</code>, <code>solutionList</code>, <code>featureBranch</code>, <code>triggeredBy</code>. Committed to the feature branch; lands on main when PR is merged. Pipeline 2 uses <code>runId</code> to download artifacts from Pipeline 1.</p>
+        <p>Written by the export stage (<code>_stage-export.yml</code>) commit job during Pipeline 1 — before the build and deploy stages. Contains <code>runId</code>, <code>runNumber</code>, <code>runAttempt</code>, <code>matrix</code>, <code>solutionList</code>, <code>featureBranch</code>, <code>triggeredBy</code>, <code>exportMode</code>. Committed to the feature branch; lands on main when the PR is merged. Pipeline 2 uses <code>runId</code> to download artifacts from Pipeline 1.</p>
       </div>
       <div class="ref-card">
         <h4>deployment-settings/{env}/{SolutionName}.json</h4>
