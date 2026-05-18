@@ -2,15 +2,18 @@
 # WORKFLOW: Deploy UAT + Prod — Pipeline 2
 # =============================================================================
 #
-# Triggered automatically when a feature/pipeline-* → main PR is MERGED.
+# Triggered automatically when a feature/* branch PR is MERGED to main.
 # This is the second and final pipeline of the two-pipeline architecture:
 #
 #   Pipeline 1 — build-and-deploy.yml  → Export + Build + Dev/Intg/UAT/FRS/Perf
 #   Pipeline 2 — THIS WORKFLOW         → UAT (re-validation) + Prod
 #
 # HOW IT WORKS:
-#   1. Fires on pull_request closed+merged targeting main from feature/pipeline-*.
-#      The head branch name is the sole trigger signal — no file path dependency.
+#   1. Fires when pipeline-context.json is pushed to main — this only happens
+#      when a feature/* branch PR is merged (the file is committed to the feature
+#      branch by Pipeline 1's export stage and lands on main at merge time).
+#      Using the push+paths trigger is more reliable than pull_request:closed
+#      because it fires on the actual push event, not the PR event.
 #   2. Checks out main (the merge commit) and reads pipeline-context.json.
 #      This file was committed to the feature branch by Pipeline 1 and is now
 #      on main after merge. It carries the run_id needed to download built
@@ -20,7 +23,7 @@
 #      (configure required reviewers in Settings → Environments → Prod).
 #
 # TRIGGERS:
-#   pull_request closed+merged from feature/pipeline-* → main
+#   push to main where pipeline-context.json changed (i.e. feature/* PR merged)
 #   workflow_dispatch — manual re-run or ad-hoc promotion
 #
 # ROLLBACK:
@@ -31,9 +34,10 @@
 name: Deploy UAT + Prod
 
 on:
-  pull_request:
-    types: [closed]
+  push:
     branches: [main]
+    paths:
+      - 'pipeline-context.json'
 
   workflow_dispatch:
     inputs:
@@ -61,28 +65,19 @@ concurrency:
 
 jobs:
   # ============================================================================
-  # Guard — only proceed when:
-  #   • PR trigger: PR was MERGED (not just closed) AND head branch is feature/*
-  #     This covers both auto-created PRs (feature/pipeline-{N}) and PRs raised
-  #     manually after a manual export committed to any feature/* branch.
-  #   • Dispatch trigger: always proceed
-  # Skipping early here avoids spinning up read-context and deploy jobs for
-  # unrelated PRs (hotfixes, doc changes, dependency bumps, etc.)
+  # Guard — always proceeds when triggered (the push+paths filter is the gate).
+  #   • push trigger: pipeline-context.json changed on main → feature/* was merged
+  #   • Dispatch trigger: manual re-run or ad-hoc promotion
   # ============================================================================
   guard:
     name: "🛡️ Verify trigger"
     runs-on: ubuntu-latest
-    if: >
-      github.event_name == 'workflow_dispatch' ||
-      (github.event.pull_request.merged == true &&
-       startsWith(github.event.pull_request.head.ref, 'feature/'))
     steps:
       - name: Confirm trigger
         shell: bash
         run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            echo "✅ PR #${{ github.event.pull_request.number }} merged to main"
-            echo "   branch : ${{ github.event.pull_request.head.ref }}"
+          if [ "${{ github.event_name }}" = "push" ]; then
+            echo "✅ pipeline-context.json pushed to main — feature branch merged"
             echo "   commit : ${{ github.sha }}"
             echo "   actor  : ${{ github.actor }}"
           else
