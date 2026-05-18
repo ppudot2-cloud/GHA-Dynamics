@@ -5,17 +5,35 @@
 # TWO-PIPELINE ARCHITECTURE
 # ─────────────────────────────────────────────────────────────────────────────
 #
-#   Pipeline 1 — THIS WORKFLOW  (manual trigger)
-#     1. Export solutions from sandbox (PP_SDBX_URL)
-#        └─ Commit exported source + pipeline-context.json to feature/pipeline-{run_number}
+#   Pipeline 1 — THIS WORKFLOW  (manual trigger OR push to feature/*)
+#     1. Export solutions from sandbox (PP_SDBX_URL)  — skipped when skip_export=true
+#        └─ Commit exported source + pipeline-context.json to feature/* branch
 #     2. Build (pack ZIPs, Solution Checker, JFrog archival)
 #        └─ Validate pipeline config (toggles, URLs, service connections)
 #     3. Deploy → Dev → Intg → UAT → FRS → Perf  (parallel, individual approval gates)
 #        ↳ Prod is BLOCKED — only deployable from a PR to main (Pipeline 2)
-#     4. Auto-create PR: feature/pipeline-{run_number} → main  (after UAT passes)
+#     4. Auto-create PR: feature/* → main  (after UAT passes)
 #
-#   Pipeline 2 — deploy-prod.yml  (fires when the above PR is opened)
+#   Pipeline 2 — deploy-prod.yml  (fires when the above PR is merged)
 #     Deploy → UAT (re-validation) → Prod  (approval gates)
+#
+# MANUAL EXPORT WORKFLOW (skip_export=true)
+#   When a maker exports from Power Platform manually (pac solution export or
+#   the maker portal), extracts the ZIP, and commits the unpacked source to a
+#   feature/* branch, the pipeline can be triggered in two ways:
+#
+#   A) Push trigger — automatic:
+#      Push commits to any feature/* branch. The workflow fires automatically,
+#      skips the sandbox export stage, builds from committed source, and
+#      proceeds through all deploy environments as normal.
+#      Branch name must start with "feature/" so deploy-prod.yml recognises it.
+#      Note: pushing pipeline-context.json is ignored (paths-ignore) to prevent
+#      the pipeline's own commit from re-triggering a new run.
+#
+#   B) Manual dispatch with skip_export=true — explicit:
+#      Dispatch this workflow from your feature/* branch with skip_export=true.
+#      Useful when you want full control over when the pipeline fires (e.g. after
+#      a code review of the committed source files).
 #
 # ROLLBACK
 #   Set enable_backup=true to take a pre-import backup at every environment.
@@ -31,12 +49,32 @@
 name: Build and Deploy
 
 on:
+  # ── Auto-trigger when solution source is pushed to a feature branch ──────────
+  # Covers the manual-export workflow: user commits unpacked source to feature/*
+  # and pushes — the pipeline fires automatically with skip_export mode.
+  # paths-ignore prevents pipeline-context.json commits (written by this
+  # workflow's commit job) from re-triggering a new run.
+  push:
+    branches:
+      - 'feature/**'
+    paths-ignore:
+      - 'pipeline-context.json'
+
   workflow_dispatch:
     inputs:
       solutions:
         description: '"all" or comma-separated solution names'
         required: false
         default: 'all'
+
+      skip_export:
+        description: >
+          Skip sandbox export — build from source already committed to this branch.
+          Use when you have manually exported, unpacked, and committed solution source
+          to a feature/* branch. Automatically set when triggered by a push event.
+        required: false
+        default: false
+        type: boolean
 
       mock_deploy:
         description: >
@@ -133,19 +171,22 @@ jobs:
           }
 
   # ============================================================================
-  # Stage 1 — Export from sandbox  (or simulate in mock mode)
+  # Stage 1 — Export from sandbox  (or skip when source is already committed)
   #
   # Contains two jobs (visible as a collapsible group in the GitHub Actions UI):
-  #   📤 Export | <SolutionName>  — one per solution, run in parallel
-  #   🌿 Commit to feature/pipeline-{run_number}  — runs after all exports finish
+  #   📤 Export | <SolutionName>  — one per solution, parallel
+  #              SKIPPED when skip_export=true or triggered by push event
+  #   📤 Commit pipeline context  — always runs
+  #              Normal:      creates feature/pipeline-{N} from main, copies source
+  #              skip_export: just writes pipeline-context.json to current branch
   #
-  # Real mode:  exports each solution from PP_SDBX_URL via PAC CLI, then pushes
-  #             a feature branch with the exported source.
-  # Mock mode:  export-solution action logs "[MOCK]" and reuses src/solutions/;
-  #             git operations (branch + push) always run for real.
+  # Three operating modes:
+  #   1. sandbox export (default): exports from PP_SDBX_URL, creates feature branch
+  #   2. mock:          simulates export, still creates feature branch + git push
+  #   3. skip_export / push: source already committed; only writes context JSON
   # ============================================================================
   stage-export:
-    name: "📤 Export from Sandbox"
+    name: "📤 Export / Commit"
     needs: setup
     permissions:
       id-token: write
@@ -157,6 +198,9 @@ jobs:
       solution_list:          ${{ needs.setup.outputs.solution_list }}
       source_environment_url: ${{ vars.PP_SDBX_URL || 'https://mock.crm.dynamics.com' }}
       mock_deploy:            ${{ inputs.mock_deploy == true }}
+      # skip_export=true when: dispatch with skip_export flag OR push event
+      # In push mode there are no workflow inputs, so we check event_name too.
+      skip_export:            ${{ inputs.skip_export == true || github.event_name == 'push' }}
     secrets: inherit
 
   # ============================================================================
@@ -179,7 +223,10 @@ jobs:
     uses: ppudot2-cloud/GHA-Core/.github/workflows/_stage-build.yml@main
     with:
       matrix:                 ${{ needs.setup.outputs.matrix }}
-      use_exported_source:    ${{ inputs.mock_deploy != true }}
+      # Use exported source only when: real mode AND sandbox export was run.
+      # Skip when mock_deploy=true (packs from committed source),
+      # skip_export=true (source already committed), or push-triggered.
+      use_exported_source:    ${{ inputs.mock_deploy != true && inputs.skip_export != true && github.event_name != 'push' }}
       source_environment_url: ${{ vars.PP_SDBX_URL || '' }}
       mock_deploy:            ${{ inputs.mock_deploy == true }}
       jfrog_url:              ${{ vars.JFROG_URL || '' }}

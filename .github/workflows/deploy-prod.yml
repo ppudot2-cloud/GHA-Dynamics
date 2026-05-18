@@ -62,7 +62,9 @@ concurrency:
 jobs:
   # ============================================================================
   # Guard — only proceed when:
-  #   • PR trigger: PR was MERGED (not just closed) AND head branch is feature/pipeline-*
+  #   • PR trigger: PR was MERGED (not just closed) AND head branch is feature/*
+  #     This covers both auto-created PRs (feature/pipeline-{N}) and PRs raised
+  #     manually after a manual export committed to any feature/* branch.
   #   • Dispatch trigger: always proceed
   # Skipping early here avoids spinning up read-context and deploy jobs for
   # unrelated PRs (hotfixes, doc changes, dependency bumps, etc.)
@@ -73,7 +75,7 @@ jobs:
     if: >
       github.event_name == 'workflow_dispatch' ||
       (github.event.pull_request.merged == true &&
-       startsWith(github.event.pull_request.head.ref, 'feature/pipeline-'))
+       startsWith(github.event.pull_request.head.ref, 'feature/'))
     steps:
       - name: Confirm trigger
         shell: bash
