@@ -110,6 +110,20 @@ on:
         default: false
         type: boolean
 
+      enable_servicenow:
+        description: >
+          Enable ServiceNow change management for non-prod deployments (Dev → Perf).
+          When true: opens a SNOW change request before each deployment, waits for
+          approval, and closes the CR after deployment completes.
+          Requires ServiceNow AKV secrets to be configured (snow-base-uri,
+          snow-oauth-client-id, snow-oauth-client-secret) and SNOW variables
+          set in global-vars.yml / project-vars.yml.
+          Default false — ServiceNow is optional for non-prod environments.
+          NOTE: Prod always has ServiceNow enabled — controlled in deploy-prod.yml.
+        required: false
+        default: false
+        type: boolean
+
 concurrency:
   group: "build-and-deploy-${{ github.ref_name }}"
   cancel-in-progress: false
@@ -275,6 +289,7 @@ jobs:
           mock_deploy:           ${{ inputs.mock_deploy == true }}
           jfrog_enabled:         ${{ vars.JFROG_URL != '' }}
           mulesoft_enabled:      ${{ vars.MULESOFT_ENABLED == 'true' }}
+          servicenow_enabled:    ${{ inputs.enable_servicenow == true }}
           azure_client_id:       ${{ vars.AZURE_CLIENT_ID }}
           azure_tenant_id:       ${{ vars.AZURE_TENANT_ID }}
           azure_subscription_id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
@@ -309,6 +324,8 @@ jobs:
           jfrog_repo:               ${{ vars.JFROG_REPO || 'powerplatform-solutions' }}
           run_number:               ${{ github.run_number }}
           run_attempt:              ${{ github.run_attempt }}
+          enable_servicenow:        ${{ inputs.enable_servicenow == true }}
+          solution_list:            ${{ needs.setup.outputs.solution_list }}
 
   deploy-intg:
     name: "🚀 Deploy | Intg"
@@ -329,6 +346,7 @@ jobs:
           mock_deploy:           ${{ inputs.mock_deploy == true }}
           jfrog_enabled:         ${{ vars.JFROG_URL != '' }}
           mulesoft_enabled:      ${{ vars.MULESOFT_ENABLED == 'true' }}
+          servicenow_enabled:    ${{ inputs.enable_servicenow == true }}
           azure_client_id:       ${{ vars.AZURE_CLIENT_ID }}
           azure_tenant_id:       ${{ vars.AZURE_TENANT_ID }}
           azure_subscription_id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
@@ -363,6 +381,8 @@ jobs:
           jfrog_repo:               ${{ vars.JFROG_REPO || 'powerplatform-solutions' }}
           run_number:               ${{ github.run_number }}
           run_attempt:              ${{ github.run_attempt }}
+          enable_servicenow:        ${{ inputs.enable_servicenow == true }}
+          solution_list:            ${{ needs.setup.outputs.solution_list }}
 
   deploy-uat:
     name: "🚀 Deploy | UAT"
@@ -383,6 +403,7 @@ jobs:
           mock_deploy:           ${{ inputs.mock_deploy == true }}
           jfrog_enabled:         ${{ vars.JFROG_URL != '' }}
           mulesoft_enabled:      ${{ vars.MULESOFT_ENABLED == 'true' }}
+          servicenow_enabled:    ${{ inputs.enable_servicenow == true }}
           azure_client_id:       ${{ vars.AZURE_CLIENT_ID }}
           azure_tenant_id:       ${{ vars.AZURE_TENANT_ID }}
           azure_subscription_id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
@@ -417,6 +438,8 @@ jobs:
           jfrog_repo:               ${{ vars.JFROG_REPO || 'powerplatform-solutions' }}
           run_number:               ${{ github.run_number }}
           run_attempt:              ${{ github.run_attempt }}
+          enable_servicenow:        ${{ inputs.enable_servicenow == true }}
+          solution_list:            ${{ needs.setup.outputs.solution_list }}
 
   deploy-frs:
     name: "🚀 Deploy | FRS"
@@ -437,6 +460,7 @@ jobs:
           mock_deploy:           ${{ inputs.mock_deploy == true }}
           jfrog_enabled:         ${{ vars.JFROG_URL != '' }}
           mulesoft_enabled:      ${{ vars.MULESOFT_ENABLED == 'true' }}
+          servicenow_enabled:    ${{ inputs.enable_servicenow == true }}
           azure_client_id:       ${{ vars.AZURE_CLIENT_ID }}
           azure_tenant_id:       ${{ vars.AZURE_TENANT_ID }}
           azure_subscription_id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
@@ -471,6 +495,8 @@ jobs:
           jfrog_repo:               ${{ vars.JFROG_REPO || 'powerplatform-solutions' }}
           run_number:               ${{ github.run_number }}
           run_attempt:              ${{ github.run_attempt }}
+          enable_servicenow:        ${{ inputs.enable_servicenow == true }}
+          solution_list:            ${{ needs.setup.outputs.solution_list }}
 
   deploy-perf:
     name: "🚀 Deploy | Perf"
@@ -491,6 +517,7 @@ jobs:
           mock_deploy:           ${{ inputs.mock_deploy == true }}
           jfrog_enabled:         ${{ vars.JFROG_URL != '' }}
           mulesoft_enabled:      ${{ vars.MULESOFT_ENABLED == 'true' }}
+          servicenow_enabled:    ${{ inputs.enable_servicenow == true }}
           azure_client_id:       ${{ vars.AZURE_CLIENT_ID }}
           azure_tenant_id:       ${{ vars.AZURE_TENANT_ID }}
           azure_subscription_id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
@@ -525,6 +552,8 @@ jobs:
           jfrog_repo:               ${{ vars.JFROG_REPO || 'powerplatform-solutions' }}
           run_number:               ${{ github.run_number }}
           run_attempt:              ${{ github.run_attempt }}
+          enable_servicenow:        ${{ inputs.enable_servicenow == true }}
+          solution_list:            ${{ needs.setup.outputs.solution_list }}
 
   # ============================================================================
   # Create PR: feature/pipeline-{run_number} → main
