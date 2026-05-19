@@ -154,7 +154,8 @@ jobs:
         uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/ci-bootstrap@main
         with:
           mock_deploy:           ${{ inputs.mock_deploy == true }}
-          jfrog_enabled:         false
+          jfrog_enabled:         ${{ vars.JFROG_URL != '' }}
+          mulesoft_enabled:      ${{ vars.MULESOFT_ENABLED == 'true' }}
           azure_client_id:       ${{ vars.AZURE_CLIENT_ID }}
           azure_tenant_id:       ${{ vars.AZURE_TENANT_ID }}
           azure_subscription_id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
@@ -212,6 +213,7 @@ jobs:
         with:
           mock_deploy:           ${{ inputs.mock_deploy == true }}
           jfrog_enabled:         ${{ vars.JFROG_URL != '' }}
+          mulesoft_enabled:      ${{ vars.MULESOFT_ENABLED == 'true' }}
           azure_client_id:       ${{ vars.AZURE_CLIENT_ID }}
           azure_tenant_id:       ${{ vars.AZURE_TENANT_ID }}
           azure_subscription_id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
