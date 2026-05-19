@@ -160,8 +160,8 @@ jobs:
     env:
       GHA_CORE_PAT: ${{ secrets.GHA_CORE_PAT }}
     steps:
-      - name: CI Bootstrap
-        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/ci-bootstrap@main
+      - name: Reveille
+        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/reveille@main
         with:
           mock_deploy:           ${{ inputs.mock_deploy == true }}
           jfrog_enabled:         ${{ vars.JFROG_URL != '' }}
@@ -221,8 +221,8 @@ jobs:
     env:
       GHA_CORE_PAT: ${{ secrets.GHA_CORE_PAT }}
     steps:
-      - name: CI Bootstrap
-        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/ci-bootstrap@main
+      - name: Reveille
+        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/reveille@main
         with:
           mock_deploy:           ${{ inputs.mock_deploy == true }}
           jfrog_enabled:         ${{ vars.JFROG_URL != '' }}

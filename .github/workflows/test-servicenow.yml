@@ -1,0 +1,236 @@
+# =============================================================================
+# WORKFLOW: Test ServiceNow Integration
+# =============================================================================
+#
+# PURPOSE:
+#   Exercises the full 14-step ServiceNow change management lifecycle WITHOUT
+#   touching Dataverse or running any PAC CLI commands. Use this to verify
+#   your SNOW credentials, AKV configuration, and module wiring are correct
+#   before enabling ServiceNow on a real deployment pipeline.
+#
+# WHAT RUNS (for real, against your live ServiceNow instance):
+#   PRE-DEPLOY  (steps 1-8)
+#     1.  Load ServiceNow PS module from .ci checkout
+#     2.  Set dynamic runtime env vars (description, release env, build ID)
+#     3.  New-ServiceNowChangeRequest   — opens a real CR
+#     4.  Add-ServiceNowAuditTrailArtifact — attaches dummy SARIF (if provided)
+#     5.  Set-ServiceNowChangeWindow    — sets change window
+#     6.  Get-ServiceNowConflict        — checks for conflicts
+#     7.  Request-ServiceNowApproval    — triggers SNOW approval workflow
+#     8.  Get-ServiceNowApprovalStatus  — polls until approved or timeout
+#
+#   DEPLOYMENT SIMULATION (no Power Platform calls):
+#     - Prints step-by-step simulation of what a real deploy would do
+#     - Sleeps briefly between steps to mimic realistic timing
+#     - Writes SNOW_DEPLOY_STATUS based on simulate_outcome input
+#     - If simulate_outcome=failure: exits non-zero to test the failure path
+#
+#   POST-DEPLOY (steps 12-14, always runs — even on simulated failure)
+#    12.  Find GitHub Environment approvers via GitHub API
+#    13.  Detect deployment status from SNOW_DEPLOY_STATUS env var
+#    14.  Close-ServiceNowChangeRequest — closes with successful/unsuccessful
+#
+# WHAT IS SKIPPED (mocked/bypassed):
+#   - Azure OIDC login (reveille passes mock_deploy=false so Azure IS used for AKV)
+#   - PAC CLI auth          — never called
+#   - Solution artifact download — never called
+#   - pac solution import   — never called
+#   - pac flow enable       — never called
+#   - JFrog upload/tag      — never called
+#
+# PREREQUISITES:
+#   AKV secrets (snow-base-uri, snow-oauth-client-id, snow-oauth-client-secret)
+#   must be present in vars.AZURE_KEY_VAULT_NAME.
+#   ServiceNow module variables must be set in global-vars.yml or project-vars.yml:
+#     SERVICENOWASSIGNMENTGROUP, SERVICENOWCONFIGURATIONITEM, SERVICENOWCATEGORY,
+#     SERVICENOWSERVICENAME, SERVICENOWJUSTIFICATION, etc.
+# =============================================================================
+
+name: "🧪 Test ServiceNow Integration"
+
+on:
+  workflow_dispatch:
+    inputs:
+
+      environment_name:
+        description: 'Target environment to raise the SNOW CR against'
+        required: true
+        default: 'UAT'
+        type: choice
+        options:
+          - Dev
+          - Intg
+          - UAT
+          - FRS
+          - Perf
+          - Prod
+
+      solution_list:
+        description: 'Comma-separated solution names to include in the CR description'
+        required: false
+        default: 'CoreSolution, ExtensionA'
+
+      simulate_outcome:
+        description: >
+          Simulated deployment result.
+          success → CR closed as "successful".
+          failure → simulated deploy fails, CR closed as "unsuccessful".
+          Use failure to verify the error path and CR closure on failure.
+        required: false
+        default: 'success'
+        type: choice
+        options:
+          - success
+          - failure
+
+      sarif_path:
+        description: >
+          Optional path to a SARIF file to attach as audit trail.
+          Leave blank to skip the audit trail attachment step.
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+  id-token: write
+  actions:  read
+
+concurrency:
+  group: "test-servicenow-${{ inputs.environment_name }}"
+  cancel-in-progress: true
+
+jobs:
+  test-servicenow:
+    name: "🧪 ServiceNow Integration Test | ${{ inputs.environment_name }}"
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment_name }}
+    env:
+      GHA_CORE_PAT: ${{ secrets.GHA_CORE_PAT }}
+
+    steps:
+
+      # ── Step 0: Reveille — authenticate + fetch SNOW AKV secrets ───────────
+      # mock_deploy=false so Azure OIDC login and AKV fetch run for real.
+      # servicenow_enabled=true fetches snow-base-uri, snow-oauth-client-id,
+      # snow-oauth-client-secret from AKV into the job environment.
+      - name: Reveille
+        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/reveille@main
+        with:
+          mock_deploy:           'false'
+          servicenow_enabled:    'true'
+          jfrog_enabled:         'false'
+          mulesoft_enabled:      'false'
+          azure_client_id:       ${{ vars.AZURE_CLIENT_ID }}
+          azure_tenant_id:       ${{ vars.AZURE_TENANT_ID }}
+          azure_subscription_id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          azure_key_vault_name:  ${{ vars.AZURE_KEY_VAULT_NAME }}
+
+      # ── Steps 1-8: ServiceNow Pre-Deploy ───────────────────────────────────
+      # Opens a real CR, attaches audit trail, sets change window, checks
+      # conflicts, requests approval, and polls until SNOW approves.
+      # The pipeline blocks here until the change is approved in ServiceNow.
+      - name: "🔔 ServiceNow — Pre-Deploy (Open CR + Approval Gate)"
+        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/servicenow-change@main
+        with:
+          phase:            pre-deploy
+          environment_name: ${{ inputs.environment_name }}
+          solution_list:    ${{ inputs.solution_list }}
+          sarif_path:       ${{ inputs.sarif_path }}
+          mock_deploy:      'false'
+
+      # ── Deployment Simulation ───────────────────────────────────────────────
+      # No Power Platform or PAC CLI calls. Simulates the timing and output of
+      # a real deployment so the SNOW CR has realistic timing between open/close.
+      - name: "🎭 Simulate Solution Deployment"
+        id: simulate-deploy
+        shell: pwsh
+        run: |
+          $outcome     = '${{ inputs.simulate_outcome }}'
+          $envName     = '${{ inputs.environment_name }}'
+          $solutionList = '${{ inputs.solution_list }}'
+
+          Write-Host ""
+          Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          Write-Host "  🎭  SIMULATED DEPLOYMENT — $envName"
+          Write-Host "  Solutions : $solutionList"
+          Write-Host "  Outcome   : $outcome"
+          Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+          $steps = @(
+            @{ delay = 1; msg = "PAC auth → $envName" },
+            @{ delay = 2; msg = "Verifying base solutions present..." },
+            @{ delay = 1; msg = "Blocking check — no blocking solutions found ✓" },
+            @{ delay = 1; msg = "Version compare — upgrade detected ✓" },
+            @{ delay = 1; msg = "Backup current solution (pre-import snapshot)..." },
+            @{ delay = 3; msg = "Importing solution (stage-and-upgrade)..." },
+            @{ delay = 2; msg = "Applying solution upgrade..." },
+            @{ delay = 1; msg = "Importing configuration migration data..." },
+            @{ delay = 1; msg = "Publishing customizations..." },
+            @{ delay = 2; msg = "Activating Power Automate flows (.json)..." },
+            @{ delay = 1; msg = "Activating classic Dynamics 365 workflows (.xaml)..." }
+          )
+
+          foreach ($step in $steps) {
+            Write-Host "  [SIMULATED] $($step.msg)"
+            Start-Sleep -Seconds $step.delay
+          }
+
+          Write-Host ""
+          # Write SNOW_DEPLOY_STATUS BEFORE any potential exit — post-deploy reads this
+          "SNOW_DEPLOY_STATUS=$($outcome.ToLower())" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+          if ($outcome -eq 'failure') {
+            Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Red
+            Write-Host "  ❌  SIMULATED FAILURE — testing SNOW failure path" -ForegroundColor Red
+            Write-Host "  SNOW CR will be closed as UNSUCCESSFUL" -ForegroundColor Red
+            Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Red
+            exit 1
+          }
+
+          Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Green
+          Write-Host "  ✅  SIMULATED SUCCESS — all solutions deployed → $envName" -ForegroundColor Green
+          Write-Host "  SNOW CR will be closed as SUCCESSFUL" -ForegroundColor Green
+          Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Green
+
+      # ── Steps 12-14: ServiceNow Post-Deploy ────────────────────────────────
+      # Always runs (if: always()) — closes the CR even if the simulated
+      # deployment failed. Close code is driven by SNOW_DEPLOY_STATUS.
+      - name: "🔔 ServiceNow — Post-Deploy (Close CR)"
+        if: always()
+        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/servicenow-change@main
+        with:
+          phase:            post-deploy
+          environment_name: ${{ inputs.environment_name }}
+          mock_deploy:      'false'
+
+      # ── Summary ────────────────────────────────────────────────────────────
+      - name: Write test summary
+        if: always()
+        shell: bash
+        run: |
+          OUTCOME="${{ inputs.simulate_outcome }}"
+          ENV="${{ inputs.environment_name }}"
+          SOLUTIONS="${{ inputs.solution_list }}"
+          ICON="✅"
+          [ "$OUTCOME" = "failure" ] && ICON="❌"
+
+          cat >> $GITHUB_STEP_SUMMARY << EOF
+          ## 🧪 ServiceNow Integration Test — $ICON
+
+          | Field | Value |
+          |---|---|
+          | Environment | $ENV |
+          | Solutions | $SOLUTIONS |
+          | Simulated outcome | $OUTCOME |
+          | SNOW CR number | \${{ env.SNOW_CHANGE_REQUEST_NUMBER }} |
+          | Run | #${{ github.run_number }} |
+          | Actor | @${{ github.actor }} |
+
+          ### What was tested
+          - ✅ Reveille — Azure OIDC login + AKV SNOW secret fetch
+          - ✅ Pre-deploy — Open CR, attach audit trail, set window, check conflict, request approval, poll status
+          - 🎭 Deployment — simulated (no Dataverse calls)
+          - ✅ Post-deploy — find approvers, detect status, close CR
+
+          > To test the failure path: re-run with **simulate_outcome = failure**
+          EOF
