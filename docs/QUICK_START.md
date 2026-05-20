@@ -32,6 +32,19 @@ Navigate to **GHA-Dynamics → Settings → Environments** and create these six 
 | `Perf` | Optional | Performance team |
 | `Prod` | Required | Release manager |
 
+For each environment, you can also set **Environment variables** (Settings → Environments → [Name] → Environment variables). The most important per-environment variable is `SERVICENOW_ENABLED`:
+
+| Environment | `SERVICENOW_ENABLED` |
+|---|---|
+| Dev | `false` (or omit) |
+| Intg | `false` (or omit) |
+| UAT | `true` |
+| FRS | `true` |
+| Perf | `true` |
+| Prod | `true` |
+
+Setting `SERVICENOW_ENABLED=true` activates the full ServiceNow CR lifecycle (open CR → await SNOW approval → deploy → close CR) for that environment. Leave it unset or `false` to skip ServiceNow entirely. Requires ServiceNow AKV secrets — see Step 3.
+
 ---
 
 ## Step 2 — Set GitHub Secret
@@ -63,6 +76,8 @@ Navigate to **GHA-Dynamics → Settings → Environments** and create these six 
 | `PP_PROD_URL` | `https://yourorg.crm.dynamics.com` | ✅ |
 | `JFROG_URL` | `https://yourorg.jfrog.io/artifactory` | Optional |
 | `JFROG_REPO` | `powerplatform-solutions` | Optional |
+
+> **ServiceNow AKV secrets:** If you set `SERVICENOW_ENABLED=true` on any environment, you must also add these three secrets to your Azure Key Vault before running the pipeline: `snow-base-uri` (your ServiceNow instance URL), `snow-oauth-client-id`, and `snow-oauth-client-secret`. The `reveille` action fetches them when `SERVICENOW_ENABLED=true`. To test the ServiceNow flow without real credentials, use `test-servicenow.yml` (a fully self-contained simulation).
 
 ---
 
@@ -239,3 +254,6 @@ python3 scripts/simulate-pipeline.py --solutions all --target-envs DEV,INTG --ru
 | `Solution package type did not match requested type` | `<Managed>0</Managed>` tag present in Solution.xml | Handled automatically by `Remove-ManagedTag.ps1` — check the pack step ran |
 | Pipeline 2 does not trigger after PR merge | PR head branch does not start with `feature/` | Confirm `create-main-pr` job succeeded and the feature branch starts with `feature/`. Also confirm `pipeline-context.json` was committed to the feature branch by the stage-export commit job. |
 | `Push to feature branch did not trigger the pipeline` | Branch name does not match `feature/**` pattern | Rename to `feature/your-name` — the push trigger only watches branches starting with `feature/`. Also check that `paths-ignore: pipeline-context.json` is not interfering (only `.json` context file is ignored). |
+| ServiceNow CR is never opened | `SERVICENOW_ENABLED` not set on the environment | Add `SERVICENOW_ENABLED=true` as an Environment variable in Settings → Environments → [Name] → Environment variables |
+| `Failed to fetch AKV secret 'snow-base-uri'` | ServiceNow AKV secrets missing | Add `snow-base-uri`, `snow-oauth-client-id`, `snow-oauth-client-secret` to your Azure Key Vault |
+| Want to test ServiceNow flow before using real credentials | N/A | Run `test-servicenow.yml` from Actions → Test ServiceNow Flow — it's a fully self-contained simulation with no Azure or SNOW dependencies. Set `simulate_outcome: failure` to test the unsuccessful CR close path. |

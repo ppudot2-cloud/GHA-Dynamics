@@ -37,6 +37,10 @@ These are the entry-point workflows — the ones you trigger or that fire automa
 | `enable_backup` | boolean | false | Take a pre-import backup at each environment before upgrading. If the import fails, the pipeline automatically re-imports the backup to restore the previous version. Recommended: `true` for UAT, FRS, Perf, Prod. |
 | `solutions` | string | `all` | "all" or comma-separated solution names to build and deploy |
 | `skip_export` | boolean | false | Skip sandbox export — build from source already committed to the current branch. Set automatically when triggered by a push event. |
+| `checker_error_level` | choice | `HighIssue` | Minimum severity that fails Solution Checker |
+| `base_solutions` | string | `''` | Comma-separated base solution names to verify are installed before deployment |
+
+> **ServiceNow:** Controlled per environment via `vars.SERVICENOW_ENABLED` (GitHub Environment variable), not a workflow input. Set to `true` on any environment to activate the full CR lifecycle. See [SECRETS_SETUP_GUIDE.md](./SECRETS_SETUP_GUIDE.md).
 
 **Job flow:**
 ```
@@ -73,6 +77,8 @@ setup → stage-export → stage-build → deploy-dev    ┐
 |---|---|---|---|
 | `mock_deploy` | boolean | false | Simulate UAT + Prod without touching Dataverse |
 | `enable_backup` | boolean | false | Take pre-import backups at UAT and Prod |
+
+> **ServiceNow:** Controlled per environment via `vars.SERVICENOW_ENABLED` (GitHub Environment variable). Set to `true` on the UAT and Prod environments to activate ServiceNow for those deployments.
 
 **Job flow:**
 ```
@@ -133,6 +139,46 @@ setup → export (matrix, max-parallel:1) → create-pr
 
 ---
 
+### `test-servicenow.yml` — ServiceNow Flow Simulation
+
+**Path:** `.github/workflows/test-servicenow.yml`
+**Trigger:** `workflow_dispatch` only
+**Purpose:** Fully self-contained simulation of the ServiceNow change management lifecycle. No Azure login, no Dataverse connection, no real SNOW API calls — every step is simulated with realistic output and timing. Use this to verify the 14-step ServiceNow CR flow and confirm env var handoff between pre-deploy and post-deploy phases before enabling ServiceNow on a real environment.
+
+**Inputs:**
+
+| Input | Type | Default | Description |
+|---|---|---|---|
+| `environment_name` | choice | `UAT` | Target environment to simulate (Dev / Intg / UAT / FRS / Perf / Prod) |
+| `solution_list` | string | `CoreSolution` | Comma-separated list of solution names to simulate deploying |
+| `simulate_outcome` | choice | `success` | Force deployment to succeed or fail — lets you test both the successful close and unsuccessful close CR paths |
+
+**Simulated steps:**
+
+| Phase | Step | Action |
+|---|---|---|
+| Reveille | 1–6 | Checkout, GHA-Core checkout, Azure login, AKV fetch (6 secrets), merge variables, JFrog register |
+| Pre-Deploy | 1 | Load ServiceNow PS module |
+| Pre-Deploy | 2 | Set runtime env vars (description, build ID, change window) |
+| Pre-Deploy | 3 | `New-ServiceNowChangeRequest` → generates fake `CHG#######` CR number and sys_id GUID |
+| Pre-Deploy | 4 | `Add-ServiceNowAuditTrailArtifact` → attaches SARIF |
+| Pre-Deploy | 5 | `Set-ServiceNowChangeWindow` |
+| Pre-Deploy | 6 | `Get-ServiceNowConflict` |
+| Pre-Deploy | 7 | `Request-ServiceNowApproval` |
+| Pre-Deploy | 8 | `Get-ServiceNowApprovalStatus` → polls and approves after short delay |
+| Deploy | 1–11 | Full per-solution deploy simulation (11 sub-steps), writes `SNOW_DEPLOY_STATUS` before any exit |
+| Post-Deploy | 12 | `GET /repos/{owner}/{repo}/actions/runs/{id}/approvals` → find GitHub Environment approvers |
+| Post-Deploy | 13 | Read `SNOW_DEPLOY_STATUS` |
+| Post-Deploy | 14 | `Close-ServiceNowChangeRequest` with `close_code: successful` or `unsuccessful` |
+
+**Key behaviours:**
+- Generates a real-looking CR number (`CHG1234567`) and sys_id UUID, written to `$GITHUB_ENV` in pre-deploy and read back in post-deploy
+- Post-deploy step uses `if: always()` — it runs and closes the CR even if the simulated deploy "fails"
+- `SNOW_DEPLOY_STATUS` is written to `$GITHUB_ENV` **before** `exit 1` so post-deploy always sees it
+- Final step writes a full table to `$GITHUB_STEP_SUMMARY` listing all 14 steps and their simulated outcomes
+
+---
+
 
 ## 2. GHA-Core Reusable Workflows
 
@@ -164,7 +210,7 @@ Supports two modes: **normal** (exports from sandbox, creates `feature/pipeline-
 
 **Path:** `.github/workflows/_job-build.yml`
 **Called by:** `_stage-build.yml` (one instance per solution in the matrix)
-**Purpose:** Single-solution build job. Orchestrates: ci-bootstrap → pac-install → optional artifact download → pack-solution → solution-checker → export-config-data → upload artifact → jfrog-upload → write summary.
+**Purpose:** Single-solution build job. Orchestrates: reveille → pac-install → optional artifact download → pack-solution → solution-checker → export-config-data → upload artifact → jfrog-upload → write summary.
 
 **Key inputs:** `solution_name`, `solution_source_folder`, `use_exported_source`, `checker_error_level`, `data_schema_file`, `source_environment_url`, `mock_deploy`, `jfrog_url`, `jfrog_repo`
 
@@ -185,20 +231,35 @@ Supports two modes: **normal** (exports from sandbox, creates `feature/pipeline-
 
 All actions live in `.github/actions/dynamics/` and are referenced as `ppudot2-cloud/GHA-Core/.github/actions/dynamics/{name}@main`.
 
-### `ci-bootstrap`
+### `reveille`
 
-**Path:** `.github/actions/dynamics/ci-bootstrap/action.yml`
-**Used by:** Every job in every workflow as the first step.
-**Purpose:** Shared bootstrap that prepares the runner with all prerequisites.
+**Path:** `.github/actions/dynamics/reveille/action.yml`
+**Used by:** Every deploy job in every workflow as the first step.
+**Purpose:** Wakes the runner — checks out repos, authenticates to Azure via OIDC, fetches all required secrets from Key Vault, merges global + project variables, and (optionally) registers JFrog as the PowerShell module source.
 
 Steps performed:
 1. `actions/checkout@v4` — checks out the **calling repository** (GHA-Dynamics) with full history
 2. `actions/checkout@v4` — checks out **GHA-Core** to `.ci/` using `GHA_CORE_PAT`
 3. `azure/login@v2` — OIDC login (skipped if `mock_deploy=true`)
-4. AKV fetch — fetches `pp-app-id`, `pp-client-secret`, `pp-tenant-id` from Key Vault; writes to `$GITHUB_ENV` with masking. Also fetches `jfrog-api-key` if `jfrog_enabled=true`
-5. `Merge-Variables.ps1` — merges `global-vars.yml` + `project-vars.yml` into environment
+4. **Fetch secrets from Azure Key Vault** — always fetches `pp-app-id`, `pp-client-secret`, `pp-tenant-id`. Conditionally adds:
+   - `jfrog-api-key` → `JFROG_TOKEN` (when `jfrog_enabled=true`)
+   - `mulesoft-client-id`, `mulesoft-client-secret` → `MULESOFT_CLIENT_ID`, `MULESOFT_CLIENT_SECRET` (when `mulesoft_enabled=true`)
+   - `snow-base-uri`, `snow-oauth-client-id`, `snow-oauth-client-secret` → `SERVICENOWMURI`, `SNOW_OAUTH_CLIENT_ID`, `SNOW_OAUTH_CLIENT_SECRET` (when `servicenow_enabled=true`)
+5. `Merge-Variables.ps1` — merges `global-vars.yml` + `project-vars.yml` into `$GITHUB_ENV`
+6. **Register JFrog as PS module repository** — unregisters PSGallery, registers JFrog NuGet v2 feed as trusted `Install-Module` source (when `jfrog_enabled=true`, skipped in mock mode)
 
-**Inputs:** `mock_deploy`, `jfrog_enabled`, `azure_client_id`, `azure_tenant_id`, `azure_subscription_id`, `azure_key_vault_name`
+**Inputs:**
+
+| Input | Default | Description |
+|---|---|---|
+| `mock_deploy` | `false` | Skip Azure login and AKV fetch; simulate locally |
+| `jfrog_enabled` | `false` | Fetch `jfrog-api-key` from AKV; register JFrog as PS module source |
+| `mulesoft_enabled` | `false` | Fetch Mulesoft credentials from AKV (for solutions using Mulesoft connectors) |
+| `servicenow_enabled` | `false` | Fetch ServiceNow credentials from AKV. Driven by `vars.SERVICENOW_ENABLED` on each environment. |
+| `azure_client_id` | `''` | `vars.AZURE_CLIENT_ID` — OIDC App Registration client ID |
+| `azure_tenant_id` | `''` | `vars.AZURE_TENANT_ID` — Azure AD tenant |
+| `azure_subscription_id` | `''` | `vars.AZURE_SUBSCRIPTION_ID` |
+| `azure_key_vault_name` | `''` | `vars.AZURE_KEY_VAULT_NAME` — set per environment for separate KVs |
 
 > Composite actions cannot access `${{ secrets.* }}`. The caller exposes `GHA_CORE_PAT` via `env: GHA_CORE_PAT` on the step.
 
@@ -208,6 +269,64 @@ Steps performed:
 
 **Path:** `.github/actions/dynamics/pac-install/action.yml`
 **Purpose:** Installs Microsoft Power Platform CLI using `microsoft/powerplatform-actions/actions-install@v1` and adds it to PATH. No inputs.
+
+---
+
+### `servicenow-change`
+
+**Path:** `.github/actions/dynamics/servicenow-change/action.yml`
+**Used by:** `deploy-all-solutions` action (when `enable_servicenow=true`)
+**Purpose:** Manages the full ServiceNow change request lifecycle. Called twice per deployment — once before importing solutions (pre-deploy) and once after (post-deploy).
+
+**Pre-deploy phase** (`phase=pre-deploy`):
+1. Load ServiceNow PowerShell module from `.ci/.github/servicenow/`
+2. Set dynamic runtime env vars (`BUILD_UNIQUE_IDENTIFIER`, `SERVICENOWSHORTDESCRIPTION`, change window)
+3. `New-ServiceNowChangeRequest` — opens CR, writes `SNOW_CHANGE_REQUEST_NUMBER` and `SNOW_CHANGE_REQUEST_ID` to `$GITHUB_ENV`
+4. `Add-ServiceNowAuditTrailArtifact` — attaches Solution Checker SARIF to the CR
+5. `Set-ServiceNowChangeWindow` — sets planned start/end time
+6. `Get-ServiceNowConflict` — checks for scheduling conflicts
+7. `Request-ServiceNowApproval` — moves CR to awaiting approval state
+8. `Get-ServiceNowApprovalStatus` — polls until approved (blocks pipeline). Fails on rejection or timeout.
+
+**Post-deploy phase** (`phase=post-deploy`) — uses `if: always()` so it runs even if deployment failed:
+12. GitHub Actions REST API — `GET /repos/{owner}/{repo}/actions/runs/{run_id}/approvals` to find environment approvers; falls back to `GITHUB_ACTOR`
+13. Read `SNOW_DEPLOY_STATUS` env var (written by the deploy loop before any `exit 1`)
+14. `Close-ServiceNowChangeRequest` — `close_code: successful` or `unsuccessful` based on deploy status
+
+**Required env vars** (populated by `reveille` when `servicenow_enabled=true`):
+
+| Env Var | AKV Secret | Description |
+|---|---|---|
+| `SERVICENOWMURI` | `snow-base-uri` | ServiceNow instance base URL |
+| `SNOW_OAUTH_CLIENT_ID` | `snow-oauth-client-id` | OAuth client ID |
+| `SNOW_OAUTH_CLIENT_SECRET` | `snow-oauth-client-secret` | OAuth client secret |
+
+**Optional SNOW vars** (configure in `global-vars.yml` or `project-vars.yml`):
+
+| Variable | Default | Description |
+|---|---|---|
+| `SERVICENOWCHANGETYPE` | `standard` | Change type |
+| `SERVICENOWASSIGNMENTGROUP` | — | Assignment group |
+| `SERVICENOWJUSTIFICATION` | — | Business justification |
+| `SERVICENOWIMPLEMENTATIONPLAN` | — | Implementation plan |
+| `SERVICENOWBACKOUTPLAN` | — | Backout / rollback plan |
+| `SERVICENOWRISKIMPACTANALYSIS` | — | Risk and impact narrative |
+| `SERVICENOWRISKLEVEL` | `Low` | Risk level |
+| `SERVICENOWIMPACTLEVEL` | `3 - Low` | Impact level |
+| `SERVICENOWCONFIGURATIONITEM` | — | CMDB CI linked to this change |
+| `SERVICENOWCATEGORY` | — | Change category |
+| `SERVICENOWSERVICENAME` | — | Business service name |
+| `SERVICENOW_DESIRED_DAY` | today | Preferred day of week for change window |
+
+**Inputs:**
+
+| Input | Required | Description |
+|---|---|---|
+| `phase` | ✅ | `pre-deploy` or `post-deploy` |
+| `environment_name` | ✅ | Target environment name (e.g. `UAT`, `Prod`) |
+| `solution_list` | — | Comma-separated solution names (used in CR description) |
+| `sarif_path` | — | Path to Solution Checker SARIF file (attached to CR) |
+| `mock_deploy` | — | When `true`, logs what would have happened without calling SNOW APIs |
 
 ---
 
@@ -300,7 +419,17 @@ On failure (catch block): if `enable_backup=true` and a backup ZIP was taken (i.
 
 After loop: uploads `backup-{env}-v{run_number}` GitHub artifact (30-day retention) for audit purposes.
 
-**Key inputs:** `solutions_json`, `environment_name`, `environment_url`, `solution_type`, `enable_backup`, `enable_blocking_check`, `enable_version_compare`, `import_config_data`, `tag_prod_deployed`, `activate_flows`, `mock_deploy`, `base_solutions`, `jfrog_url`, `jfrog_repo`, `run_number`, `run_attempt`
+**Key inputs:** `solutions_json`, `environment_name`, `environment_url`, `solution_type`, `enable_backup`, `enable_blocking_check`, `enable_version_compare`, `import_config_data`, `tag_prod_deployed`, `activate_flows`, `mock_deploy`, `base_solutions`, `jfrog_url`, `jfrog_repo`, `run_number`, `run_attempt`, `enable_servicenow`, `solution_list`, `sarif_path`
+
+**ServiceNow inputs:**
+
+| Input | Default | Description |
+|---|---|---|
+| `enable_servicenow` | `false` | When `true`, calls `servicenow-change` before and after the deploy loop. Driven by `vars.SERVICENOW_ENABLED` from the caller environment. |
+| `solution_list` | `''` | Comma-separated solution names for the CR description |
+| `sarif_path` | `''` | Solution Checker SARIF path — attached to the CR as an audit trail artifact |
+
+The deploy loop writes `SNOW_DEPLOY_STATUS=success` or `SNOW_DEPLOY_STATUS=failure` to `$GITHUB_ENV` **before** any `exit 1` call, so the post-deploy step always sees the correct status even when the import failed.
 
 ---
 

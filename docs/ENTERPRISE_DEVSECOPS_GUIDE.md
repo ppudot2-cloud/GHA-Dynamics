@@ -33,11 +33,11 @@ The pipeline uses a **two-repo, two-pipeline** architecture:
 │  GHA-Core  (reusable library — your org's shared pipeline library)  │
 │                                                                     │
 │  .github/workflows/       ← reusable workflows (_stage-*, _job-*)  │
-│  .github/actions/dynamics ← composite actions (ci-bootstrap, etc.) │
+│  .github/actions/dynamics ← composite actions (reveille, deploy-all-solutions, etc.) │
 │  .github/scripts/dynamics ← PowerShell scripts                     │
 │  .github/config/          ← global-vars.yml (org-wide defaults)    │
 └─────────────────────────────────────────────────────────────────────┘
-         ↑ checked out to .ci/ on every runner by ci-bootstrap
+         ↑ checked out to .ci/ on every runner by reveille
 
 ┌─────────────────────────────────────────────────────────────────────┐
 │  GHA-Dynamics  (project caller — one per Power Platform project)   │
@@ -150,7 +150,7 @@ az role assignment create \
 
 ## 4. Azure Key Vault Setup
 
-Store the Power Platform service principal credentials (and JFrog token if used) in Key Vault. The secret names must match exactly — the `ci-bootstrap` action fetches by these exact names.
+Store all pipeline credentials in Key Vault. Secret names must match exactly — the `reveille` action fetches by these exact names at the start of every deploy job.
 
 ```bash
 # Get your PP service principal credentials first — see Section 6
@@ -176,16 +176,48 @@ az keyvault secret set \
   --vault-name $KEY_VAULT_NAME \
   --name "jfrog-api-key" \
   --value "<your JFrog API key>"
+
+# Optional — only if Mulesoft connector references are used
+az keyvault secret set \
+  --vault-name $KEY_VAULT_NAME \
+  --name "mulesoft-client-id" \
+  --value "<Mulesoft connected app client ID>"
+
+az keyvault secret set \
+  --vault-name $KEY_VAULT_NAME \
+  --name "mulesoft-client-secret" \
+  --value "<Mulesoft connected app client secret>"
+
+# Required for each environment where SERVICENOW_ENABLED=true
+az keyvault secret set \
+  --vault-name $KEY_VAULT_NAME \
+  --name "snow-base-uri" \
+  --value "https://yourorg.service-now.com"
+
+az keyvault secret set \
+  --vault-name $KEY_VAULT_NAME \
+  --name "snow-oauth-client-id" \
+  --value "<ServiceNow OAuth client ID>"
+
+az keyvault secret set \
+  --vault-name $KEY_VAULT_NAME \
+  --name "snow-oauth-client-secret" \
+  --value "<ServiceNow OAuth client secret>"
 ```
 
-**Required secret names in Key Vault:**
+**Secret names in Key Vault:**
 
-| Secret Name | Description |
-|---|---|
-| `pp-app-id` | Power Platform App Registration client ID |
-| `pp-client-secret` | Power Platform App Registration client secret |
-| `pp-tenant-id` | Azure AD tenant ID |
-| `jfrog-api-key` | JFrog Artifactory API key (optional) |
+| Secret Name | Required | Fetched when | Env Var |
+|---|---|---|---|
+| `pp-app-id` | ✅ Always | Always | `PP_APP_ID` |
+| `pp-client-secret` | ✅ Always | Always | `PP_CLIENT_SECRET` |
+| `pp-tenant-id` | ✅ Always | Always | `PP_TENANT_ID` |
+| `jfrog-api-key` | Optional | `JFROG_URL` is set | `JFROG_TOKEN` |
+| `mulesoft-client-id` | Optional | `MULESOFT_ENABLED=true` | `MULESOFT_CLIENT_ID` |
+| `mulesoft-client-secret` | Optional | `MULESOFT_ENABLED=true` | `MULESOFT_CLIENT_SECRET` |
+| `snow-base-uri` | Optional | `SERVICENOW_ENABLED=true` | `SERVICENOWMURI` |
+| `snow-oauth-client-id` | Optional | `SERVICENOW_ENABLED=true` | `SNOW_OAUTH_CLIENT_ID` |
+| `snow-oauth-client-secret` | Optional | `SERVICENOW_ENABLED=true` | `SNOW_OAUTH_CLIENT_SECRET` |
 
 ---
 
@@ -217,7 +249,7 @@ add_federated_credential \
   "gha-dynamics-main" \
   "repo:${GITHUB_ORG}/${GITHUB_REPO_DYNAMICS}:ref:refs/heads/main"
 
-# Environment credentials (one per environment that runs ci-bootstrap)
+# Environment credentials (one per environment that runs reveille)
 for ENV in Dev Intg UAT FRS Perf Prod; do
   add_federated_credential \
     "gha-dynamics-env-${ENV}" \
@@ -347,13 +379,14 @@ GHA-Core/
 │   │   ├── _stage-deploy-chain.yml
 │   │   └── _stage-export.yml
 │   ├── actions/dynamics/    ← composite actions
-│   │   ├── ci-bootstrap/
+│   │   ├── reveille/
 │   │   ├── deploy-all-solutions/
 │   │   ├── export-config-data/
 │   │   ├── export-solution/
 │   │   ├── import-solution/
 │   │   ├── jfrog-upload/
 │   │   ├── pac-install/
+│   │   ├── servicenow-change/
 │   │   ├── pack-solution/
 │   │   ├── post-deploy/
 │   │   ├── pre-deploy-checks/
@@ -501,6 +534,8 @@ Azure
   [ ] Federated credentials created for: main branch + all 6 environments
   [ ] AKV secrets populated: pp-app-id, pp-client-secret, pp-tenant-id
   [ ] (Optional) jfrog-api-key in AKV
+  [ ] (Optional) mulesoft-client-id, mulesoft-client-secret in AKV (if using Mulesoft connectors)
+  [ ] (Optional) snow-base-uri, snow-oauth-client-id, snow-oauth-client-secret in AKV (if using ServiceNow)
 
 Power Platform
   [ ] Separate PP App Registration created
@@ -510,6 +545,7 @@ Power Platform
 GitHub — GHA-Dynamics
   [ ] Environments created: Dev, Intg, UAT, FRS, Perf, Prod (exact names)
   [ ] Required reviewers set on Intg, UAT, FRS, Perf, Prod
+  [ ] SERVICENOW_ENABLED=true set as Environment variable on UAT/FRS/Perf/Prod (if using ServiceNow)
   [ ] GHA_CORE_PAT secret set with repo scope
   [ ] AZURE_CLIENT_ID variable set (OIDC app client ID)
   [ ] AZURE_TENANT_ID variable set (your real tenant, not Contoso)

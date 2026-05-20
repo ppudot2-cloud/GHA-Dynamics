@@ -53,23 +53,48 @@ Navigate to: **GHA-Dynamics → Settings → Secrets and variables → Actions �
 | Variable | Description |
 |---|---|
 | `PP_BASE_SOLUTIONS` | Comma-separated list of base solution names that must be installed before importing |
+| `MULESOFT_ENABLED` | Set to `true` if solutions use Mulesoft connection references. Tells `reveille` to fetch Mulesoft credentials from AKV. |
 
 ---
 
-## Azure Key Vault Secrets (fetched at runtime by ci-bootstrap)
+## Azure Key Vault Secrets (fetched at runtime by `reveille`)
 
 These are stored in Azure Key Vault, **not** in GitHub. Secret names must match exactly.
 
-| AKV Secret Name | Description |
-|---|---|
-| `pp-app-id` | Power Platform service principal Application (Client) ID |
-| `pp-client-secret` | Power Platform service principal client secret |
-| `pp-tenant-id` | Azure AD Tenant ID |
-| `jfrog-api-key` | JFrog Artifactory API key (only needed if JFROG_URL is set) |
+### Power Platform (always fetched)
+
+| AKV Secret Name | Env Var | Description |
+|---|---|---|
+| `pp-app-id` | `PP_APP_ID` | Power Platform service principal Application (Client) ID |
+| `pp-client-secret` | `PP_CLIENT_SECRET` | Power Platform service principal client secret |
+| `pp-tenant-id` | `PP_TENANT_ID` | Azure AD Tenant ID |
+
+### JFrog (fetched when `JFROG_URL` variable is set)
+
+| AKV Secret Name | Env Var | Description |
+|---|---|---|
+| `jfrog-api-key` | `JFROG_TOKEN` | JFrog Artifactory API key |
+
+### Mulesoft (fetched when `MULESOFT_ENABLED=true`)
+
+| AKV Secret Name | Env Var | Description |
+|---|---|---|
+| `mulesoft-client-id` | `MULESOFT_CLIENT_ID` | Mulesoft connected app client ID |
+| `mulesoft-client-secret` | `MULESOFT_CLIENT_SECRET` | Mulesoft connected app client secret |
+
+### ServiceNow (fetched when `SERVICENOW_ENABLED=true` on an environment)
+
+| AKV Secret Name | Env Var | Description |
+|---|---|---|
+| `snow-base-uri` | `SERVICENOWMURI` | ServiceNow instance base URL (e.g. `https://yourorg.service-now.com`) |
+| `snow-oauth-client-id` | `SNOW_OAUTH_CLIENT_ID` | ServiceNow OAuth client ID |
+| `snow-oauth-client-secret` | `SNOW_OAUTH_CLIENT_SECRET` | ServiceNow OAuth client secret |
+
+Store these in the same Key Vault referenced by `AZURE_KEY_VAULT_NAME` on the environments where ServiceNow is active.
 
 ---
 
-## GitHub Environments (approval gates)
+## GitHub Environments (approval gates + per-environment variables)
 
 Navigate to: **GHA-Dynamics → Settings → Environments**
 
@@ -83,6 +108,27 @@ Navigate to: **GHA-Dynamics → Settings → Environments**
 | `Prod` | **Required** | Release manager — final gate before production |
 
 Environment names are **case-sensitive** and must match exactly as shown above.
+
+### Per-environment variables
+
+Some variables are set at the **Environment** level rather than the repository level, so each environment can have a different value. Navigate to **Settings → Environments → [Environment name] → Environment variables**.
+
+| Variable | Description | Example |
+|---|---|---|
+| `SERVICENOW_ENABLED` | Set to `true` to activate ServiceNow change management for this environment's deployments. When `true`, `reveille` fetches SNOW credentials from AKV and `deploy-all-solutions` opens/closes a CR around the import. | `true` |
+| `AZURE_KEY_VAULT_NAME` | Override the default Key Vault for this environment. Useful when non-prod and prod use separate Key Vaults or separate service principals. | `kv-pp-prod` |
+| `AZURE_CLIENT_ID` | Override the OIDC App Registration for this environment (if using per-environment app registrations). | — |
+
+**Recommended `SERVICENOW_ENABLED` configuration:**
+
+| Environment | Value |
+|---|---|
+| Dev | `false` (or unset) |
+| Intg | `false` (or unset) |
+| UAT | `true` |
+| FRS | `true` |
+| Perf | `true` |
+| Prod | `true` |
 
 ---
 
