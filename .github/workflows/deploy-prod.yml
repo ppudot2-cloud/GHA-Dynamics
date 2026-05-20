@@ -47,16 +47,6 @@ on:
         default: false
         type: boolean
 
-      enable_servicenow:
-        description: >
-          Enable ServiceNow change management for the UAT re-validation deployment.
-          When true: opens a SNOW CR before UAT, waits for approval, and closes after.
-          Default false — ServiceNow is optional for non-prod (UAT) environments.
-          NOTE: Prod always has ServiceNow enabled — this input has no effect on Prod.
-        required: false
-        default: false
-        type: boolean
-
       enable_backup:
         description: >
           Take a pre-import backup at UAT and Prod before upgrading.
@@ -166,7 +156,7 @@ jobs:
           mock_deploy:           ${{ inputs.mock_deploy == true }}
           jfrog_enabled:         ${{ vars.JFROG_URL != '' }}
           mulesoft_enabled:      ${{ vars.MULESOFT_ENABLED == 'true' }}
-          servicenow_enabled:    ${{ inputs.enable_servicenow == true }}
+          servicenow_enabled:    ${{ vars.SERVICENOW_ENABLED == 'true' }}
           azure_client_id:       ${{ vars.AZURE_CLIENT_ID }}
           azure_tenant_id:       ${{ vars.AZURE_TENANT_ID }}
           azure_subscription_id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
@@ -201,7 +191,7 @@ jobs:
           jfrog_repo:               ${{ vars.JFROG_REPO || 'powerplatform-solutions' }}
           run_number:               ${{ needs.read-context.outputs.run_number }}
           run_attempt:              ${{ needs.read-context.outputs.run_attempt }}
-          enable_servicenow:        ${{ inputs.enable_servicenow == true }}
+          enable_servicenow:        ${{ vars.SERVICENOW_ENABLED == 'true' }}
           solution_list:            ${{ needs.read-context.outputs.solution_list }}
 
   # ============================================================================
@@ -227,7 +217,7 @@ jobs:
           mock_deploy:           ${{ inputs.mock_deploy == true }}
           jfrog_enabled:         ${{ vars.JFROG_URL != '' }}
           mulesoft_enabled:      ${{ vars.MULESOFT_ENABLED == 'true' }}
-          servicenow_enabled:    'true'
+          servicenow_enabled:    ${{ vars.SERVICENOW_ENABLED == 'true' }}
           azure_client_id:       ${{ vars.AZURE_CLIENT_ID }}
           azure_tenant_id:       ${{ vars.AZURE_TENANT_ID }}
           azure_subscription_id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
@@ -262,7 +252,7 @@ jobs:
           jfrog_repo:               ${{ vars.JFROG_REPO || 'powerplatform-solutions' }}
           run_number:               ${{ needs.read-context.outputs.run_number }}
           run_attempt:              ${{ needs.read-context.outputs.run_attempt }}
-          enable_servicenow:        'true'
+          enable_servicenow:        ${{ vars.SERVICENOW_ENABLED == 'true' }}
           solution_list:            ${{ needs.read-context.outputs.solution_list }}
 
   # ============================================================================
