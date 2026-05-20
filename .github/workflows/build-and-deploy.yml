@@ -66,6 +66,7 @@ on:
         description: '"all" or comma-separated solution names'
         required: false
         default: 'all'
+        type: string
 
       skip_export:
         description: >
