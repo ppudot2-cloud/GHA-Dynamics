@@ -171,6 +171,45 @@ jobs:
           merge-multiple: true
           run-id: ${{ needs.read-context.outputs.run_id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      # Locate the Solution Checker SARIF reports from the downloaded artifacts.
+      # Each solution's checker report was written to out/<Name>/solution-checker/
+      # by the build stage and included in solution-artifact-<Name>.
+      # We collect all SARIF paths into a comma-separated list and pass the first
+      # (or combined) one as sarif_path to deploy-all-solutions → ServiceNow.
+      - name: Locate Solution Checker SARIF reports
+        id: find-sarif
+        shell: pwsh
+        run: |
+          $sarifPaths = @()
+          # Check sidecar path files written by solution-checker/action.yml
+          $pathFiles = Get-ChildItem -Path "." -Recurse -Filter "sarif.path" -ErrorAction SilentlyContinue
+          foreach ($pf in $pathFiles) {
+            $p = (Get-Content $pf.FullName -Raw).Trim()
+            if ($p -and $p -ne 'not-found' -and (Test-Path $p)) {
+              $sarifPaths += $p
+              Write-Host "  ✅ Found SARIF: $p"
+            }
+          }
+          # Fallback: glob for .sarif files directly
+          if ($sarifPaths.Count -eq 0) {
+            $found = Get-ChildItem -Path "." -Recurse -Include "*.sarif","*.sarif.json" -ErrorAction SilentlyContinue
+            foreach ($f in $found) {
+              $sarifPaths += $f.FullName
+              Write-Host "  ✅ Found SARIF (fallback): $($f.FullName)"
+            }
+          }
+          $combined = $sarifPaths -join ','
+          if ($combined) {
+            Write-Host "  SARIF path(s): $combined"
+          } else {
+            Write-Host "::warning::No Solution Checker SARIF found in downloaded artifacts"
+          }
+          "sarif_paths=$combined" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          # Expose first path for ServiceNow (attach the first/only report)
+          $first = if ($sarifPaths.Count -gt 0) { $sarifPaths[0] } else { '' }
+          "sarif_path=$first" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
       - name: Deploy all solutions → UAT
         uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/deploy-all-solutions@main
         with:
@@ -193,6 +232,7 @@ jobs:
           run_attempt:              ${{ needs.read-context.outputs.run_attempt }}
           enable_servicenow:        ${{ vars.SERVICENOW_ENABLED == 'true' }}
           solution_list:            ${{ needs.read-context.outputs.solution_list }}
+          sarif_path:               ${{ steps.find-sarif.outputs.sarif_path }}
 
   # ============================================================================
   # Deploy Prod — gated by Prod GitHub Environment approval
@@ -232,6 +272,29 @@ jobs:
           merge-multiple: true
           run-id: ${{ needs.read-context.outputs.run_id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Locate Solution Checker SARIF reports
+        id: find-sarif
+        shell: pwsh
+        run: |
+          $sarifPaths = @()
+          $pathFiles = Get-ChildItem -Path "." -Recurse -Filter "sarif.path" -ErrorAction SilentlyContinue
+          foreach ($pf in $pathFiles) {
+            $p = (Get-Content $pf.FullName -Raw).Trim()
+            if ($p -and $p -ne 'not-found' -and (Test-Path $p)) {
+              $sarifPaths += $p
+              Write-Host "  ✅ Found SARIF: $p"
+            }
+          }
+          if ($sarifPaths.Count -eq 0) {
+            $found = Get-ChildItem -Path "." -Recurse -Include "*.sarif","*.sarif.json" -ErrorAction SilentlyContinue
+            foreach ($f in $found) { $sarifPaths += $f.FullName }
+          }
+          $first = if ($sarifPaths.Count -gt 0) { $sarifPaths[0] } else { '' }
+          "sarif_path=$first" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          if ($first) { Write-Host "  ServiceNow SARIF attachment: $first" }
+          else         { Write-Host "::warning::No Solution Checker SARIF found in downloaded artifacts" }
+
       - name: Deploy all solutions → Prod
         uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/deploy-all-solutions@main
         with:
@@ -254,6 +317,7 @@ jobs:
           run_attempt:              ${{ needs.read-context.outputs.run_attempt }}
           enable_servicenow:        ${{ vars.SERVICENOW_ENABLED == 'true' }}
           solution_list:            ${{ needs.read-context.outputs.solution_list }}
+          sarif_path:               ${{ steps.find-sarif.outputs.sarif_path }}
 
   # ============================================================================
   # Pipeline Summary (always runs)

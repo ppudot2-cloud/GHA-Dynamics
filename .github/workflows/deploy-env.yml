@@ -1,0 +1,517 @@
+# =============================================================================
+# WORKFLOW: Deploy to Environment (Ad-hoc Single-Environment)
+# =============================================================================
+#
+# PURPOSE
+# ─────────────────────────────────────────────────────────────────────────────
+# Deploy a previously built artifact set to a single target environment without
+# triggering or waiting for the full pipeline chain.
+#
+# USE CASES
+#   • Hotfix: A critical fix was merged and needs to reach Prod faster than the
+#     normal build-and-deploy → PR → deploy-prod chain allows.
+#
+#   • Environment recovery: A PP environment was restored from backup and needs
+#     the current solutions re-installed (without rebuilding from source).
+#
+#   • Targeted re-deploy: A specific deployment settings change needs to be
+#     applied to one environment without re-running the whole pipeline.
+#
+#   • Testing deployment settings: Validate connection references in UAT without
+#     promoting to all environments first.
+#
+# HOW TO FIND THE SOURCE RUN ID
+# ─────────────────────────────────────────────────────────────────────────────
+# 1. Go to GHA-Dynamics → Actions → build-and-deploy.yml
+# 2. Find the run that built the version you want to deploy
+# 3. Copy the Run ID from the URL: .../actions/runs/{RUN_ID}
+#
+# The run must be recent enough that its artifacts have not expired (7-day
+# retention on GitHub, indefinite on JFrog if enabled).
+#
+# SERVICENOW
+# ─────────────────────────────────────────────────────────────────────────────
+# Follows SERVICENOW_ENABLED on the target environment — same as normal deploy.
+# If ServiceNow is required, the pipeline will open a CR before import and
+# close it after.
+#
+# APPROVAL GATE
+# ─────────────────────────────────────────────────────────────────────────────
+# Each environment job uses the same GitHub Environment as the main pipeline.
+# Required reviewers configured on that Environment apply here too.
+#
+# =============================================================================
+
+name: Deploy to Environment
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        type: choice
+        options:
+          - Dev
+          - Intg
+          - UAT
+          - FRS
+          - Perf
+          - Prod
+
+      source_run_id:
+        description: 'Run ID of the build-and-deploy run whose artifacts to deploy'
+        required: true
+        type: string
+
+      solutions:
+        description: '"all" or comma-separated solution names to deploy'
+        required: false
+        default: 'all'
+        type: string
+
+      enable_backup:
+        description: 'Export current solution as backup before import (auto-rollback on failure)'
+        required: false
+        default: true
+        type: boolean
+
+      mock_deploy:
+        description: 'Simulate deployment without touching Dataverse'
+        required: false
+        default: false
+        type: boolean
+
+# ── One deploy per environment at a time ────────────────────────────────────
+concurrency:
+  group: deploy-env-${{ inputs.environment }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  actions:  read
+
+jobs:
+
+  # ── Resolve the solution matrix from the source run ─────────────────────────
+  read-context:
+    name: Read Build Context
+    runs-on: ubuntu-latest
+    outputs:
+      matrix:        ${{ steps.parse.outputs.matrix }}
+      run_number:    ${{ steps.parse.outputs.run_number }}
+      run_attempt:   ${{ steps.parse.outputs.run_attempt }}
+      solution_list: ${{ steps.parse.outputs.solution_list }}
+    steps:
+      - name: Checkout (to read solutions.json)
+        uses: actions/checkout@v4
+
+      - name: Resolve solution matrix
+        id: parse
+        shell: pwsh
+        run: |
+          # If a source run is provided, try to read pipeline-context.json from
+          # the main branch (that run's feature branch was already merged).
+          # Fall back to reading solutions.json directly from this checkout.
+          $ErrorActionPreference = 'Stop'
+
+          $solutionsFile = 'solutions.json'
+          $registry  = Get-Content $solutionsFile | ConvertFrom-Json
+          $solutions = $registry.solutions | Sort-Object deployOrder
+
+          # Apply solutions filter
+          $filter = '${{ inputs.solutions }}'
+          if ($filter -ne 'all' -and $filter.Trim() -ne '') {
+            $names     = $filter -split ',' | ForEach-Object { $_.Trim() }
+            $solutions = $solutions | Where-Object { $_.name -in $names }
+          }
+
+          $matrixArray = $solutions | ForEach-Object {
+            [PSCustomObject]@{
+              name              = $_.name
+              folder            = $_.folder
+              deployOrder       = $_.deployOrder
+              dataSchemaFile    = $_.dataSchemaFile
+              deploymentSettings = $_.deploymentSettings
+            }
+          }
+
+          $matrix       = $matrixArray | ConvertTo-Json -Compress -AsArray
+          $solutionList = ($solutions | Select-Object -ExpandProperty name) -join ', '
+
+          "matrix=$matrix"              | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "solution_list=$solutionList" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "run_number=${{ github.run_number }}" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "run_attempt=${{ github.run_attempt }}" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+          Write-Host "Solutions to deploy : $solutionList"
+          Write-Host "Source run ID       : ${{ inputs.source_run_id }}"
+          Write-Host "Target environment  : ${{ inputs.environment }}"
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # Per-environment deploy jobs — only the selected environment runs
+  # ═══════════════════════════════════════════════════════════════════════════
+
+  deploy-dev:
+    name: Deploy → Dev
+    if: inputs.environment == 'Dev'
+    needs: read-context
+    runs-on: ubuntu-latest
+    environment: Dev
+    env:
+      GHA_CORE_PAT: ${{ secrets.GHA_CORE_PAT }}
+    steps:
+      - name: Reveille — checkout, OIDC login, AKV secrets, merge vars
+        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/reveille@main
+        with:
+          mock_deploy:           ${{ inputs.mock_deploy == true }}
+          jfrog_enabled:         ${{ vars.JFROG_URL != '' }}
+          mulesoft_enabled:      ${{ vars.MULESOFT_ENABLED == 'true' }}
+          servicenow_enabled:    ${{ vars.SERVICENOW_ENABLED == 'true' }}
+          azure_client_id:       ${{ vars.AZURE_CLIENT_ID }}
+          azure_tenant_id:       ${{ vars.AZURE_TENANT_ID }}
+          azure_subscription_id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          azure_key_vault_name:  ${{ vars.AZURE_KEY_VAULT_NAME }}
+
+      - name: Install PAC CLI
+        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/pac-install@main
+
+      - name: Download solution artifacts from source run
+        uses: actions/download-artifact@v4
+        with:
+          pattern:      solution-artifact-*
+          path:         out/
+          run-id:       ${{ inputs.source_run_id }}
+          github-token: ${{ secrets.GHA_CORE_PAT }}
+          merge-multiple: true
+
+      - name: Deploy all solutions → Dev
+        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/deploy-all-solutions@main
+        with:
+          solutions_json:           ${{ needs.read-context.outputs.matrix }}
+          environment_name:         Dev
+          environment_url:          ${{ vars.PP_DEV_URL }}
+          solution_type:            unmanaged
+          enable_backup:            ${{ inputs.enable_backup == true }}
+          enable_blocking_check:    true
+          enable_version_compare:   false
+          mock_deploy:              ${{ inputs.mock_deploy == true }}
+          base_solutions:           ${{ vars.PP_BASE_SOLUTIONS || '' }}
+          jfrog_url:                ${{ vars.JFROG_URL || '' }}
+          jfrog_repo:               ${{ vars.JFROG_REPO || 'powerplatform-solutions' }}
+          run_number:               ${{ needs.read-context.outputs.run_number }}
+          run_attempt:              ${{ needs.read-context.outputs.run_attempt }}
+          enable_servicenow:        ${{ vars.SERVICENOW_ENABLED == 'true' }}
+          solution_list:            ${{ needs.read-context.outputs.solution_list }}
+
+  deploy-intg:
+    name: Deploy → Intg
+    if: inputs.environment == 'Intg'
+    needs: read-context
+    runs-on: ubuntu-latest
+    environment: Intg
+    env:
+      GHA_CORE_PAT: ${{ secrets.GHA_CORE_PAT }}
+    steps:
+      - name: Reveille — checkout, OIDC login, AKV secrets, merge vars
+        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/reveille@main
+        with:
+          mock_deploy:           ${{ inputs.mock_deploy == true }}
+          jfrog_enabled:         ${{ vars.JFROG_URL != '' }}
+          mulesoft_enabled:      ${{ vars.MULESOFT_ENABLED == 'true' }}
+          servicenow_enabled:    ${{ vars.SERVICENOW_ENABLED == 'true' }}
+          azure_client_id:       ${{ vars.AZURE_CLIENT_ID }}
+          azure_tenant_id:       ${{ vars.AZURE_TENANT_ID }}
+          azure_subscription_id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          azure_key_vault_name:  ${{ vars.AZURE_KEY_VAULT_NAME }}
+
+      - name: Install PAC CLI
+        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/pac-install@main
+
+      - name: Download solution artifacts from source run
+        uses: actions/download-artifact@v4
+        with:
+          pattern:      solution-artifact-*
+          path:         out/
+          run-id:       ${{ inputs.source_run_id }}
+          github-token: ${{ secrets.GHA_CORE_PAT }}
+          merge-multiple: true
+
+      - name: Deploy all solutions → Intg
+        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/deploy-all-solutions@main
+        with:
+          solutions_json:           ${{ needs.read-context.outputs.matrix }}
+          environment_name:         Intg
+          environment_url:          ${{ vars.PP_INTG_URL }}
+          solution_type:            managed
+          enable_backup:            ${{ inputs.enable_backup == true }}
+          enable_blocking_check:    true
+          enable_version_compare:   false
+          mock_deploy:              ${{ inputs.mock_deploy == true }}
+          base_solutions:           ${{ vars.PP_BASE_SOLUTIONS || '' }}
+          jfrog_url:                ${{ vars.JFROG_URL || '' }}
+          jfrog_repo:               ${{ vars.JFROG_REPO || 'powerplatform-solutions' }}
+          run_number:               ${{ needs.read-context.outputs.run_number }}
+          run_attempt:              ${{ needs.read-context.outputs.run_attempt }}
+          enable_servicenow:        ${{ vars.SERVICENOW_ENABLED == 'true' }}
+          solution_list:            ${{ needs.read-context.outputs.solution_list }}
+
+  deploy-uat:
+    name: Deploy → UAT
+    if: inputs.environment == 'UAT'
+    needs: read-context
+    runs-on: ubuntu-latest
+    environment: UAT
+    env:
+      GHA_CORE_PAT: ${{ secrets.GHA_CORE_PAT }}
+    steps:
+      - name: Reveille — checkout, OIDC login, AKV secrets, merge vars
+        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/reveille@main
+        with:
+          mock_deploy:           ${{ inputs.mock_deploy == true }}
+          jfrog_enabled:         ${{ vars.JFROG_URL != '' }}
+          mulesoft_enabled:      ${{ vars.MULESOFT_ENABLED == 'true' }}
+          servicenow_enabled:    ${{ vars.SERVICENOW_ENABLED == 'true' }}
+          azure_client_id:       ${{ vars.AZURE_CLIENT_ID }}
+          azure_tenant_id:       ${{ vars.AZURE_TENANT_ID }}
+          azure_subscription_id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          azure_key_vault_name:  ${{ vars.AZURE_KEY_VAULT_NAME }}
+
+      - name: Install PAC CLI
+        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/pac-install@main
+
+      - name: Download solution artifacts from source run
+        uses: actions/download-artifact@v4
+        with:
+          pattern:      solution-artifact-*
+          path:         out/
+          run-id:       ${{ inputs.source_run_id }}
+          github-token: ${{ secrets.GHA_CORE_PAT }}
+          merge-multiple: true
+
+      - name: Deploy all solutions → UAT
+        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/deploy-all-solutions@main
+        with:
+          solutions_json:           ${{ needs.read-context.outputs.matrix }}
+          environment_name:         UAT
+          environment_url:          ${{ vars.PP_UAT_URL }}
+          solution_type:            managed
+          enable_backup:            ${{ inputs.enable_backup == true }}
+          enable_blocking_check:    true
+          enable_version_compare:   false
+          mock_deploy:              ${{ inputs.mock_deploy == true }}
+          base_solutions:           ${{ vars.PP_BASE_SOLUTIONS || '' }}
+          jfrog_url:                ${{ vars.JFROG_URL || '' }}
+          jfrog_repo:               ${{ vars.JFROG_REPO || 'powerplatform-solutions' }}
+          run_number:               ${{ needs.read-context.outputs.run_number }}
+          run_attempt:              ${{ needs.read-context.outputs.run_attempt }}
+          enable_servicenow:        ${{ vars.SERVICENOW_ENABLED == 'true' }}
+          solution_list:            ${{ needs.read-context.outputs.solution_list }}
+
+  deploy-frs:
+    name: Deploy → FRS
+    if: inputs.environment == 'FRS'
+    needs: read-context
+    runs-on: ubuntu-latest
+    environment: FRS
+    env:
+      GHA_CORE_PAT: ${{ secrets.GHA_CORE_PAT }}
+    steps:
+      - name: Reveille — checkout, OIDC login, AKV secrets, merge vars
+        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/reveille@main
+        with:
+          mock_deploy:           ${{ inputs.mock_deploy == true }}
+          jfrog_enabled:         ${{ vars.JFROG_URL != '' }}
+          mulesoft_enabled:      ${{ vars.MULESOFT_ENABLED == 'true' }}
+          servicenow_enabled:    ${{ vars.SERVICENOW_ENABLED == 'true' }}
+          azure_client_id:       ${{ vars.AZURE_CLIENT_ID }}
+          azure_tenant_id:       ${{ vars.AZURE_TENANT_ID }}
+          azure_subscription_id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          azure_key_vault_name:  ${{ vars.AZURE_KEY_VAULT_NAME }}
+
+      - name: Install PAC CLI
+        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/pac-install@main
+
+      - name: Download solution artifacts from source run
+        uses: actions/download-artifact@v4
+        with:
+          pattern:      solution-artifact-*
+          path:         out/
+          run-id:       ${{ inputs.source_run_id }}
+          github-token: ${{ secrets.GHA_CORE_PAT }}
+          merge-multiple: true
+
+      - name: Deploy all solutions → FRS
+        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/deploy-all-solutions@main
+        with:
+          solutions_json:           ${{ needs.read-context.outputs.matrix }}
+          environment_name:         FRS
+          environment_url:          ${{ vars.PP_FRS_URL }}
+          solution_type:            managed
+          enable_backup:            ${{ inputs.enable_backup == true }}
+          enable_blocking_check:    true
+          enable_version_compare:   false
+          mock_deploy:              ${{ inputs.mock_deploy == true }}
+          base_solutions:           ${{ vars.PP_BASE_SOLUTIONS || '' }}
+          jfrog_url:                ${{ vars.JFROG_URL || '' }}
+          jfrog_repo:               ${{ vars.JFROG_REPO || 'powerplatform-solutions' }}
+          run_number:               ${{ needs.read-context.outputs.run_number }}
+          run_attempt:              ${{ needs.read-context.outputs.run_attempt }}
+          enable_servicenow:        ${{ vars.SERVICENOW_ENABLED == 'true' }}
+          solution_list:            ${{ needs.read-context.outputs.solution_list }}
+
+  deploy-perf:
+    name: Deploy → Perf
+    if: inputs.environment == 'Perf'
+    needs: read-context
+    runs-on: ubuntu-latest
+    environment: Perf
+    env:
+      GHA_CORE_PAT: ${{ secrets.GHA_CORE_PAT }}
+    steps:
+      - name: Reveille — checkout, OIDC login, AKV secrets, merge vars
+        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/reveille@main
+        with:
+          mock_deploy:           ${{ inputs.mock_deploy == true }}
+          jfrog_enabled:         ${{ vars.JFROG_URL != '' }}
+          mulesoft_enabled:      ${{ vars.MULESOFT_ENABLED == 'true' }}
+          servicenow_enabled:    ${{ vars.SERVICENOW_ENABLED == 'true' }}
+          azure_client_id:       ${{ vars.AZURE_CLIENT_ID }}
+          azure_tenant_id:       ${{ vars.AZURE_TENANT_ID }}
+          azure_subscription_id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          azure_key_vault_name:  ${{ vars.AZURE_KEY_VAULT_NAME }}
+
+      - name: Install PAC CLI
+        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/pac-install@main
+
+      - name: Download solution artifacts from source run
+        uses: actions/download-artifact@v4
+        with:
+          pattern:      solution-artifact-*
+          path:         out/
+          run-id:       ${{ inputs.source_run_id }}
+          github-token: ${{ secrets.GHA_CORE_PAT }}
+          merge-multiple: true
+
+      - name: Deploy all solutions → Perf
+        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/deploy-all-solutions@main
+        with:
+          solutions_json:           ${{ needs.read-context.outputs.matrix }}
+          environment_name:         Perf
+          environment_url:          ${{ vars.PP_PERF_URL }}
+          solution_type:            managed
+          enable_backup:            ${{ inputs.enable_backup == true }}
+          enable_blocking_check:    true
+          enable_version_compare:   false
+          mock_deploy:              ${{ inputs.mock_deploy == true }}
+          base_solutions:           ${{ vars.PP_BASE_SOLUTIONS || '' }}
+          jfrog_url:                ${{ vars.JFROG_URL || '' }}
+          jfrog_repo:               ${{ vars.JFROG_REPO || 'powerplatform-solutions' }}
+          run_number:               ${{ needs.read-context.outputs.run_number }}
+          run_attempt:              ${{ needs.read-context.outputs.run_attempt }}
+          enable_servicenow:        ${{ vars.SERVICENOW_ENABLED == 'true' }}
+          solution_list:            ${{ needs.read-context.outputs.solution_list }}
+
+  deploy-prod:
+    name: Deploy → Prod
+    if: inputs.environment == 'Prod'
+    needs: read-context
+    runs-on: ubuntu-latest
+    environment: Prod
+    env:
+      GHA_CORE_PAT: ${{ secrets.GHA_CORE_PAT }}
+    steps:
+      - name: Reveille — checkout, OIDC login, AKV secrets, merge vars
+        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/reveille@main
+        with:
+          mock_deploy:           ${{ inputs.mock_deploy == true }}
+          jfrog_enabled:         ${{ vars.JFROG_URL != '' }}
+          mulesoft_enabled:      ${{ vars.MULESOFT_ENABLED == 'true' }}
+          servicenow_enabled:    ${{ vars.SERVICENOW_ENABLED == 'true' }}
+          azure_client_id:       ${{ vars.AZURE_CLIENT_ID }}
+          azure_tenant_id:       ${{ vars.AZURE_TENANT_ID }}
+          azure_subscription_id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          azure_key_vault_name:  ${{ vars.AZURE_KEY_VAULT_NAME }}
+
+      - name: Install PAC CLI
+        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/pac-install@main
+
+      - name: Download solution artifacts from source run
+        uses: actions/download-artifact@v4
+        with:
+          pattern:      solution-artifact-*
+          path:         out/
+          run-id:       ${{ inputs.source_run_id }}
+          github-token: ${{ secrets.GHA_CORE_PAT }}
+          merge-multiple: true
+
+      - name: Deploy all solutions → Prod
+        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/deploy-all-solutions@main
+        with:
+          solutions_json:           ${{ needs.read-context.outputs.matrix }}
+          environment_name:         Prod
+          environment_url:          ${{ vars.PP_PROD_URL }}
+          solution_type:            managed
+          enable_backup:            ${{ inputs.enable_backup == true }}
+          enable_blocking_check:    true
+          enable_version_compare:   false
+          import_config_data:       true
+          tag_prod_deployed:        true
+          mock_deploy:              ${{ inputs.mock_deploy == true }}
+          base_solutions:           ${{ vars.PP_BASE_SOLUTIONS || '' }}
+          jfrog_url:                ${{ vars.JFROG_URL || '' }}
+          jfrog_repo:               ${{ vars.JFROG_REPO || 'powerplatform-solutions' }}
+          run_number:               ${{ needs.read-context.outputs.run_number }}
+          run_attempt:              ${{ needs.read-context.outputs.run_attempt }}
+          enable_servicenow:        ${{ vars.SERVICENOW_ENABLED == 'true' }}
+          solution_list:            ${{ needs.read-context.outputs.solution_list }}
+
+  # ── Summary (always runs) ────────────────────────────────────────────────────
+  pipeline-summary:
+    name: Deploy Summary
+    runs-on: ubuntu-latest
+    if: always()
+    needs:
+      - read-context
+      - deploy-dev
+      - deploy-intg
+      - deploy-uat
+      - deploy-frs
+      - deploy-perf
+      - deploy-prod
+    steps:
+      - name: Write summary
+        shell: pwsh
+        run: |
+          $env  = '${{ inputs.environment }}'
+          $jobs = @{
+            Dev  = '${{ needs.deploy-dev.result }}'
+            Intg = '${{ needs.deploy-intg.result }}'
+            UAT  = '${{ needs.deploy-uat.result }}'
+            FRS  = '${{ needs.deploy-frs.result }}'
+            Perf = '${{ needs.deploy-perf.result }}'
+            Prod = '${{ needs.deploy-prod.result }}'
+          }
+          $result = $jobs[$env]
+          $icon   = if ($result -eq 'success') { '✅' } elseif ($result -eq 'skipped') { '⏭️' } else { '❌' }
+
+          @"
+          ## $icon Ad-hoc Deploy — $env
+
+          | Field | Value |
+          |---|---|
+          | Environment | **$env** |
+          | Source Run ID | ${{ inputs.source_run_id }} |
+          | Solutions | ${{ needs.read-context.outputs.solution_list }} |
+          | Mock Deploy | ${{ inputs.mock_deploy }} |
+          | Enable Backup | ${{ inputs.enable_backup }} |
+          | Triggered By | ${{ github.actor }} |
+          | Result | **$($result.ToUpper())** |
+          "@ | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8
+
+          if ($result -notin @('success','skipped')) {
+            $to = '${{ vars.NOTIFICATION_EMAIL }}'
+            if ($to) {
+              Write-Host "::warning::Ad-hoc deploy to $env FAILED — notify $to"
+            }
+          }

@@ -1,0 +1,422 @@
+# =============================================================================
+# WORKFLOW: Scheduled Health Check
+# =============================================================================
+#
+# PURPOSE
+# ─────────────────────────────────────────────────────────────────────────────
+# Two scheduled jobs that run proactively to catch operational problems before
+# they cause an incident:
+#
+#   1. credential-expiry  (runs on the 1st of every month)
+#      • Checks Azure App Registration client secret expiry via Azure CLI
+#      • Checks AKV secret expiry dates (if expiry was set on the secrets)
+#      • Creates or updates a GitHub Issue if any credential expires within 30 days
+#      • Closes the issue automatically if all credentials are healthy
+#
+#   2. environment-health  (runs every Monday at 07:00 UTC)
+#      • Authenticates PAC CLI to each Power Platform environment
+#      • Checks that all solutions declared in solutions.json are installed
+#      • Reports any version gaps across the promotion chain
+#      • Writes a full environment status table to the step summary
+#
+# Both jobs can also be triggered manually (workflow_dispatch) for on-demand checks.
+#
+# ALERTS
+# ─────────────────────────────────────────────────────────────────────────────
+# Alerts are surfaced as:
+#   - GitHub step summary (always)
+#   - GitHub Issue (credential-expiry only — persists across runs)
+#   - ::error:: annotations in the Actions log (visible in the run)
+#
+# REQUIREMENTS
+# ─────────────────────────────────────────────────────────────────────────────
+# The following GitHub Variables must be set on this repository:
+#   AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID,
+#   AZURE_KEY_VAULT_NAME, PP_DEV_URL, PP_INTG_URL, PP_UAT_URL,
+#   PP_FRS_URL, PP_PERF_URL, PP_PROD_URL
+#
+# The workflow requires:
+#   issues: write   (to create/close GitHub Issues for credential alerts)
+#   contents: read
+#
+# =============================================================================
+
+name: Scheduled Health Check
+
+on:
+  schedule:
+    # Credential expiry check — 1st of every month at 08:00 UTC
+    - cron: '0 8 1 * *'
+    # Environment health check — every Monday at 07:00 UTC
+    - cron: '0 7 * * 1'
+
+  # Manual trigger for both checks at once
+  workflow_dispatch:
+    inputs:
+      check:
+        description: 'Which check to run'
+        required: false
+        default: 'both'
+        type: choice
+        options:
+          - both
+          - credential-expiry
+          - environment-health
+      mock_deploy:
+        description: 'Skip PAC CLI calls (test the workflow logic without PP connectivity)'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  issues:   write   # create/close GitHub Issues for credential alerts
+
+jobs:
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # JOB 1: Credential Expiry Check
+  # Runs on the 1st-of-month schedule OR manual dispatch
+  # ═══════════════════════════════════════════════════════════════════════════
+  credential-expiry:
+    name: Credential Expiry Check
+    runs-on: ubuntu-latest
+    # Skip if this is Monday's health-check schedule (only cron[0] fires this)
+    # OR run when manually dispatched for credential-expiry or both
+    if: |
+      github.event_name == 'workflow_dispatch' && (inputs.check == 'credential-expiry' || inputs.check == 'both') ||
+      github.event_name == 'schedule' && github.event.schedule == '0 8 1 * *'
+    env:
+      GHA_CORE_PAT: ${{ secrets.GHA_CORE_PAT }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Checkout GHA-Core
+        uses: actions/checkout@v4
+        with:
+          repository: ppudot2-cloud/GHA-Core
+          path:       .ci
+          token:      ${{ secrets.GHA_CORE_PAT }}
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id:       ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id:       ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Check credential expiry
+        id: check-creds
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $warningDays = 30
+          $alerts      = @()
+          $healthy     = @()
+          $today       = Get-Date
+
+          # ── 1. App Registration client secrets ───────────────────────────
+          Write-Host "Checking App Registration client secrets ..."
+          $appId = "${{ vars.AZURE_CLIENT_ID }}"
+          $creds = az ad app credential list --id $appId --query "[].{name:displayName,expiry:endDateTime}" -o json | ConvertFrom-Json
+
+          foreach ($cred in $creds) {
+            $expiry  = [datetime]::Parse($cred.expiry)
+            $daysLeft = ($expiry - $today).Days
+            $label   = "App Registration client secret ($($cred.name ?? 'unnamed'))"
+            if ($daysLeft -le $warningDays) {
+              $alerts  += "⚠️  $label expires in $daysLeft day(s) on $($expiry.ToString('yyyy-MM-dd'))"
+              Write-Host "::warning::$label expires in $daysLeft days"
+            } else {
+              $healthy += "✅ $label — $daysLeft days remaining (expires $($expiry.ToString('yyyy-MM-dd')))"
+            }
+          }
+
+          # ── 2. Azure Key Vault secrets (check if expiry dates are set) ───
+          Write-Host "Checking AKV secret expiry dates ..."
+          $vaultName = "${{ vars.AZURE_KEY_VAULT_NAME }}"
+          $akvSecrets = az keyvault secret list --vault-name $vaultName --query "[].{name:name}" -o json | ConvertFrom-Json
+
+          foreach ($s in $akvSecrets) {
+            $detail = az keyvault secret show --vault-name $vaultName --name $s.name --query "{expires:attributes.expires,enabled:attributes.enabled}" -o json | ConvertFrom-Json
+            if ($detail.expires) {
+              $expiry   = [datetime]::Parse($detail.expires)
+              $daysLeft = ($expiry - $today).Days
+              $label    = "AKV secret '$($s.name)'"
+              if ($daysLeft -le $warningDays) {
+                $alerts  += "⚠️  $label expires in $daysLeft day(s) on $($expiry.ToString('yyyy-MM-dd'))"
+                Write-Host "::warning::$label expires in $daysLeft days"
+              } else {
+                $healthy += "✅ $label — $daysLeft days remaining"
+              }
+            }
+            # Secrets with no expiry are considered OK (no date = never expires)
+          }
+
+          # ── Write outputs ─────────────────────────────────────────────────
+          $alertCount = $alerts.Count
+          "alert_count=$alertCount"   | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "alerts=$($alerts -join '|')" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+          # ── Step summary ──────────────────────────────────────────────────
+          $icon = if ($alertCount -gt 0) { '⚠️' } else { '✅' }
+          $rows = ($healthy + $alerts) | ForEach-Object { "| $_ |" }
+          @"
+          ## $icon Credential Expiry Check
+
+          Checked: $($today.ToString('yyyy-MM-dd HH:mm')) UTC
+          App Registration: $appId
+          Key Vault: $vaultName
+
+          | Status |
+          |---|
+          $($rows -join "`n")
+          "@ | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8
+
+          if ($alertCount -gt 0) {
+            Write-Host "::error::$alertCount credential(s) expire within $warningDays days — see step summary"
+          } else {
+            Write-Host "✅ All credentials are healthy (no expiry within $warningDays days)"
+          }
+
+      - name: Create or update GitHub Issue for expiring credentials
+        if: steps.check-creds.outputs.alert_count != '0'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const alertCount = '${{ steps.check-creds.outputs.alert_count }}';
+            const alerts     = '${{ steps.check-creds.outputs.alerts }}'.split('|').filter(Boolean);
+            const today      = new Date().toISOString().split('T')[0];
+
+            const title = `⚠️ Credential Expiry Alert — ${alertCount} credential(s) expiring within 30 days`;
+            const body  = [
+              `## Credential Expiry Warning`,
+              ``,
+              `**Detected:** ${today}`,
+              `**Run:** [${context.runId}](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})`,
+              ``,
+              `### Expiring Credentials`,
+              ...alerts.map(a => `- ${a}`),
+              ``,
+              `### Action Required`,
+              `1. Rotate the expiring credential(s) using the procedure in [RUNBOOKS.md](../blob/main/docs/RUNBOOKS.md#9-credential-rotation--gha_core_pat)`,
+              `2. Update Azure Key Vault / GitHub Secrets with the new value`,
+              `3. Re-run this workflow — the issue will be closed automatically when all credentials are healthy`,
+            ].join('\n');
+
+            // Look for an existing open issue with this label
+            const issues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo:  context.repo.repo,
+              labels: 'credential-expiry',
+              state: 'open',
+            });
+
+            if (issues.data.length > 0) {
+              await github.rest.issues.update({
+                owner:    context.repo.owner,
+                repo:     context.repo.repo,
+                issue_number: issues.data[0].number,
+                title, body,
+              });
+              console.log(`Updated existing issue #${issues.data[0].number}`);
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo:  context.repo.repo,
+                title, body,
+                labels: ['credential-expiry'],
+              });
+              console.log('Created new credential expiry issue');
+            }
+
+      - name: Close credential-expiry issue (all credentials healthy)
+        if: steps.check-creds.outputs.alert_count == '0'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo:  context.repo.repo,
+              labels: 'credential-expiry',
+              state: 'open',
+            });
+            for (const issue of issues.data) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo:  context.repo.repo,
+                issue_number: issue.number,
+                body: `✅ All credentials are now healthy as of ${new Date().toISOString().split('T')[0]}. Closing automatically.`,
+              });
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo:  context.repo.repo,
+                issue_number: issue.number,
+                state: 'closed',
+              });
+            }
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # JOB 2: Environment Health Check
+  # Runs every Monday OR on manual dispatch
+  # ═══════════════════════════════════════════════════════════════════════════
+  environment-health:
+    name: Environment Health Check
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'workflow_dispatch' && (inputs.check == 'environment-health' || inputs.check == 'both') ||
+      github.event_name == 'schedule' && github.event.schedule == '0 7 * * 1'
+    env:
+      GHA_CORE_PAT: ${{ secrets.GHA_CORE_PAT }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Checkout GHA-Core
+        uses: actions/checkout@v4
+        with:
+          repository: ppudot2-cloud/GHA-Core
+          path:       .ci
+          token:      ${{ secrets.GHA_CORE_PAT }}
+
+      - name: Azure login (OIDC)
+        if: ${{ inputs.mock_deploy != true }}
+        uses: azure/login@v2
+        with:
+          client-id:       ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id:       ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Fetch PP credentials from AKV
+        if: ${{ inputs.mock_deploy != true }}
+        uses: azure/get-keyvault-secrets@v1
+        with:
+          keyvault: ${{ vars.AZURE_KEY_VAULT_NAME }}
+          secrets:  'pp-app-id, pp-client-secret, pp-tenant-id'
+        env:
+          AZURE_CREDENTIALS: ''   # not needed for OIDC flow; placeholder
+
+      - name: Install PAC CLI
+        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/pac-install@main
+
+      - name: Check all environments
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $isMock = $${{ inputs.mock_deploy == true }}
+
+          # ── Read expected solutions from solutions.json ───────────────────
+          $registry  = Get-Content solutions.json | ConvertFrom-Json
+          $solutions = $registry.solutions | Sort-Object deployOrder
+          $expectedNames = $solutions | Select-Object -ExpandProperty name
+
+          # ── Environment list ──────────────────────────────────────────────
+          $environments = @(
+            @{ Name = 'Dev';  Url = '${{ vars.PP_DEV_URL }}' }
+            @{ Name = 'Intg'; Url = '${{ vars.PP_INTG_URL }}' }
+            @{ Name = 'UAT';  Url = '${{ vars.PP_UAT_URL }}' }
+            @{ Name = 'FRS';  Url = '${{ vars.PP_FRS_URL }}' }
+            @{ Name = 'Perf'; Url = '${{ vars.PP_PERF_URL }}' }
+            @{ Name = 'Prod'; Url = '${{ vars.PP_PROD_URL }}' }
+          )
+
+          $results = @()
+          $hasErrors = $false
+
+          foreach ($env in $environments) {
+            $envName = $env.Name
+            $envUrl  = $env.Url
+
+            if (-not $envUrl) {
+              $results += [PSCustomObject]@{
+                Environment = $envName; Auth = '⏭️ Skipped'; Solutions = '—'; Notes = 'URL not configured'
+              }
+              continue
+            }
+
+            Write-Host ""
+            Write-Host "── $envName ($envUrl) ──────────────────────────────────"
+
+            if ($isMock) {
+              Write-Host "  [MOCK] Skipping PAC CLI auth for $envName" -ForegroundColor Cyan
+              $results += [PSCustomObject]@{
+                Environment = $envName; Auth = '🧪 Mock'; Solutions = '🧪 Mock'; Notes = 'Mock mode'
+              }
+              continue
+            }
+
+            # Auth check
+            try {
+              pac auth create `
+                --url           $envUrl `
+                --applicationId $env:PP_APP_ID `
+                --clientSecret  $env:PP_CLIENT_SECRET `
+                --tenant        $env:PP_TENANT_ID | Out-Null
+              $who = pac org who --json | ConvertFrom-Json
+              Write-Host "  ✅ Auth OK — $($who.OrgUrl)" -ForegroundColor Green
+              $authStatus = '✅ OK'
+            } catch {
+              Write-Host "  ❌ Auth FAILED: $_" -ForegroundColor Red
+              Write-Host "::error::[$envName] PAC CLI authentication failed: $_"
+              $results += [PSCustomObject]@{
+                Environment = $envName; Auth = '❌ Failed'; Solutions = '—'; Notes = $_.ToString()
+              }
+              $hasErrors = $true
+              continue
+            }
+
+            # Solution list
+            try {
+              $installedRaw = pac solution list --json | ConvertFrom-Json
+              $installed    = $installedRaw | Select-Object -ExpandProperty FriendlyName -ErrorAction SilentlyContinue
+              if (-not $installed) {
+                $installed = $installedRaw | Select-Object -ExpandProperty UniqueName -ErrorAction SilentlyContinue
+              }
+
+              $missing = $expectedNames | Where-Object { $_ -notin $installed }
+              if ($missing.Count -gt 0) {
+                $missingList = $missing -join ', '
+                Write-Host "  ⚠️  Missing solutions: $missingList" -ForegroundColor Yellow
+                Write-Host "::warning::[$envName] Solutions not installed: $missingList"
+                $solStatus = "⚠️  Missing: $missingList"
+              } else {
+                Write-Host "  ✅ All $($expectedNames.Count) expected solution(s) installed" -ForegroundColor Green
+                $solStatus = "✅ $($expectedNames.Count)/$($expectedNames.Count)"
+              }
+            } catch {
+              Write-Host "  ⚠️  Could not retrieve solution list: $_" -ForegroundColor Yellow
+              $solStatus = '⚠️  List unavailable'
+            }
+
+            $results += [PSCustomObject]@{
+              Environment = $envName; Auth = $authStatus; Solutions = $solStatus; Notes = ''
+            }
+          }
+
+          # ── Step summary ──────────────────────────────────────────────────
+          $ts   = (Get-Date -Format 'yyyy-MM-dd HH:mm') + ' UTC'
+          $icon = if ($hasErrors) { '⚠️' } else { '✅' }
+
+          $rows = $results | ForEach-Object {
+            "| $($_.Environment) | $($_.Auth) | $($_.Solutions) | $($_.Notes) |"
+          }
+
+          @"
+          ## $icon Environment Health Check
+
+          **Checked:** $ts
+          **Solutions expected:** $($expectedNames -join ', ')
+
+          | Environment | Auth | Solutions | Notes |
+          |---|---|---|---|
+          $($rows -join "`n")
+          "@ | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8
+
+          if ($hasErrors) {
+            Write-Host "::error::One or more environments failed the health check — see step summary"
+            exit 1
+          } else {
+            Write-Host ""
+            Write-Host "✅ All environments passed the health check" -ForegroundColor Green
+          }

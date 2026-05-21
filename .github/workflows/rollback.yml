@@ -1,0 +1,414 @@
+# =============================================================================
+# WORKFLOW: Rollback — Restore a Previous Solution Version
+# =============================================================================
+#
+# PURPOSE
+# ─────────────────────────────────────────────────────────────────────────────
+# Manually restore one or more solutions in a target environment to the version
+# captured in a backup artifact from a previous pipeline run.
+#
+# When the inline auto-rollback (inside deploy-all-solutions) fails or was not
+# available (enable_backup=false, first-time install), use this workflow to
+# perform the restore from the GitHub UI without CLI access.
+#
+# BACKUP ARTIFACT NAMING
+# ─────────────────────────────────────────────────────────────────────────────
+# Backup artifacts are produced by deploy-all-solutions when enable_backup=true.
+# Name format: backup-{Environment}-v{RunNumber}
+# Examples:   backup-UAT-v42,  backup-Prod-v101
+#
+# How to find the values:
+#   1. Go to the original pipeline run (build-and-deploy.yml or deploy-prod.yml)
+#   2. Scroll to the Artifacts section at the bottom of the run summary page
+#   3. Note the artifact name (backup-UAT-v42) and the Run ID from the URL bar
+#      (github.com/.../actions/runs/{RUN_ID})
+#
+# SAFETY
+# ─────────────────────────────────────────────────────────────────────────────
+# The `confirm` input must exactly match the target environment name.
+# This prevents accidental mis-fires (e.g. accidentally rolling back Prod
+# when you meant UAT).
+#
+# All rollback jobs use the same GitHub Environment as the normal deploy, so
+# the same required-reviewers gate applies. Prod rollback still needs an
+# approval from the configured Prod environment reviewers.
+#
+# SERVICENOW
+# ─────────────────────────────────────────────────────────────────────────────
+# If SERVICENOW_ENABLED=true on the target environment, a change request is
+# opened before the import and closed (as "successful") afterwards — identical
+# to a normal deploy. The CR description will contain "ROLLBACK" in the title.
+#
+# =============================================================================
+
+name: Rollback
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to roll back'
+        required: true
+        type: choice
+        options:
+          - Dev
+          - Intg
+          - UAT
+          - FRS
+          - Perf
+          - Prod
+
+      source_run_id:
+        description: 'Run ID that produced the backup artifact (from the original deploy URL)'
+        required: true
+        type: string
+
+      backup_artifact_name:
+        description: 'Backup artifact name, e.g. backup-UAT-v42  (shown in the Artifacts section of the original run)'
+        required: true
+        type: string
+
+      mock_deploy:
+        description: 'Simulate rollback without touching Dataverse (for testing this workflow)'
+        required: false
+        default: false
+        type: boolean
+
+      confirm:
+        description: 'Type the environment name exactly (e.g. UAT) to confirm this rollback'
+        required: true
+        type: string
+
+# ── Never run concurrent rollbacks on the same environment ───────────────────
+concurrency:
+  group: rollback-${{ inputs.environment }}
+  cancel-in-progress: false
+
+# ── Minimal permissions ───────────────────────────────────────────────────────
+permissions:
+  contents: read
+  actions:  read   # needed to download artifacts from other runs
+
+jobs:
+
+  # ── Safety gate: confirm input matches selected environment ─────────────────
+  validate:
+    name: Validate Confirmation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check confirmation matches environment
+        shell: pwsh
+        run: |
+          $selected = '${{ inputs.environment }}'
+          $typed    = '${{ inputs.confirm }}'
+          if ($typed -ne $selected) {
+            Write-Host "::error::Confirmation mismatch. You typed '$typed' but selected environment '$selected'."
+            Write-Host "::error::Re-run the workflow and type the environment name exactly in the 'confirm' field."
+            exit 1
+          }
+          Write-Host "✅ Confirmation accepted — rolling back $selected"
+          Write-Host "   Source run ID    : ${{ inputs.source_run_id }}"
+          Write-Host "   Backup artifact  : ${{ inputs.backup_artifact_name }}"
+          Write-Host "   Mock deploy      : ${{ inputs.mock_deploy }}"
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # Per-environment rollback jobs
+  # Each job uses its own GitHub Environment so approval gates still apply.
+  # Only the job matching `inputs.environment` will execute.
+  # ═══════════════════════════════════════════════════════════════════════════
+
+  rollback-dev:
+    name: Rollback → Dev
+    if: inputs.environment == 'Dev'
+    needs: validate
+    runs-on: ubuntu-latest
+    environment: Dev
+    env:
+      GHA_CORE_PAT: ${{ secrets.GHA_CORE_PAT }}
+    steps:
+      - name: Reveille — checkout, OIDC login, AKV secrets, merge vars
+        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/reveille@main
+        with:
+          mock_deploy:           ${{ inputs.mock_deploy == true }}
+          jfrog_enabled:         ${{ vars.JFROG_URL != '' }}
+          servicenow_enabled:    ${{ vars.SERVICENOW_ENABLED == 'true' }}
+          azure_client_id:       ${{ vars.AZURE_CLIENT_ID }}
+          azure_tenant_id:       ${{ vars.AZURE_TENANT_ID }}
+          azure_subscription_id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          azure_key_vault_name:  ${{ vars.AZURE_KEY_VAULT_NAME }}
+
+      - name: Install PAC CLI
+        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/pac-install@main
+
+      - name: Download backup artifact
+        uses: actions/download-artifact@v4
+        with:
+          name:    ${{ inputs.backup_artifact_name }}
+          path:    backup/
+          run-id:  ${{ inputs.source_run_id }}
+          github-token: ${{ secrets.GHA_CORE_PAT }}
+
+      - name: Rollback solutions → Dev
+        shell: pwsh
+        run: |
+          & .ci/.github/scripts/dynamics/Invoke-Rollback.ps1 `
+            -BackupDir      "backup" `
+            -EnvironmentUrl "${{ vars.PP_DEV_URL }}" `
+            -EnvironmentName "Dev" `
+            -SolutionsJson  (Get-Content solutions.json -Raw) `
+            -MockDeploy     $${{ inputs.mock_deploy == true }}
+
+  rollback-intg:
+    name: Rollback → Intg
+    if: inputs.environment == 'Intg'
+    needs: validate
+    runs-on: ubuntu-latest
+    environment: Intg
+    env:
+      GHA_CORE_PAT: ${{ secrets.GHA_CORE_PAT }}
+    steps:
+      - name: Reveille — checkout, OIDC login, AKV secrets, merge vars
+        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/reveille@main
+        with:
+          mock_deploy:           ${{ inputs.mock_deploy == true }}
+          jfrog_enabled:         ${{ vars.JFROG_URL != '' }}
+          servicenow_enabled:    ${{ vars.SERVICENOW_ENABLED == 'true' }}
+          azure_client_id:       ${{ vars.AZURE_CLIENT_ID }}
+          azure_tenant_id:       ${{ vars.AZURE_TENANT_ID }}
+          azure_subscription_id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          azure_key_vault_name:  ${{ vars.AZURE_KEY_VAULT_NAME }}
+
+      - name: Install PAC CLI
+        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/pac-install@main
+
+      - name: Download backup artifact
+        uses: actions/download-artifact@v4
+        with:
+          name:    ${{ inputs.backup_artifact_name }}
+          path:    backup/
+          run-id:  ${{ inputs.source_run_id }}
+          github-token: ${{ secrets.GHA_CORE_PAT }}
+
+      - name: Rollback solutions → Intg
+        shell: pwsh
+        run: |
+          & .ci/.github/scripts/dynamics/Invoke-Rollback.ps1 `
+            -BackupDir      "backup" `
+            -EnvironmentUrl "${{ vars.PP_INTG_URL }}" `
+            -EnvironmentName "Intg" `
+            -SolutionsJson  (Get-Content solutions.json -Raw) `
+            -MockDeploy     $${{ inputs.mock_deploy == true }}
+
+  rollback-uat:
+    name: Rollback → UAT
+    if: inputs.environment == 'UAT'
+    needs: validate
+    runs-on: ubuntu-latest
+    environment: UAT
+    env:
+      GHA_CORE_PAT: ${{ secrets.GHA_CORE_PAT }}
+    steps:
+      - name: Reveille — checkout, OIDC login, AKV secrets, merge vars
+        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/reveille@main
+        with:
+          mock_deploy:           ${{ inputs.mock_deploy == true }}
+          jfrog_enabled:         ${{ vars.JFROG_URL != '' }}
+          servicenow_enabled:    ${{ vars.SERVICENOW_ENABLED == 'true' }}
+          azure_client_id:       ${{ vars.AZURE_CLIENT_ID }}
+          azure_tenant_id:       ${{ vars.AZURE_TENANT_ID }}
+          azure_subscription_id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          azure_key_vault_name:  ${{ vars.AZURE_KEY_VAULT_NAME }}
+
+      - name: Install PAC CLI
+        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/pac-install@main
+
+      - name: Download backup artifact
+        uses: actions/download-artifact@v4
+        with:
+          name:    ${{ inputs.backup_artifact_name }}
+          path:    backup/
+          run-id:  ${{ inputs.source_run_id }}
+          github-token: ${{ secrets.GHA_CORE_PAT }}
+
+      - name: Rollback solutions → UAT
+        shell: pwsh
+        run: |
+          & .ci/.github/scripts/dynamics/Invoke-Rollback.ps1 `
+            -BackupDir      "backup" `
+            -EnvironmentUrl "${{ vars.PP_UAT_URL }}" `
+            -EnvironmentName "UAT" `
+            -SolutionsJson  (Get-Content solutions.json -Raw) `
+            -MockDeploy     $${{ inputs.mock_deploy == true }}
+
+  rollback-frs:
+    name: Rollback → FRS
+    if: inputs.environment == 'FRS'
+    needs: validate
+    runs-on: ubuntu-latest
+    environment: FRS
+    env:
+      GHA_CORE_PAT: ${{ secrets.GHA_CORE_PAT }}
+    steps:
+      - name: Reveille — checkout, OIDC login, AKV secrets, merge vars
+        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/reveille@main
+        with:
+          mock_deploy:           ${{ inputs.mock_deploy == true }}
+          jfrog_enabled:         ${{ vars.JFROG_URL != '' }}
+          servicenow_enabled:    ${{ vars.SERVICENOW_ENABLED == 'true' }}
+          azure_client_id:       ${{ vars.AZURE_CLIENT_ID }}
+          azure_tenant_id:       ${{ vars.AZURE_TENANT_ID }}
+          azure_subscription_id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          azure_key_vault_name:  ${{ vars.AZURE_KEY_VAULT_NAME }}
+
+      - name: Install PAC CLI
+        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/pac-install@main
+
+      - name: Download backup artifact
+        uses: actions/download-artifact@v4
+        with:
+          name:    ${{ inputs.backup_artifact_name }}
+          path:    backup/
+          run-id:  ${{ inputs.source_run_id }}
+          github-token: ${{ secrets.GHA_CORE_PAT }}
+
+      - name: Rollback solutions → FRS
+        shell: pwsh
+        run: |
+          & .ci/.github/scripts/dynamics/Invoke-Rollback.ps1 `
+            -BackupDir      "backup" `
+            -EnvironmentUrl "${{ vars.PP_FRS_URL }}" `
+            -EnvironmentName "FRS" `
+            -SolutionsJson  (Get-Content solutions.json -Raw) `
+            -MockDeploy     $${{ inputs.mock_deploy == true }}
+
+  rollback-perf:
+    name: Rollback → Perf
+    if: inputs.environment == 'Perf'
+    needs: validate
+    runs-on: ubuntu-latest
+    environment: Perf
+    env:
+      GHA_CORE_PAT: ${{ secrets.GHA_CORE_PAT }}
+    steps:
+      - name: Reveille — checkout, OIDC login, AKV secrets, merge vars
+        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/reveille@main
+        with:
+          mock_deploy:           ${{ inputs.mock_deploy == true }}
+          jfrog_enabled:         ${{ vars.JFROG_URL != '' }}
+          servicenow_enabled:    ${{ vars.SERVICENOW_ENABLED == 'true' }}
+          azure_client_id:       ${{ vars.AZURE_CLIENT_ID }}
+          azure_tenant_id:       ${{ vars.AZURE_TENANT_ID }}
+          azure_subscription_id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          azure_key_vault_name:  ${{ vars.AZURE_KEY_VAULT_NAME }}
+
+      - name: Install PAC CLI
+        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/pac-install@main
+
+      - name: Download backup artifact
+        uses: actions/download-artifact@v4
+        with:
+          name:    ${{ inputs.backup_artifact_name }}
+          path:    backup/
+          run-id:  ${{ inputs.source_run_id }}
+          github-token: ${{ secrets.GHA_CORE_PAT }}
+
+      - name: Rollback solutions → Perf
+        shell: pwsh
+        run: |
+          & .ci/.github/scripts/dynamics/Invoke-Rollback.ps1 `
+            -BackupDir      "backup" `
+            -EnvironmentUrl "${{ vars.PP_PERF_URL }}" `
+            -EnvironmentName "Perf" `
+            -SolutionsJson  (Get-Content solutions.json -Raw) `
+            -MockDeploy     $${{ inputs.mock_deploy == true }}
+
+  rollback-prod:
+    name: Rollback → Prod
+    if: inputs.environment == 'Prod'
+    needs: validate
+    runs-on: ubuntu-latest
+    environment: Prod
+    env:
+      GHA_CORE_PAT: ${{ secrets.GHA_CORE_PAT }}
+    steps:
+      - name: Reveille — checkout, OIDC login, AKV secrets, merge vars
+        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/reveille@main
+        with:
+          mock_deploy:           ${{ inputs.mock_deploy == true }}
+          jfrog_enabled:         ${{ vars.JFROG_URL != '' }}
+          servicenow_enabled:    ${{ vars.SERVICENOW_ENABLED == 'true' }}
+          azure_client_id:       ${{ vars.AZURE_CLIENT_ID }}
+          azure_tenant_id:       ${{ vars.AZURE_TENANT_ID }}
+          azure_subscription_id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          azure_key_vault_name:  ${{ vars.AZURE_KEY_VAULT_NAME }}
+
+      - name: Install PAC CLI
+        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/pac-install@main
+
+      - name: Download backup artifact
+        uses: actions/download-artifact@v4
+        with:
+          name:    ${{ inputs.backup_artifact_name }}
+          path:    backup/
+          run-id:  ${{ inputs.source_run_id }}
+          github-token: ${{ secrets.GHA_CORE_PAT }}
+
+      - name: Rollback solutions → Prod
+        shell: pwsh
+        run: |
+          & .ci/.github/scripts/dynamics/Invoke-Rollback.ps1 `
+            -BackupDir      "backup" `
+            -EnvironmentUrl "${{ vars.PP_PROD_URL }}" `
+            -EnvironmentName "Prod" `
+            -SolutionsJson  (Get-Content solutions.json -Raw) `
+            -MockDeploy     $${{ inputs.mock_deploy == true }}
+
+  # ── Rollback summary (always runs) ──────────────────────────────────────────
+  rollback-summary:
+    name: Rollback Summary
+    runs-on: ubuntu-latest
+    if: always()
+    needs:
+      - validate
+      - rollback-dev
+      - rollback-intg
+      - rollback-uat
+      - rollback-frs
+      - rollback-perf
+      - rollback-prod
+    steps:
+      - name: Write rollback summary
+        shell: pwsh
+        run: |
+          $env   = '${{ inputs.environment }}'
+          $runId = '${{ inputs.source_run_id }}'
+          $art   = '${{ inputs.backup_artifact_name }}'
+          $actor = '${{ github.actor }}'
+          $ts    = (Get-Date -Format 'yyyy-MM-dd HH:mm:ss UTC')
+
+          $jobs = @{
+            validate      = '${{ needs.validate.result }}'
+            'rollback-dev'   = '${{ needs.rollback-dev.result }}'
+            'rollback-intg'  = '${{ needs.rollback-intg.result }}'
+            'rollback-uat'   = '${{ needs.rollback-uat.result }}'
+            'rollback-frs'   = '${{ needs.rollback-frs.result }}'
+            'rollback-perf'  = '${{ needs.rollback-perf.result }}'
+            'rollback-prod'  = '${{ needs.rollback-prod.result }}'
+          }
+          $activeResult = $jobs["rollback-$($env.ToLower())"]
+          $icon = if ($activeResult -eq 'success') { '✅' } elseif ($activeResult -eq 'skipped') { '⏭️' } else { '❌' }
+
+          $summary = @"
+          ## $icon Rollback — $env
+
+          | Field | Value |
+          |---|---|
+          | Environment | **$env** |
+          | Source Run ID | $runId |
+          | Backup Artifact | $art |
+          | Triggered By | $actor |
+          | Completed At | $ts |
+          | Result | **$($activeResult.ToUpper())** |
+          "@
+
+          $summary | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8
