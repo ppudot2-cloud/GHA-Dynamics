@@ -414,6 +414,10 @@ jobs:
       # skip_export=true when: dispatch with skip_export flag OR push event
       # In push mode there are no workflow inputs, so we check event_name too.
       skip_export:            ${{ inputs.skip_export == true || github.event_name == 'push' }}
+      azure_client_id:        ${{ vars.AZURE_CLIENT_ID }}
+      azure_tenant_id:        ${{ vars.AZURE_TENANT_ID }}
+      azure_subscription_id:  ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      azure_key_vault_name:   ${{ vars.AZURE_KEY_VAULT_NAME }}
     secrets: inherit
 
   # ============================================================================
@@ -461,6 +465,10 @@ jobs:
       pp_secret_set:          ${{ needs.setup.outputs.pp_secret_set == 'true' }}
       pp_tenant_set:          ${{ needs.setup.outputs.pp_tenant_set == 'true' }}
       gha_core_pat_set:       ${{ needs.setup.outputs.gha_core_pat_set == 'true' }}
+      azure_client_id:        ${{ vars.AZURE_CLIENT_ID }}
+      azure_tenant_id:        ${{ vars.AZURE_TENANT_ID }}
+      azure_subscription_id:  ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      azure_key_vault_name:   ${{ vars.AZURE_KEY_VAULT_NAME }}
     secrets: inherit
 
   # ============================================================================
