@@ -100,6 +100,7 @@ jobs:
       run_attempt:   ${{ steps.ctx.outputs.run_attempt }}
       matrix:        ${{ steps.ctx.outputs.matrix }}
       solution_list: ${{ steps.ctx.outputs.solution_list }}
+      mock_deploy:   ${{ steps.ctx.outputs.mock_deploy }}
 
     steps:
       - name: Checkout main (merge commit)
@@ -127,12 +128,16 @@ jobs:
           Write-Host "  solutions    : $($ctx.solutionList)"
           Write-Host "  featureBranch: $($ctx.featureBranch)"
           Write-Host "  triggeredBy  : $($ctx.triggeredBy)"
+          Write-Host "  mockDeploy   : $($ctx.mockDeploy)"
+
+          $mockDeploy = if ($ctx.mockDeploy -eq $true) { 'true' } else { 'false' }
 
           "run_id=$($ctx.runId)"               | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           "run_number=$($ctx.runNumber)"       | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           "run_attempt=$($ctx.runAttempt)"     | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           "matrix=$($ctx.matrix)"              | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           "solution_list=$($ctx.solutionList)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "mock_deploy=$mockDeploy"            | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
   # ============================================================================
   # Deploy UAT — re-validation gate before Prod
@@ -153,7 +158,7 @@ jobs:
       - name: Reveille
         uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/reveille@main
         with:
-          mock_deploy:           ${{ inputs.mock_deploy == true }}
+          mock_deploy:           ${{ inputs.mock_deploy == true || needs.read-context.outputs.mock_deploy == 'true' }}
           jfrog_enabled:         ${{ vars.JFROG_URL != '' }}
           mulesoft_enabled:      ${{ vars.MULESOFT_ENABLED == 'true' }}
           servicenow_enabled:    ${{ vars.SERVICENOW_ENABLED == 'true' }}
@@ -224,7 +229,7 @@ jobs:
           previous_environment_url: ${{ vars.PP_INTG_URL }}
           tag_prod_deployed:        false
           activate_flows:           true
-          mock_deploy:              ${{ inputs.mock_deploy == true }}
+          mock_deploy:              ${{ inputs.mock_deploy == true || needs.read-context.outputs.mock_deploy == 'true' }}
           base_solutions:           ${{ vars.PP_BASE_SOLUTIONS || '' }}
           jfrog_url:                ${{ vars.JFROG_URL || '' }}
           jfrog_repo:               ${{ vars.JFROG_REPO || 'powerplatform-solutions' }}
@@ -254,7 +259,7 @@ jobs:
       - name: Reveille
         uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/reveille@main
         with:
-          mock_deploy:           ${{ inputs.mock_deploy == true }}
+          mock_deploy:           ${{ inputs.mock_deploy == true || needs.read-context.outputs.mock_deploy == 'true' }}
           jfrog_enabled:         ${{ vars.JFROG_URL != '' }}
           mulesoft_enabled:      ${{ vars.MULESOFT_ENABLED == 'true' }}
           servicenow_enabled:    ${{ vars.SERVICENOW_ENABLED == 'true' }}
@@ -309,7 +314,7 @@ jobs:
           previous_environment_url: ${{ vars.PP_PERF_URL }}
           tag_prod_deployed:        true
           activate_flows:           true
-          mock_deploy:              ${{ inputs.mock_deploy == true }}
+          mock_deploy:              ${{ inputs.mock_deploy == true || needs.read-context.outputs.mock_deploy == 'true' }}
           base_solutions:           ${{ vars.PP_BASE_SOLUTIONS || '' }}
           jfrog_url:                ${{ vars.JFROG_URL || '' }}
           jfrog_repo:               ${{ vars.JFROG_REPO || 'powerplatform-solutions' }}
