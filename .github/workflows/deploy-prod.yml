@@ -56,6 +56,16 @@ on:
         default: false
         type: boolean
 
+      skip_uat:
+        description: >
+          ⚠️ BYPASS UAT — skip the UAT re-validation step and go directly to Prod.
+          Use only as a break-glass option when the UAT environment is unavailable
+          or broken and a production deployment cannot wait for UAT recovery.
+          Requires an explicit approval at the Prod environment gate regardless.
+        required: false
+        default: false
+        type: boolean
+
 permissions:
   contents: read
 
@@ -146,6 +156,9 @@ jobs:
   deploy-uat:
     name: "🚀 Deploy | UAT"
     needs: [read-context]
+    # skip_uat=true is a break-glass bypass for when UAT is unavailable.
+    # When skipped, deploy-prod still runs (result == 'skipped' is allowed below).
+    if: inputs.skip_uat != true
     runs-on: ubuntu-latest
     environment: UAT
     permissions:
@@ -246,7 +259,8 @@ jobs:
   deploy-prod:
     name: "🚀 Deploy | Prod"
     needs: [read-context, deploy-uat]
-    if: needs.deploy-uat.result == 'success'
+    # Proceed when UAT succeeded normally OR when it was skipped via skip_uat bypass.
+    if: needs.deploy-uat.result == 'success' || needs.deploy-uat.result == 'skipped'
     runs-on: ubuntu-latest
     environment: Prod
     permissions:
@@ -338,8 +352,13 @@ jobs:
         run: |
           UAT_RESULT="${{ needs.deploy-uat.result }}"
           PROD_RESULT="${{ needs.deploy-prod.result }}"
+          SKIP_UAT="${{ inputs.skip_uat }}"
           ICON="✅"
-          if [ "$UAT_RESULT" != "success" ] || [ "$PROD_RESULT" != "success" ]; then ICON="❌"; fi
+          if [ "$PROD_RESULT" != "success" ]; then ICON="❌"; fi
+          if [ "$UAT_RESULT" == "failure" ]; then ICON="❌"; fi
+
+          UAT_LABEL="$UAT_RESULT"
+          if [ "$SKIP_UAT" == "true" ]; then UAT_LABEL="⚠️ BYPASSED (skip_uat=true)"; fi
 
           cat >> $GITHUB_STEP_SUMMARY << EOF
           ## 🚀 Pipeline 2 — UAT + Prod Deployment Summary
@@ -348,7 +367,7 @@ jobs:
           | --- | --- |
           | Pipeline 1 run | #${{ needs.read-context.outputs.run_number }} |
           | Solutions | ${{ needs.read-context.outputs.solution_list }} |
-          | UAT deploy | ${{ needs.deploy-uat.result }} |
+          | UAT deploy | $UAT_LABEL |
           | Prod deploy | ${{ needs.deploy-prod.result }} |
           | Triggered by | @${{ github.actor }} |
           EOF
