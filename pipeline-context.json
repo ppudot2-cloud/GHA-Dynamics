@@ -1,6 +1,6 @@
 {
-  "runId": "26253512448",
-  "runNumber": "40",
+  "runId": "26262551363",
+  "runNumber": "42",
   "runAttempt": "1",
   "solutions": [
     "CoreSolution",
@@ -9,9 +9,9 @@
   ],
   "solutionList": "CoreSolution, ExtensionA, ExtensionB",
   "matrix": "{\"solution\":[{\"name\":\"CoreSolution\",\"source_folder\":\"src/solutions/CoreSolution\",\"data_schema_file\":\"config/CoreSolution/data-schema.xml\",\"deployment_settings_prefix\":\"deployment-settings\"},{\"name\":\"ExtensionA\",\"source_folder\":\"src/solutions/ExtensionA\",\"data_schema_file\":\"\",\"deployment_settings_prefix\":\"deployment-settings\"},{\"name\":\"ExtensionB\",\"source_folder\":\"src/solutions/ExtensionB\",\"data_schema_file\":\"\",\"deployment_settings_prefix\":\"deployment-settings\"}]}",
-  "featureBranch": "feature/pipeline-40",
+  "featureBranch": "feature/pipeline-42",
   "triggeredBy": "ppudot2-cloud",
-  "triggeredAt": "2026-05-21T21:15:37Z",
+  "triggeredAt": "2026-05-22T01:13:20Z",
   "exportMode": "mock (simulated sandbox export)",
   "mockDeploy": true
 }
