@@ -136,6 +136,7 @@ jobs:
       SOLUTION:        ${{ matrix.solution }}
       BRANCH_NAME:     ${{ needs.setup.outputs.branch_name }}
       SOLUTION_FOLDER: src/solutions/${{ matrix.solution }}
+      GHA_CORE_PAT:    ${{ secrets.GHA_CORE_PAT }}
 
     steps:
       # ── 1. Checkout ──────────────────────────────────────────────────────────
@@ -146,22 +147,14 @@ jobs:
           fetch-depth: 0
           token:      ${{ secrets.GITHUB_TOKEN }}
 
-      # ── 1b. Checkout GHA-Core (reveille composite action) ────────────────────
-      - name: Checkout GHA-Core CI
-        if: inputs.mock_deploy != true
-        uses: actions/checkout@v4
-        with:
-          repository: ppudot2-cloud/GHA-Core
-          ref:        main
-          path:       .ci
-          token:      ${{ secrets.GHA_CORE_PAT }}
-
-      # ── 1c. Azure OIDC login + AKV credential fetch ───────────────────────────
+      # ── 1b. Azure OIDC login + AKV credential fetch ──────────────────────────
       # Populates PP_APP_ID, PP_CLIENT_SECRET, PP_TENANT_ID (and others) into
       # GITHUB_ENV with ::add-mask:: applied. Skipped in mock_deploy mode.
+      # GHA_CORE_PAT is provided via the job-level env: block above so reveille
+      # can check out GHA-Core internally (composite actions cannot read secrets.*).
       - name: Azure login & AKV credential fetch (reveille)
         if: inputs.mock_deploy != true
-        uses: .ci/.github/actions/reveille
+        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/reveille@main
         with:
           azure_client_id:       ${{ vars.AZURE_CLIENT_ID }}
           azure_tenant_id:       ${{ vars.AZURE_TENANT_ID }}
