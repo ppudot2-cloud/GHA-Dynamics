@@ -146,6 +146,28 @@ jobs:
           fetch-depth: 0
           token:      ${{ secrets.GITHUB_TOKEN }}
 
+      # ── 1b. Checkout GHA-Core (reveille composite action) ────────────────────
+      - name: Checkout GHA-Core CI
+        if: inputs.mock_deploy != true
+        uses: actions/checkout@v4
+        with:
+          repository: ppudot2-cloud/GHA-Core
+          ref:        main
+          path:       .ci
+          token:      ${{ secrets.GHA_CORE_PAT }}
+
+      # ── 1c. Azure OIDC login + AKV credential fetch ───────────────────────────
+      # Populates PP_APP_ID, PP_CLIENT_SECRET, PP_TENANT_ID (and others) into
+      # GITHUB_ENV with ::add-mask:: applied. Skipped in mock_deploy mode.
+      - name: Azure login & AKV credential fetch (reveille)
+        if: inputs.mock_deploy != true
+        uses: .ci/.github/actions/reveille
+        with:
+          azure_client_id:       ${{ vars.AZURE_CLIENT_ID }}
+          azure_tenant_id:       ${{ vars.AZURE_TENANT_ID }}
+          azure_subscription_id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          azure_key_vault_name:  ${{ vars.AZURE_KEY_VAULT_NAME }}
+
       # ── 2. Install PAC CLI ────────────────────────────────────────────────────
       - name: Install PAC CLI
         uses: microsoft/powerplatform-actions/actions-install@v1
@@ -176,9 +198,9 @@ jobs:
         uses: microsoft/powerplatform-actions/who-am-i@v1
         with:
           environment-url: ${{ vars.PP_SDBX_URL }}
-          app-id:          ${{ secrets.PP_APP_ID }}
-          client-secret:   ${{ secrets.PP_CLIENT_SECRET }}
-          tenant-id:       ${{ secrets.PP_TENANT_ID }}
+          app-id:          ${{ env.PP_APP_ID }}
+          client-secret:   ${{ env.PP_CLIENT_SECRET }}
+          tenant-id:       ${{ env.PP_TENANT_ID }}
 
       # ── 4b. Validate auth — SIMULATION ───────────────────────────────────────
       - name: "🧪 Validate connection — Simulation (mock_deploy)"
@@ -196,9 +218,9 @@ jobs:
         uses: microsoft/powerplatform-actions/publish-solution@v1
         with:
           environment-url:     ${{ vars.PP_SDBX_URL }}
-          app-id:              ${{ secrets.PP_APP_ID }}
-          client-secret:       ${{ secrets.PP_CLIENT_SECRET }}
-          tenant-id:           ${{ secrets.PP_TENANT_ID }}
+          app-id:              ${{ env.PP_APP_ID }}
+          client-secret:       ${{ env.PP_CLIENT_SECRET }}
+          tenant-id:           ${{ env.PP_TENANT_ID }}
           run-asynchronously:  true
           max-async-wait-time: 60
 
@@ -218,9 +240,9 @@ jobs:
         uses: microsoft/powerplatform-actions/export-solution@v1
         with:
           environment-url: ${{ vars.PP_SDBX_URL }}
-          app-id:          ${{ secrets.PP_APP_ID }}
-          client-secret:   ${{ secrets.PP_CLIENT_SECRET }}
-          tenant-id:       ${{ secrets.PP_TENANT_ID }}
+          app-id:          ${{ env.PP_APP_ID }}
+          client-secret:   ${{ env.PP_CLIENT_SECRET }}
+          tenant-id:       ${{ env.PP_TENANT_ID }}
           solution-name:   ${{ matrix.solution }}
           solution-output-file: "out/${{ matrix.solution }}.zip"
           managed:         false
@@ -316,9 +338,9 @@ jobs:
         uses: microsoft/powerplatform-actions/export-data@v1
         with:
           environment-url: ${{ vars.PP_SDBX_URL }}
-          app-id:          ${{ secrets.PP_APP_ID }}
-          client-secret:   ${{ secrets.PP_CLIENT_SECRET }}
-          tenant-id:       ${{ secrets.PP_TENANT_ID }}
+          app-id:          ${{ env.PP_APP_ID }}
+          client-secret:   ${{ env.PP_CLIENT_SECRET }}
+          tenant-id:       ${{ env.PP_TENANT_ID }}
           schema-file:     ${{ vars.PP_DATA_SCHEMA_FILE }}
           data-file:       "config/${{ matrix.solution }}/config-data.zip"
           overwrite:       true

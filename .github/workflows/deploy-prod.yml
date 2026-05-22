@@ -358,12 +358,12 @@ jobs:
         continue-on-error: true
         uses: dawidd6/action-send-mail@v3
         with:
-          server_address: ${{ secrets.MAIL_SERVER }}
-          server_port:    ${{ secrets.MAIL_PORT }}
-          username:       ${{ secrets.MAIL_USERNAME }}
+          server_address: ${{ vars.MAIL_SERVER }}
+          server_port:    ${{ vars.MAIL_PORT }}
+          username:       ${{ vars.MAIL_USERNAME }}
           password:       ${{ secrets.MAIL_PASSWORD }}
           to:             ppudot1@gmail.com
-          from:           GitHub Actions <${{ secrets.MAIL_USERNAME }}>
+          from:           GitHub Actions <${{ vars.MAIL_USERNAME }}>
           subject:        "❌ UAT/Prod Deployment FAILED (Pipeline 2) — ${{ github.repository }} run #${{ needs.read-context.outputs.run_number }}"
           body: |
             ⚠️ Pipeline 2 (UAT + Prod) deployment failed.

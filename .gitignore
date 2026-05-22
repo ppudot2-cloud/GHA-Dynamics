@@ -1,0 +1,31 @@
+# ─── macOS ────────────────────────────────────────────────────────────────────
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# ─── Pipeline simulation output ───────────────────────────────────────────────
+# Local dry-run artifacts from scripts/simulate-pipeline.py
+.sim-artifacts/
+
+# ─── Build/pack output ────────────────────────────────────────────────────────
+out/
+*.zip
+
+# ─── Python ───────────────────────────────────────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+
+# ─── Editor ───────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ─── PAC CLI ──────────────────────────────────────────────────────────────────
+.pac/
+
+# ─── NOTE: pipeline-context.json is intentionally tracked ─────────────────────
+# It is the push trigger for Pipeline 2 (deploy-prod.yml).
+# Do NOT add it here.
