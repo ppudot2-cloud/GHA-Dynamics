@@ -1,43 +1,25 @@
 # =============================================================================
-# WORKFLOW: Build and Deploy — Pipeline 1 (all pre-prod environments)
+# WORKFLOW: Build and Deploy
 # =============================================================================
 #
-# TWO-PIPELINE ARCHITECTURE
+# STAGES
 # ─────────────────────────────────────────────────────────────────────────────
-#
-#   Pipeline 1 — THIS WORKFLOW  (manual trigger OR push to feature/*)
-#     1. Setup      — resolve solution matrix, read Core vars (JFrog, base solutions)
-#     2. Export     — lint config, export from sandbox, commit to feature/* branch
-#                     (Lint runs as the first job inside _stage-export.yml)
-#     3. Build      — pack ZIPs, Solution Checker, JFrog archival
-#                     └─ Validate pipeline config (toggles, URLs, service connections)
-#     4. Deploy → Dev → Intg → UAT → FRS → Perf  (each with its own approval gate)
-#        ↳ Prod is BLOCKED — only deployable from Pipeline 2 after PR merge
-#     5. Auto-create PR: feature/* → main  (after UAT passes)
-#
-#   Pipeline 2 — deploy-prod.yml  (fires when the above PR is merged)
-#     Deploy → UAT (re-validation) → Prod  (approval gates)
+#   1. Setup    — resolve solution matrix, read Core vars (JFrog, base solutions)
+#   2. Export   — lint + export run in parallel; commit waits for both
+#   3. Build    — validate pipeline config first, then pack ZIPs + Solution Checker
+#   4. Deploy   — Dev / Intg / UAT / FRS / Perf in parallel, each with approval gate
 #
 # ROLLBACK
 # ─────────────────────────────────────────────────────────────────────────────
 # Set ENABLE_ROLLBACK=true as a GitHub Environment variable (per environment) to
-# take a pre-import backup automatically and restore it if the import fails.
-# No manual workflow dispatch needed — this is auto-rollback on failure.
+# take a pre-import backup and restore automatically on import failure.
+# For manual rollback trigger GHA-Core/.github/workflows/rollback.yml.
 #
-# For manual rollback after a failed deploy, trigger:
-#   GHA-Core/.github/workflows/rollback.yml
-# from GHA-Core's Actions tab.
-#
-# SKIP_UAT (PIPELINE 2)
+# PROD DEPLOYMENT
 # ─────────────────────────────────────────────────────────────────────────────
-# If UAT is unavailable and blocking a Prod deployment:
-#   Option A: Re-dispatch deploy-prod.yml manually with skip_uat=true
-#   Option B: Set repo variable SKIP_UAT=true (works even on auto-triggered runs)
-#
-# ARTIFACT HANDOFF
-# ─────────────────────────────────────────────────────────────────────────────
-# Pipeline 1 uploads solution-artifact-* (7-day retention).
-# Pipeline 2 downloads the same artifacts via source_run_id from pipeline-context.json.
+# Prod is deployed by deploy-prod.yml, which fires when the feature branch PR
+# is merged to main. Set SKIP_UAT=true repo variable to bypass UAT re-validation
+# in an emergency.
 # =============================================================================
 
 name: Build and Deploy
@@ -73,15 +55,13 @@ on:
         default: false
         type: boolean
 
-
-
 concurrency:
   group: "build-and-deploy-${{ github.ref_name }}"
   cancel-in-progress: false
 
 jobs:
   # ============================================================================
-  # Setup — resolve solution matrix
+  # Stage 1 — Setup
   # ============================================================================
   setup:
     name: "🔍 Setup"
@@ -152,12 +132,8 @@ jobs:
           }
 
   # ============================================================================
-  # Stage 1 — Lint + Export
-  #
-  # Lint (inside _stage-export.yml) validates solutions.json, deployment-settings,
-  # and project-vars.yml BEFORE any export work begins.
-  # Export commits unpacked solution source to feature/* branch or writes
-  # pipeline-context.json in skip_export mode.
+  # Stage 2 — Export
+  # Lint and export run in parallel; commit waits for both to succeed.
   # ============================================================================
   stage-export:
     name: "📤 Export / Commit"
@@ -181,7 +157,8 @@ jobs:
     secrets: inherit
 
   # ============================================================================
-  # Stage 2 — Build
+  # Stage 3 — Build
+  # Validate pipeline config first; build matrix runs after validation passes.
   # ============================================================================
   stage-build:
     name: "🏗️ Build"
@@ -219,11 +196,8 @@ jobs:
     secrets: inherit
 
   # ============================================================================
-  # Stage 3 — Deploy  (5 parallel jobs, each with its own approval gate)
-  # All start immediately after stage-build passes.
-  # create-main-pr depends ONLY on deploy-uat — FRS/Perf run independently.
-  #
-  # ENABLE_ROLLBACK: set this as a GitHub Environment variable (per environment)
+  # Stage 4 — Deploy  (all environments in parallel, each with approval gate)
+  # Set ENABLE_ROLLBACK=true as a GitHub Environment variable per environment
   # to enable automatic pre-import backup and restore on failure.
   # ============================================================================
 
@@ -512,131 +486,3 @@ jobs:
           enable_servicenow:        ${{ vars.SERVICENOW_ENABLED == 'true' }}
           solution_list:            ${{ needs.setup.outputs.solution_list }}
 
-  # ============================================================================
-  # Create PR: feature/pipeline-{run_number} → main
-  # Opens as soon as UAT passes. FRS and Perf continue independently.
-  # Merging this PR triggers deploy-prod.yml (UAT re-validation → Prod).
-  # ============================================================================
-  create-main-pr:
-    name: "🔀 Open PR → main"
-    needs: [setup, stage-export, deploy-uat]
-    if: |
-      needs.deploy-uat.result == 'success' &&
-      needs.stage-export.result == 'success'
-    runs-on: ubuntu-latest
-    permissions:
-      pull-requests: write
-      contents: read
-    steps:
-      - name: Create PR feature → main
-        env:
-          GH_TOKEN: ${{ secrets.GHA_CORE_PAT }}
-        shell: bash
-        run: |
-          FEATURE="${{ needs.stage-export.outputs.feature_branch }}"
-          MOCK_LABEL="${{ inputs.mock_deploy == true && '[MOCK] ' || '' }}"
-          PR_URL=$(gh pr create \
-            --repo "${{ github.repository }}" \
-            --head "$FEATURE" \
-            --base "main" \
-            --title "${MOCK_LABEL}Release: pipeline run #${{ github.run_number }}" \
-            --body "## ✅ UAT passed — ready for Prod
-
-          **Pipeline run:** [#${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
-          **Branch:** \`$FEATURE\`
-          **Solutions:** ${{ needs.setup.outputs.solution_list }}
-          **Triggered by:** @${{ github.actor }}
-          **Mock deploy:** ${{ inputs.mock_deploy }}
-
-          ### Gate status at PR creation
-          - [x] Solution Checker: passed
-          - [x] Dev: success
-          - [x] Intg: success
-          - [x] UAT: success
-          - [ ] FRS: running in parallel (not required for this PR)
-          - [ ] Perf: running in parallel (not required for this PR)
-
-          Merging this PR triggers **deploy-prod.yml** (UAT re-validation → Prod, both gated)." \
-          )
-          echo "✅ PR created: $PR_URL"
-
-  # ============================================================================
-  # Pipeline Summary (always runs)
-  # ============================================================================
-  pipeline-summary:
-    name: "📋 Pipeline Summary"
-    needs: [setup, stage-export, stage-build, deploy-dev, deploy-intg, deploy-uat, deploy-frs, deploy-perf, create-main-pr]
-    if: always()
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Checkout GHA-Core CI scripts
-        uses: actions/checkout@v4
-        with:
-          repository: ppudot2-cloud/GHA-Core
-          ref: main
-          path: .ci
-          token: ${{ secrets.GHA_CORE_PAT }}
-
-      - name: Download job summary records
-        uses: actions/download-artifact@v4
-        with:
-          pattern: "job-summary-*"
-          path: job-summaries/
-          merge-multiple: true
-        continue-on-error: true
-
-      - name: Write pipeline summary
-        shell: pwsh
-        run: |
-          & .ci/.github/scripts/dynamics/Write-PipelineSummary.ps1 `
-            -SolutionList    '${{ needs.setup.outputs.solution_list }}' `
-            -SolutionCount   '${{ needs.setup.outputs.solution_count }}' `
-            -RunNumber       '${{ github.run_number }}' `
-            -RefName         '${{ github.ref_name }}' `
-            -CommitSha       '${{ github.sha }}' `
-            -ExportResult    '${{ needs.stage-export.result }}' `
-            -BuildResult     '${{ needs.stage-build.result }}' `
-            -DeployResult    '${{ needs.deploy-uat.result }}' `
-            -JobSummariesDir 'job-summaries'
-
-      - name: Send failure notification
-        if: >
-          needs.stage-export.result  == 'failure' ||
-          needs.stage-build.result   == 'failure' ||
-          needs.deploy-dev.result    == 'failure' ||
-          needs.deploy-intg.result   == 'failure' ||
-          needs.deploy-uat.result    == 'failure' ||
-          needs.deploy-frs.result    == 'failure' ||
-          needs.deploy-perf.result   == 'failure'
-        continue-on-error: true
-        uses: dawidd6/action-send-mail@v3
-        with:
-          server_address: ${{ vars.MAIL_SERVER }}
-          server_port:    ${{ vars.MAIL_PORT }}
-          username:       ${{ vars.MAIL_USERNAME }}
-          password:       ${{ secrets.MAIL_PASSWORD }}
-          to:             ppudot1@gmail.com
-          from:           GitHub Actions <${{ vars.MAIL_USERNAME }}>
-          subject:        "❌ Build and Deploy FAILED — ${{ github.repository }} #${{ github.run_number }}"
-          body: |
-            Pipeline 1 failed for run #${{ github.run_number }}.
-
-            Repository  : ${{ github.repository }}
-            Branch      : ${{ github.ref_name }}
-            Triggered by: ${{ github.actor }}
-
-            Stage results:
-              Export : ${{ needs.stage-export.result }}
-              Build  : ${{ needs.stage-build.result }}
-              Dev    : ${{ needs.deploy-dev.result }}
-              Intg   : ${{ needs.deploy-intg.result }}
-              UAT    : ${{ needs.deploy-uat.result }}
-              FRS    : ${{ needs.deploy-frs.result }}
-              Perf   : ${{ needs.deploy-perf.result }}
-
-            Solutions: ${{ needs.setup.outputs.solution_list }}
-
-            ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
