@@ -175,9 +175,10 @@ jobs:
     name: "📤 Export / Commit"
     needs: [setup]
     permissions:
-      id-token: write
-      contents: write
-      actions:  read
+      id-token:      write
+      contents:      write
+      actions:       read
+      pull-requests: write
     uses: ppudot2-cloud/GHA-Core/.github/workflows/_stage-export.yml@main
     with:
       matrix:                 ${{ needs.setup.outputs.matrix }}
