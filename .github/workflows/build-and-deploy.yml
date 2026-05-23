@@ -6,54 +6,48 @@
 # ─────────────────────────────────────────────────────────────────────────────
 #
 #   Pipeline 1 — THIS WORKFLOW  (manual trigger OR push to feature/*)
-#     1. Export solutions from sandbox (PP_SDBX_URL)  — skipped when skip_export=true
+#     1. [Optional] PR Validation   — build + Solution Checker only (no deploy)
+#                                     Controlled by run_pr_validation input (default true on push)
+#     2. [Optional] Pipeline Tests  — full mock run from GHA-Core
+#                                     Controlled by run_pipeline_tests input (default false)
+#     3. Lint                       — validates solutions.json, deployment-settings, project-vars.yml
+#     4. Export solutions from sandbox (PP_SDBX_URL) — skipped when skip_export=true
 #        └─ Commit exported source + pipeline-context.json to feature/* branch
-#     2. Build (pack ZIPs, Solution Checker, JFrog archival)
+#     5. Build (pack ZIPs, Solution Checker, JFrog archival)
 #        └─ Validate pipeline config (toggles, URLs, service connections)
-#     3. Deploy → Dev → Intg → UAT → FRS → Perf  (parallel, individual approval gates)
-#        ↳ Prod is BLOCKED — only deployable from a PR to main (Pipeline 2)
-#     4. Auto-create PR: feature/* → main  (after UAT passes)
+#     6. Deploy → Dev → Intg → UAT → FRS → Perf  (each with its own approval gate)
+#        ↳ Prod is BLOCKED — only deployable from Pipeline 2 after PR merge
+#     7. Auto-create PR: feature/* → main  (after UAT passes)
 #
 #   Pipeline 2 — deploy-prod.yml  (fires when the above PR is merged)
 #     Deploy → UAT (re-validation) → Prod  (approval gates)
 #
-# MANUAL EXPORT WORKFLOW (skip_export=true)
-#   When a maker exports from Power Platform manually (pac solution export or
-#   the maker portal), extracts the ZIP, and commits the unpacked source to a
-#   feature/* branch, the pipeline can be triggered in two ways:
-#
-#   A) Push trigger — automatic:
-#      Push commits to any feature/* branch. The workflow fires automatically,
-#      skips the sandbox export stage, builds from committed source, and
-#      proceeds through all deploy environments as normal.
-#      Branch name must start with "feature/" so deploy-prod.yml recognises it.
-#      Note: pushing pipeline-context.json is ignored (paths-ignore) to prevent
-#      the pipeline's own commit from re-triggering a new run.
-#
-#   B) Manual dispatch with skip_export=true — explicit:
-#      Dispatch this workflow from your feature/* branch with skip_export=true.
-#      Useful when you want full control over when the pipeline fires (e.g. after
-#      a code review of the committed source files).
-#
 # ROLLBACK
-#   Set enable_backup=true to take a pre-import backup at every environment.
-#   Backups are stored as GitHub artifacts (backup-{env}-v{run_number}).
-#   If a deploy fails, the pipeline automatically re-imports the backup (inline rollback).
-#   Default is false — no backups taken. Recommended: true for UAT/FRS/Perf/Prod.
+# ─────────────────────────────────────────────────────────────────────────────
+# Set ENABLE_ROLLBACK=true as a GitHub Environment variable (per environment) to
+# take a pre-import backup automatically and restore it if the import fails.
+# No manual workflow dispatch needed — this is auto-rollback on failure.
+#
+# For manual rollback after a failed deploy, trigger:
+#   GHA-Core/.github/workflows/rollback.yml
+# from GHA-Core's Actions tab.
+#
+# SKIP_UAT (PIPELINE 2)
+# ─────────────────────────────────────────────────────────────────────────────
+# If UAT is unavailable and blocking a Prod deployment:
+#   Option A: Re-dispatch deploy-prod.yml manually with skip_uat=true
+#   Option B: Set repo variable SKIP_UAT=true (works even on auto-triggered runs)
 #
 # ARTIFACT HANDOFF
-#   Phase 1 uploads solution-artifact-* (7-day retention).
-#   Pipeline 2 downloads the same artifacts via source_run_id from pipeline-context.json.
+# ─────────────────────────────────────────────────────────────────────────────
+# Pipeline 1 uploads solution-artifact-* (7-day retention).
+# Pipeline 2 downloads the same artifacts via source_run_id from pipeline-context.json.
 # =============================================================================
 
 name: Build and Deploy
 
 on:
   # ── Auto-trigger when solution source is pushed to a feature branch ──────────
-  # Covers the manual-export workflow: user commits unpacked source to feature/*
-  # and pushes — the pipeline fires automatically with skip_export mode.
-  # paths-ignore prevents pipeline-context.json commits (written by this
-  # workflow's commit job) from re-triggering a new run.
   push:
     branches:
       - 'feature/**'
@@ -71,8 +65,6 @@ on:
       skip_export:
         description: >
           Skip sandbox export — build from source already committed to this branch.
-          Use when you have manually exported, unpacked, and committed solution source
-          to a feature/* branch. Automatically set when triggered by a push event.
         required: false
         default: false
         type: boolean
@@ -98,15 +90,24 @@ on:
           - InformationalIssue
 
       base_solutions:
-        description: 'Comma-separated base solution names to verify are installed'
+        description: 'Comma-separated base solution names to verify are installed (informational only)'
         required: false
         default: ''
 
-      enable_backup:
+      run_pr_validation:
         description: >
-          Take a pre-import backup at every environment before upgrading.
-          If deploy fails, the pipeline auto-restores from backup (inline rollback).
-          Default false — skip backups for faster deployments. Recommended: true for UAT/FRS/Perf/Prod.
+          Run a build + Solution Checker check before the full pipeline stages.
+          Useful for PRs and manual dispatches to get a fast build signal first.
+          Automatically true when triggered by a push event.
+        required: false
+        default: false
+        type: boolean
+
+      run_pipeline_tests:
+        description: >
+          Run the full pipeline integration test (GHA-Core pipeline-test.yml) in mock mode
+          before proceeding. Adds ~5 min but validates the entire Core stack end-to-end.
+          Default false — enable when testing Core changes.
         required: false
         default: false
         type: boolean
@@ -126,8 +127,6 @@ jobs:
       matrix:           ${{ steps.resolve.outputs.matrix }}
       solution_list:    ${{ steps.resolve.outputs.solution_list }}
       solution_count:   ${{ steps.resolve.outputs.solution_count }}
-      # Secret-presence flags — pre-evaluated here because secrets.* is not
-      # accessible in reusable workflow `with:` blocks (only in run: / env:).
       pp_app_id_set:    ${{ steps.check-creds.outputs.pp_app_id_set }}
       pp_secret_set:    ${{ steps.check-creds.outputs.pp_secret_set }}
       pp_tenant_set:    ${{ steps.check-creds.outputs.pp_tenant_set }}
@@ -158,8 +157,6 @@ jobs:
         id: check-creds
         shell: pwsh
         run: |
-          # Evaluate secret presence in a run: step (the only place secrets.* is allowed).
-          # Outputs are true/false strings consumed by stage-build's validate job.
           $r = @{
             pp_app_id_set    = ('${{ secrets.PP_APP_ID }}'         -ne '')
             pp_secret_set    = ('${{ secrets.PP_CLIENT_SECRET }}'  -ne '')
@@ -172,238 +169,81 @@ jobs:
           }
 
   # ============================================================================
-  # Lint & Validate Configuration (runs in parallel with Stage 1 Export)
+  # [OPTIONAL] PR Validation — build + Solution Checker only
   #
-  # Catches configuration mistakes before the PR to main is opened.
-  # Validates: solutions.json structure, deploymentSettings paths + JSON,
-  # unresolved #{TOKEN}# placeholders, project-vars.yml protected keys.
-  # Blocks create-main-pr — a lint failure stops the PR from being opened.
-  # No Azure login required — pure file-system validation.
+  # Runs when:  push event (always)  OR  run_pr_validation=true (dispatch)
+  # Provides a fast build signal before committing to the full pipeline.
+  # Does NOT deploy — build artefacts are discarded.
+  # Result is stored in pipeline-context.json and passed to Pipeline 2.
+  # ============================================================================
+  pr-validation:
+    name: "🔎 PR Validation (build only)"
+    needs: setup
+    if: |
+      github.event_name == 'push' ||
+      inputs.run_pr_validation == true
+    permissions:
+      id-token: write
+      contents: read
+    uses: ppudot2-cloud/GHA-Core/.github/workflows/_stage-build.yml@main
+    with:
+      matrix:                 ${{ needs.setup.outputs.matrix }}
+      mock_deploy:            false
+      jfrog_url:              ''
+      jfrog_repo:             ${{ vars.JFROG_REPO || 'powerplatform-solutions' }}
+      source_environment_url: ${{ vars.PP_SDBX_URL || '' }}
+      checker_error_level:    ${{ inputs.checker_error_level || vars.PP_CHECKER_ERROR_LEVEL || 'HighIssue' }}
+      azure_client_id:        ${{ vars.AZURE_CLIENT_ID }}
+      azure_tenant_id:        ${{ vars.AZURE_TENANT_ID }}
+      azure_subscription_id:  ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      azure_key_vault_name:   ${{ vars.AZURE_KEY_VAULT_NAME }}
+    secrets: inherit
+
+  # ============================================================================
+  # [OPTIONAL] Pipeline Integration Tests — full mock run from GHA-Core
+  #
+  # Runs when: run_pipeline_tests=true (dispatch only)
+  # Validates the entire GHA-Core stack end-to-end in mock mode.
+  # Only needed when testing Core changes or verifying a new project setup.
+  # ============================================================================
+  pipeline-tests:
+    name: "🧪 Pipeline Integration Tests"
+    needs: setup
+    if: inputs.run_pipeline_tests == true
+    uses: ppudot2-cloud/GHA-Core/.github/workflows/pipeline-test.yml@main
+    with:
+      solutions:   ${{ inputs.solutions || 'all' }}
+      caller_repo: ${{ github.repository }}
+    secrets: inherit
+
+  # ============================================================================
+  # Lint Pipeline Configuration (calls GHA-Core reusable lint workflow)
+  #
+  # Validates: solutions.json, deployment-settings paths + JSON,
+  # project-vars.yml protected keys, unresolved #{TOKEN}# placeholders.
+  # Failure here blocks stage-export from running.
   # ============================================================================
   lint-config:
     name: "🔍 Lint Pipeline Config"
-    needs: [setup]
-    runs-on: ubuntu-latest
+    needs: setup
     permissions:
       contents: read
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install PyYAML
-        run: pip install pyyaml --quiet
-
-      - name: Run configuration validator
-        id: validate
-        shell: python
-        run: |
-          import json, yaml, os, sys, re
-          from xml.etree import ElementTree as ET
-
-          errors   = []
-          warnings = []
-
-          # ──────────────────────────────────────────────────────────────────
-          # 1. Parse solutions.json
-          # ──────────────────────────────────────────────────────────────────
-          SOLUTIONS_FILE = 'solutions.json'
-          if not os.path.isfile(SOLUTIONS_FILE):
-              errors.append(f'{SOLUTIONS_FILE} not found — this file is required')
-              for e in errors:
-                  print(f'::error::{e}')
-              sys.exit(1)
-
-          try:
-              with open(SOLUTIONS_FILE) as f:
-                  raw = json.load(f)
-          except json.JSONDecodeError as e:
-              errors.append(f'{SOLUTIONS_FILE}: invalid JSON — {e}')
-              for e in errors:
-                  print(f'::error::{e}')
-              sys.exit(1)
-
-          solutions = raw.get('solutions', [])
-          if not solutions:
-              errors.append(f'{SOLUTIONS_FILE}: "solutions" array is empty or missing')
-
-          # ──────────────────────────────────────────────────────────────────
-          # 2. Validate each solution entry
-          # ──────────────────────────────────────────────────────────────────
-          solution_names = {s.get('name') for s in solutions if s.get('name')}
-          deploy_orders  = []
-
-          for sol in solutions:
-              name = sol.get('name', '<unnamed>')
-
-              for field in ('name', 'folder', 'deployOrder', 'deploymentSettings'):
-                  if field not in sol:
-                      errors.append(f'[{name}] Missing required field: "{field}"')
-
-              folder = sol.get('folder', '')
-              if folder and not os.path.isdir(folder):
-                  errors.append(f'[{name}] folder "{folder}" does not exist')
-
-              deploy_order = sol.get('deployOrder')
-              if deploy_order is not None:
-                  if not isinstance(deploy_order, int) or deploy_order < 1:
-                      errors.append(f'[{name}] deployOrder must be a positive integer, got: {deploy_order!r}')
-                  elif deploy_order in deploy_orders:
-                      errors.append(f'[{name}] deployOrder {deploy_order} is a duplicate')
-                  else:
-                      deploy_orders.append(deploy_order)
-
-              for dep in sol.get('dependsOn', []):
-                  if dep not in solution_names:
-                      warnings.append(f'[{name}] dependsOn "{dep}" is not declared in solutions.json')
-
-              schema_file = sol.get('dataSchemaFile', '')
-              if schema_file:
-                  if not os.path.isfile(schema_file):
-                      errors.append(f'[{name}] dataSchemaFile "{schema_file}" does not exist')
-                  else:
-                      try:
-                          ET.parse(schema_file)
-                      except ET.ParseError as e:
-                          errors.append(f'[{name}] dataSchemaFile "{schema_file}" is not valid XML: {e}')
-
-              settings = sol.get('deploymentSettings', {})
-              if not isinstance(settings, dict):
-                  errors.append(f'[{name}] deploymentSettings must be an object')
-                  continue
-
-              for env_name, path in settings.items():
-                  if not path:
-                      warnings.append(f'[{name}/{env_name}] deploymentSettings path is empty')
-                      continue
-                  if not os.path.isfile(path):
-                      errors.append(f'[{name}/{env_name}] deploymentSettings file "{path}" does not exist')
-                      continue
-
-                  try:
-                      with open(path) as f:
-                          ds = json.load(f)
-                  except json.JSONDecodeError as e:
-                      errors.append(f'[{name}/{env_name}] "{path}": invalid JSON — {e}')
-                      continue
-
-                  for key in ('EnvironmentVariables', 'ConnectionReferences'):
-                      if key not in ds:
-                          warnings.append(f'[{name}/{env_name}] "{path}": missing "{key}" array (will default to empty)')
-                      elif not isinstance(ds[key], list):
-                          errors.append(f'[{name}/{env_name}] "{path}": "{key}" must be an array')
-
-                  ds_str = open(path).read()
-                  for token in re.findall(r'#\{([^}]+)\}#', ds_str):
-                      warnings.append(
-                          f'[{name}/{env_name}] "{path}": token "#{{{token}}}#" — '
-                          f'ensure "{token}" is in Azure Key Vault or as a GitHub Variable/Secret'
-                      )
-
-          # ──────────────────────────────────────────────────────────────────
-          # 3. Validate project-vars.yml
-          # ──────────────────────────────────────────────────────────────────
-          PROJ_VARS_FILE = '.github/config/project-vars.yml'
-          PROTECTED_KEYS = {'PP_CHECKER_GEO', 'PP_CHECKER_ERROR_LEVEL', 'DEFAULT_SOLUTION_TYPE', 'ENABLE_BACKUP'}
-
-          if os.path.isfile(PROJ_VARS_FILE):
-              try:
-                  with open(PROJ_VARS_FILE) as f:
-                      proj = yaml.safe_load(f)
-              except yaml.YAMLError as e:
-                  errors.append(f'{PROJ_VARS_FILE}: invalid YAML — {e}')
-                  proj = None
-
-              if proj and isinstance(proj.get('variables'), dict):
-                  for key in PROTECTED_KEYS:
-                      if key in proj['variables']:
-                          errors.append(
-                              f'{PROJ_VARS_FILE}: contains protected key "{key}" — '
-                              f'will cause pipeline failure at runtime'
-                          )
-
-                  CRED_PATTERNS = re.compile(r'(password|secret|token|key|apikey|pwd)', re.IGNORECASE)
-                  for k, v in proj['variables'].items():
-                      if CRED_PATTERNS.search(k) and v and str(v).strip():
-                          warnings.append(
-                              f'{PROJ_VARS_FILE}: variable "{k}" looks like a credential — '
-                              f'secrets must live in Azure Key Vault, not in this file'
-                          )
-          else:
-              warnings.append(f'{PROJ_VARS_FILE} not found — using global defaults from GHA-Core')
-
-          # ──────────────────────────────────────────────────────────────────
-          # 4. Output results
-          # ──────────────────────────────────────────────────────────────────
-          for w in warnings:
-              print(f'::warning::{w}')
-
-          if errors:
-              print(f'::error::Found {len(errors)} error(s) — fix all errors before merging:')
-              for e in errors:
-                  print(f'::error::{e}')
-              sys.exit(1)
-          else:
-              print(f'✅ Validated {len(solutions)} solution(s) — {len(warnings)} warning(s), 0 errors')
-
-      - name: Write lint summary
-        if: always()
-        shell: python
-        run: |
-          import json, os
-
-          solutions_count = 0
-          try:
-              with open('solutions.json') as f:
-                  data = json.load(f)
-              solutions_count = len(data.get('solutions', []))
-          except Exception:
-              pass
-
-          outcome = '${{ steps.validate.outcome }}'
-          icon    = '✅' if outcome == 'success' else '❌'
-
-          summary = f"""## {icon} Configuration Lint (Pipeline 1)
-
-          | Check | Value |
-          |---|---|
-          | solutions.json | {solutions_count} solution(s) |
-          | Result | **{outcome.upper()}** |
-          | Triggered by | ${{ github.actor }} |
-          | Branch | ${{ github.head_ref || github.ref_name }} |
-
-          > Lint failure blocks PR creation. Fix all errors before UAT completes.
-          """
-
-          with open(os.environ['GITHUB_STEP_SUMMARY'], 'w') as f:
-              f.write(summary)
+      pull-requests: write
+    uses: ppudot2-cloud/GHA-Core/.github/workflows/_reusable-lint.yml@main
+    with:
+      solutions_json_path: 'solutions.json'
+      project_vars_path:   '.github/config/project-vars.yml'
 
   # ============================================================================
   # Stage 1 — Export from sandbox  (or skip when source is already committed)
-  #
-  # Contains two jobs (visible as a collapsible group in the GitHub Actions UI):
-  #   📤 Export | <SolutionName>  — one per solution, parallel
-  #              SKIPPED when skip_export=true or triggered by push event
-  #   📤 Commit pipeline context  — always runs
-  #              Normal:      creates feature/pipeline-{N} from main, copies source
-  #              skip_export: just writes pipeline-context.json to current branch
-  #
-  # Three operating modes:
-  #   1. sandbox export (default): exports from PP_SDBX_URL, creates feature branch
-  #   2. mock:          simulates export, still creates feature branch + git push
-  #   3. skip_export / push: source already committed; only writes context JSON
   # ============================================================================
   stage-export:
     name: "📤 Export / Commit"
-    needs: setup
+    needs: [setup, lint-config]
+    if: needs.lint-config.result == 'success'
     permissions:
       id-token: write
-      contents: write   # commit job needs push access
+      contents: write
       actions:  read
     uses: ppudot2-cloud/GHA-Core/.github/workflows/_stage-export.yml@main
     with:
@@ -411,8 +251,6 @@ jobs:
       solution_list:          ${{ needs.setup.outputs.solution_list }}
       source_environment_url: ${{ vars.PP_SDBX_URL || 'https://mock.crm.dynamics.com' }}
       mock_deploy:            ${{ inputs.mock_deploy == true }}
-      # skip_export=true when: dispatch with skip_export flag OR push event
-      # In push mode there are no workflow inputs, so we check event_name too.
       skip_export:            ${{ inputs.skip_export == true || github.event_name == 'push' }}
       azure_client_id:        ${{ vars.AZURE_CLIENT_ID }}
       azure_tenant_id:        ${{ vars.AZURE_TENANT_ID }}
@@ -422,14 +260,6 @@ jobs:
 
   # ============================================================================
   # Stage 2 — Build
-  #
-  # Contains two job groups (visible inside the Build collapsible group):
-  #   🏗️ Build — <SolutionName>  — pack ZIPs, Solution Checker, JFrog archival
-  #   🔎 Validate Pipeline Config  — prints all toggles, URLs, secret status
-  #
-  # Packs ZIPs, runs Solution Checker, uploads solution-artifact-* (7-day)
-  # and archives to JFrog for long-term storage.
-  # Validation runs after all builds pass — fails non-mock if secrets/URLs missing.
   # ============================================================================
   stage-build:
     name: "🏗️ Build"
@@ -440,17 +270,13 @@ jobs:
     uses: ppudot2-cloud/GHA-Core/.github/workflows/_stage-build.yml@main
     with:
       matrix:                 ${{ needs.setup.outputs.matrix }}
-      # Use exported source only when: real mode AND sandbox export was run.
-      # Skip when mock_deploy=true (packs from committed source),
-      # skip_export=true (source already committed), or push-triggered.
       use_exported_source:    ${{ inputs.mock_deploy != true && inputs.skip_export != true && github.event_name != 'push' }}
       source_environment_url: ${{ vars.PP_SDBX_URL || '' }}
       mock_deploy:            ${{ inputs.mock_deploy == true }}
       jfrog_url:              ${{ vars.JFROG_URL || '' }}
       jfrog_repo:             ${{ vars.JFROG_REPO || 'powerplatform-solutions' }}
       checker_error_level:    ${{ inputs.checker_error_level || 'HighIssue' }}
-      # ── Validate job context (vars cannot cross repo boundaries) ────────────
-      enable_backup:          ${{ inputs.enable_backup == true }}
+      enable_backup:          ${{ vars.ENABLE_ROLLBACK == 'true' }}
       base_solutions:         ${{ inputs.base_solutions || '' }}
       solution_count:         ${{ needs.setup.outputs.solution_count }}
       solution_list:          ${{ needs.setup.outputs.solution_list }}
@@ -473,8 +299,11 @@ jobs:
 
   # ============================================================================
   # Stage 3 — Deploy  (5 parallel jobs, each with its own approval gate)
-  # All start immediately after stage-build (which includes validation).
+  # All start immediately after stage-build passes.
   # create-main-pr depends ONLY on deploy-uat — FRS/Perf run independently.
+  #
+  # ENABLE_ROLLBACK: set this as a GitHub Environment variable (per environment)
+  # to enable automatic pre-import backup and restore on failure.
   # ============================================================================
 
   deploy-dev:
@@ -506,10 +335,10 @@ jobs:
       - name: Download solution artifacts
         uses: actions/download-artifact@v4
         with:
-          pattern: solution-artifact-*
-          path: .
+          pattern:      solution-artifact-*
+          path:         .
           merge-multiple: true
-          run-id: ${{ github.run_id }}
+          run-id:       ${{ github.run_id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Deploy all solutions → Dev
         uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/deploy-all-solutions@main
@@ -518,7 +347,7 @@ jobs:
           environment_name:         Dev
           environment_url:          ${{ vars.PP_DEV_URL }}
           solution_type:            Unmanaged
-          enable_backup:            ${{ inputs.enable_backup == true }}
+          enable_backup:            ${{ vars.ENABLE_ROLLBACK == 'true' }}
           enable_blocking_check:    false
           enable_version_compare:   false
           import_config_data:       false
@@ -563,10 +392,10 @@ jobs:
       - name: Download solution artifacts
         uses: actions/download-artifact@v4
         with:
-          pattern: solution-artifact-*
-          path: .
+          pattern:      solution-artifact-*
+          path:         .
           merge-multiple: true
-          run-id: ${{ github.run_id }}
+          run-id:       ${{ github.run_id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Deploy all solutions → Intg
         uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/deploy-all-solutions@main
@@ -575,9 +404,9 @@ jobs:
           environment_name:         Intg
           environment_url:          ${{ vars.PP_INTG_URL }}
           solution_type:            Managed
-          enable_backup:            ${{ inputs.enable_backup == true }}
+          enable_backup:            ${{ vars.ENABLE_ROLLBACK == 'true' }}
           enable_blocking_check:    true
-          enable_version_compare:   false
+          enable_version_compare:   true
           import_config_data:       false
           previous_environment_url: ${{ vars.PP_DEV_URL }}
           tag_prod_deployed:        false
@@ -620,10 +449,10 @@ jobs:
       - name: Download solution artifacts
         uses: actions/download-artifact@v4
         with:
-          pattern: solution-artifact-*
-          path: .
+          pattern:      solution-artifact-*
+          path:         .
           merge-multiple: true
-          run-id: ${{ github.run_id }}
+          run-id:       ${{ github.run_id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Deploy all solutions → UAT
         uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/deploy-all-solutions@main
@@ -632,7 +461,7 @@ jobs:
           environment_name:         UAT
           environment_url:          ${{ vars.PP_UAT_URL }}
           solution_type:            Managed
-          enable_backup:            ${{ inputs.enable_backup == true }}
+          enable_backup:            ${{ vars.ENABLE_ROLLBACK == 'true' }}
           enable_blocking_check:    true
           enable_version_compare:   true
           import_config_data:       false
@@ -677,10 +506,10 @@ jobs:
       - name: Download solution artifacts
         uses: actions/download-artifact@v4
         with:
-          pattern: solution-artifact-*
-          path: .
+          pattern:      solution-artifact-*
+          path:         .
           merge-multiple: true
-          run-id: ${{ github.run_id }}
+          run-id:       ${{ github.run_id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Deploy all solutions → FRS
         uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/deploy-all-solutions@main
@@ -689,7 +518,7 @@ jobs:
           environment_name:         FRS
           environment_url:          ${{ vars.PP_FRS_URL }}
           solution_type:            Managed
-          enable_backup:            ${{ inputs.enable_backup == true }}
+          enable_backup:            ${{ vars.ENABLE_ROLLBACK == 'true' }}
           enable_blocking_check:    true
           enable_version_compare:   true
           import_config_data:       false
@@ -734,10 +563,10 @@ jobs:
       - name: Download solution artifacts
         uses: actions/download-artifact@v4
         with:
-          pattern: solution-artifact-*
-          path: .
+          pattern:      solution-artifact-*
+          path:         .
           merge-multiple: true
-          run-id: ${{ github.run_id }}
+          run-id:       ${{ github.run_id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Deploy all solutions → Perf
         uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/deploy-all-solutions@main
@@ -746,7 +575,7 @@ jobs:
           environment_name:         Perf
           environment_url:          ${{ vars.PP_PERF_URL }}
           solution_type:            Managed
-          enable_backup:            ${{ inputs.enable_backup == true }}
+          enable_backup:            ${{ vars.ENABLE_ROLLBACK == 'true' }}
           enable_blocking_check:    true
           enable_version_compare:   true
           import_config_data:       false
@@ -781,9 +610,6 @@ jobs:
     steps:
       - name: Create PR feature → main
         env:
-          # GITHUB_TOKEN is blocked when "Allow GitHub Actions to create and approve
-          # pull requests" is disabled in repo settings. GHA_CORE_PAT (a real PAT)
-          # bypasses that restriction.
           GH_TOKEN: ${{ secrets.GHA_CORE_PAT }}
         shell: bash
         run: |

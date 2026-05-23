@@ -4,81 +4,103 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this repo is
 
-Thin **caller** workflows for the GHA-Core reusable workflow library. GHA-Dynamics exposes `workflow_dispatch` inputs, reads `vars.*` repository variables (which cannot cross repo boundaries), and forwards everything to GHA-Core. **All build and deploy logic lives in GHA-Core — edit there, not here.**
+Thin **caller** workflows for the GHA-Core reusable workflow library. GHA-Dynamics exposes `workflow_dispatch` inputs, reads `vars.*` repository variables (which cannot cross repo boundaries), and forwards everything to GHA-Core. **All build, deploy, test, lint, and rollback logic lives in GHA-Core — edit there, not here.**
+
+## Repository structure (3 folders only)
+
+```
+.github/
+  config/
+    project-vars.yml          # Project-specific variable overrides (merged on top of GHA-Core global-vars.yml)
+  workflows/
+    build-and-deploy.yml      # Pipeline 1: Export → Build → Dev/Intg/UAT/FRS/Perf → create PR
+    deploy-prod.yml           # Pipeline 2: UAT re-validation → Prod (auto-triggered on PR merge)
+    export-solution.yml       # Ad-hoc: export from sandbox → branch → PR
+
+src/
+  solutions/{SolutionName}/
+    [solution source files]                        # Unpacked PP solution XML/JSON
+    deployment-settings-{env}.json                 # Per-env variable overrides (dev/intg/uat/frs/perf/prod)
+    config-data-schema.xml                         # Config Migration schema XML (empty if unused)
+
+solutions.json                # Solution registry — single source of truth
+pipeline-context.json         # Runtime handshake written by Pipeline 1, read by Pipeline 2
+```
+
+## Solution configuration convention
+
+Each solution's deployment-settings and config-data schema live **inside its own folder**:
+
+```
+src/solutions/CoreSolution/
+  [source files…]
+  deployment-settings-dev.json
+  deployment-settings-intg.json
+  deployment-settings-uat.json
+  deployment-settings-frs.json
+  deployment-settings-perf.json
+  deployment-settings-prod.json
+  config-data-schema.xml
+```
+
+`solutions.json` references these paths as `src/solutions/{Name}/deployment-settings-{env}.json`.
 
 ## Local simulation
 
+All tooling lives in GHA-Core. After checking out GHA-Core to `.ci/`:
+
 ```bash
-# Full pipeline dry-run (no Dataverse changes, no git push, no JFrog upload)
-python3 scripts/simulate-pipeline.py --solutions all --run-number 42
-
-# Specific solutions or environments
-python3 scripts/simulate-pipeline.py --solutions "CoreSolution,ExtensionA" --target-envs "dev,intg"
-
-# Compute the deploy matrix (outputs GitHub Actions matrix JSON to stdout)
-python3 scripts/compute-solutions.py --selection all --event workflow_dispatch
-```
-
-## Repository structure
-
-```
-solutions.json                    # Solution registry — single source of truth for name, folder, dependsOn, deploymentSettings paths
-scripts/
-  compute-solutions.py            # Reads solutions.json → topological sort → GITHUB_OUTPUT matrix JSON (called by workflows)
-  simulate-pipeline.py            # Full local dry-run simulation of every pipeline stage
-src/solutions/{SolutionName}/     # Unpacked solution source files
-config/{SolutionName}/            # Configuration migration data schema XML per solution
-deployment-settings/{env}/{SolutionName}.json  # Per-solution, per-environment variable overrides
-.github/workflows/
-  release-pipeline.yml            # Full promotion chain: PR / manual dispatch
-  export-solution.yml             # Export sandbox → branch → PR
-  deploy-dev.yml                  # Ad-hoc deploy to Dev only
-  rollback.yml                    # Rollback a specific environment
+python3 .ci/.github/scripts/dynamics/simulate-pipeline.py --solutions all --run-number 42
 ```
 
 ## Workflows and what they delegate
 
 | Workflow | Trigger | GHA-Core reusables called |
 |---|---|---|
-| `release-pipeline.yml` | PR to `main` or `workflow_dispatch` | `_reusable-build`, `_reusable-deploy`, `_reusable-jfrog` |
-| `export-solution.yml` | `workflow_dispatch` | (inline PowerShell + PAC CLI steps) |
-| `deploy-dev.yml` | `workflow_dispatch` | `_reusable-deploy-dev` |
-| `rollback.yml` | `workflow_dispatch` | `_reusable-rollback` |
+| `build-and-deploy.yml` | `workflow_dispatch` or push to `feature/**` | `_reusable-lint`, `_stage-export`, `_stage-build`, `pipeline-test` (optional) |
+| `deploy-prod.yml` | push to `main` (pipeline-context.json changes) or `workflow_dispatch` | deploy-all-solutions composite |
+| `export-solution.yml` | `workflow_dispatch` | reveille composite |
 
-## Pipeline flow (release-pipeline.yml)
+## Pipeline flow (build-and-deploy.yml)
 
 ```
-setup (compute-solutions.py) → build per solution (parallel)
-  → deploy-dev (sequential, max-parallel:1)
-  → gate-intg → deploy-intg (sequential)
-  → gate-uat  → deploy-uat  (sequential)
-  → gate-frs  → deploy-frs  (sequential)
-  → gate-perf → deploy-perf (sequential)
-  → gate-prod → deploy-prod (sequential, only after ALL solutions pass UAT)
+setup
+  → [optional] pr-validation    (run_pr_validation=true or push event)
+  → [optional] pipeline-tests   (run_pipeline_tests=true)
+  → lint-config                 (calls GHA-Core _reusable-lint.yml — blocks on failure)
+  → stage-export                (calls GHA-Core _stage-export.yml)
+  → stage-build                 (calls GHA-Core _stage-build.yml)
+  → deploy-dev / deploy-intg / deploy-uat / deploy-frs / deploy-perf  (parallel, each gated)
+  → create-main-pr              (after UAT passes)
 ```
 
-Approval gates = GitHub Environment protection rules. Adding/removing required reviewers on a named environment controls which stages block for sign-off.
+Merging the PR triggers `deploy-prod.yml`: UAT re-validation → Prod.
 
-## solutions.json — key fields
+## Key environment variables
 
-- `dependsOn`: drives topological sort in `compute-solutions.py` → controls deploy order
-- `deploymentSettings`: per-env JSON paths; passed to `_reusable-deploy` as `settings_file` input
+| Variable | Scope | Purpose |
+|---|---|---|
+| `PP_DEV_URL` … `PP_PROD_URL`, `PP_SDBX_URL` | Repo | PP environment URLs |
+| `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID` | Repo | OIDC identity |
+| `AZURE_KEY_VAULT_NAME` | Repo | Key Vault holding PP credentials |
+| `ENABLE_ROLLBACK` | **Per environment** | `true` = auto-backup + auto-restore on import failure |
+| `SKIP_UAT` | Repo (break-glass) | `true` = Pipeline 2 skips UAT re-validation |
+| `SERVICENOW_ENABLED` | Repo or env | ServiceNow CR integration toggle |
+| `JFROG_URL`, `JFROG_REPO` | Repo | JFrog Artifactory |
 
-## Required GitHub secrets and variables
+## Rollback
 
-**Secrets** (Settings → Secrets and variables → Actions → Secrets):
-- `PP_APP_ID`, `PP_CLIENT_SECRET`, `PP_TENANT_ID` — service principal with Power Platform Administrator role on every environment
+- **Auto-rollback**: `ENABLE_ROLLBACK=true` on any GitHub Environment → pipeline backs up and auto-restores on failure
+- **Manual rollback**: trigger `GHA-Core/.github/workflows/rollback.yml` from GHA-Core's Actions tab
 
-**Variables** (Settings → Secrets and variables → Actions → Variables):
-- `PP_SDBX_URL`, `PP_DEV_URL`, `PP_INTG_URL`, `PP_UAT_URL`, `PP_FRS_URL`, `PP_PERF_URL`, `PP_PROD_URL`
-- `PP_SOLUTION_NAME` (single-solution repos only), `PP_CHECKER_GEO`, `PP_DATA_SCHEMA_FILE`
+## UAT bypass (break-glass)
 
-**Environments** (Settings → Environments):
-- `Dev`, `Intg`, `UAT`, `FRS`, `Perf`, `Prod` — each with required reviewers configured
+If UAT is broken and blocking Prod:
+- Option A: manually dispatch `deploy-prod.yml` with `skip_uat=true`
+- Option B: set repo variable `SKIP_UAT=true` (works even on auto-trigger) — remember to unset after the emergency deployment
 
-## Constraints
+## Required secrets
 
-- **Sequential imports are mandatory**: `max-parallel: 1` on all deploy jobs — Dataverse cannot process parallel solution imports
-- **Solution Checker is always mandatory** in non-mock builds — no toggle to skip it
-- **Mock mode**: pass `mock-deploy: true` at `workflow_dispatch` to simulate the full pipeline with no Dataverse changes; or run `simulate-pipeline.py` locally
-- **Artifact storage**: JFrog Artifactory (not GitHub artifact storage) — build uploads after Solution Checker passes; all deploy environments download from JFrog
+- `GHA_CORE_PAT` — PAT for cross-repo checkout and PR creation
+- `MAIL_PASSWORD` — (optional) SMTP password for failure notifications
+- PP credentials stored in Azure Key Vault (never as GitHub Secrets)

@@ -27,8 +27,9 @@
 #   workflow_dispatch — manual re-run or ad-hoc promotion
 #
 # ROLLBACK:
-#   Set enable_backup=true (workflow_dispatch only) to take a pre-import backup.
-#   If a deploy fails, the pipeline automatically re-imports the backup (inline rollback).
+#   Set ENABLE_ROLLBACK=true as a GitHub Environment variable (per environment)
+#   to take a pre-import backup automatically and restore it if the import fails.
+#   For manual rollback after a failed deploy, trigger GHA-Core/.github/workflows/rollback.yml.
 # =============================================================================
 
 name: Deploy UAT + Prod
@@ -47,21 +48,14 @@ on:
         default: false
         type: boolean
 
-      enable_backup:
-        description: >
-          Take a pre-import backup at UAT and Prod before upgrading.
-          If deploy fails, the pipeline auto-restores from backup (inline rollback).
-          Default false — skip backups for faster deployments.
-        required: false
-        default: false
-        type: boolean
-
       skip_uat:
         description: >
           ⚠️ BYPASS UAT — skip the UAT re-validation step and go directly to Prod.
           Use only as a break-glass option when the UAT environment is unavailable
           or broken and a production deployment cannot wait for UAT recovery.
           Requires an explicit approval at the Prod environment gate regardless.
+          Alternative: set repo variable SKIP_UAT=true so the NEXT auto-trigger
+          also bypasses UAT (useful when you cannot do a manual redispatch).
         required: false
         default: false
         type: boolean
@@ -156,9 +150,10 @@ jobs:
   deploy-uat:
     name: "🚀 Deploy | UAT"
     needs: [read-context]
-    # skip_uat=true is a break-glass bypass for when UAT is unavailable.
-    # When skipped, deploy-prod still runs (result == 'skipped' is allowed below).
-    if: inputs.skip_uat != true
+    # skip_uat break-glass: skip when dispatch input is true OR repo variable SKIP_UAT=true.
+    # The repo variable fallback lets auto-triggered runs (push event) also bypass UAT
+    # without requiring a manual redispatch.
+    if: inputs.skip_uat != true && vars.SKIP_UAT != 'true'
     runs-on: ubuntu-latest
     environment: UAT
     permissions:
@@ -235,7 +230,7 @@ jobs:
           environment_name:         UAT
           environment_url:          ${{ vars.PP_UAT_URL }}
           solution_type:            Managed
-          enable_backup:            ${{ inputs.enable_backup == true }}
+          enable_backup:            ${{ vars.ENABLE_ROLLBACK == 'true' }}
           enable_blocking_check:    true
           enable_version_compare:   true
           import_config_data:       false
@@ -321,7 +316,7 @@ jobs:
           environment_name:         Prod
           environment_url:          ${{ vars.PP_PROD_URL }}
           solution_type:            Managed
-          enable_backup:            ${{ inputs.enable_backup == true }}
+          enable_backup:            ${{ vars.ENABLE_ROLLBACK == 'true' }}
           enable_blocking_check:    true
           enable_version_compare:   true
           import_config_data:       true
