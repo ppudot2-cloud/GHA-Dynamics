@@ -49,9 +49,8 @@ on:
 
       mock_deploy:
         description: >
-          Simulation mode — skips ALL Azure/PP/JFrog connections. Safe to run without
-          a real App Registration, Key Vault, or Power Platform environment.
-          Git operations still run; no real import/export happens.
+          Dry run — simulate export, build, and deploy without touching Power Platform,
+          git, or JFrog. No branch is created, no PR is raised.
         required: false
         default: false
         type: boolean
@@ -489,3 +488,131 @@ jobs:
           enable_servicenow:        ${{ vars.SERVICENOW_ENABLED == 'true' }}
           solution_list:            ${{ needs.setup.outputs.solution_list }}
 
+  # ============================================================================
+  # Create PR: feature/pipeline-{run_number} → main
+  # Opens as soon as UAT passes. FRS and Perf continue independently.
+  # Merging this PR triggers deploy-prod.yml (UAT re-validation → Prod).
+  # ============================================================================
+  create-main-pr:
+    name: "🔀 Open PR → main"
+    needs: [setup, stage-export, deploy-uat]
+    if: |
+      needs.deploy-uat.result == 'success' &&
+      needs.stage-export.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      contents: read
+    steps:
+      - name: Create PR feature → main
+        env:
+          GH_TOKEN: ${{ secrets.GHA_CORE_PAT }}
+        shell: bash
+        run: |
+          FEATURE="${{ needs.stage-export.outputs.feature_branch }}"
+          MOCK_LABEL="${{ inputs.mock_deploy == true && '[MOCK] ' || '' }}"
+          PR_URL=$(gh pr create \
+            --repo "${{ github.repository }}" \
+            --head "$FEATURE" \
+            --base "main" \
+            --title "${MOCK_LABEL}Release: pipeline run #${{ github.run_number }}" \
+            --body "## ✅ UAT passed — ready for Prod
+
+          **Pipeline run:** [#${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+          **Branch:** \`$FEATURE\`
+          **Solutions:** ${{ needs.setup.outputs.solution_list }}
+          **Triggered by:** @${{ github.actor }}
+          **Mock deploy:** ${{ inputs.mock_deploy }}
+
+          ### Gate status at PR creation
+          - [x] Solution Checker: passed
+          - [x] Dev: success
+          - [x] Intg: success
+          - [x] UAT: success
+          - [ ] FRS: running in parallel (not required for this PR)
+          - [ ] Perf: running in parallel (not required for this PR)
+
+          Merging this PR triggers **deploy-prod.yml** (UAT re-validation → Prod, both gated)." \
+          )
+          echo "✅ PR created: $PR_URL"
+
+  # ============================================================================
+  # Pipeline Summary (always runs)
+  # ============================================================================
+  pipeline-summary:
+    name: "📋 Pipeline Summary"
+    needs: [setup, stage-export, stage-build, deploy-dev, deploy-intg, deploy-uat, deploy-frs, deploy-perf, create-main-pr]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Checkout GHA-Core CI scripts
+        uses: actions/checkout@v4
+        with:
+          repository: ppudot2-cloud/GHA-Core
+          ref: main
+          path: .ci
+          token: ${{ secrets.GHA_CORE_PAT || github.token }}
+
+      - name: Download job summary records
+        uses: actions/download-artifact@v4
+        with:
+          pattern: "job-summary-*"
+          path: job-summaries/
+          merge-multiple: true
+        continue-on-error: true
+
+      - name: Write pipeline summary
+        shell: pwsh
+        run: |
+          & .ci/.github/scripts/dynamics/Write-PipelineSummary.ps1 `
+            -SolutionList    '${{ needs.setup.outputs.solution_list }}' `
+            -SolutionCount   '${{ needs.setup.outputs.solution_count }}' `
+            -RunNumber       '${{ github.run_number }}' `
+            -RefName         '${{ github.ref_name }}' `
+            -CommitSha       '${{ github.sha }}' `
+            -ExportResult    '${{ needs.stage-export.result }}' `
+            -BuildResult     '${{ needs.stage-build.result }}' `
+            -DeployResult    '${{ needs.deploy-uat.result }}' `
+            -JobSummariesDir 'job-summaries'
+
+      - name: Send failure notification
+        if: >
+          needs.stage-export.result  == 'failure' ||
+          needs.stage-build.result   == 'failure' ||
+          needs.deploy-dev.result    == 'failure' ||
+          needs.deploy-intg.result   == 'failure' ||
+          needs.deploy-uat.result    == 'failure' ||
+          needs.deploy-frs.result    == 'failure' ||
+          needs.deploy-perf.result   == 'failure'
+        continue-on-error: true
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: ${{ vars.MAIL_SERVER }}
+          server_port:    ${{ vars.MAIL_PORT }}
+          username:       ${{ vars.MAIL_USERNAME }}
+          password:       ${{ secrets.MAIL_PASSWORD }}
+          to:             ppudot1@gmail.com
+          from:           GitHub Actions <${{ vars.MAIL_USERNAME }}>
+          subject:        "❌ Build and Deploy FAILED — ${{ github.repository }} #${{ github.run_number }}"
+          body: |
+            Pipeline 1 failed for run #${{ github.run_number }}.
+
+            Repository  : ${{ github.repository }}
+            Branch      : ${{ github.ref_name }}
+            Triggered by: ${{ github.actor }}
+
+            Stage results:
+              Export : ${{ needs.stage-export.result }}
+              Build  : ${{ needs.stage-build.result }}
+              Dev    : ${{ needs.deploy-dev.result }}
+              Intg   : ${{ needs.deploy-intg.result }}
+              UAT    : ${{ needs.deploy-uat.result }}
+              FRS    : ${{ needs.deploy-frs.result }}
+              Perf   : ${{ needs.deploy-perf.result }}
+
+            Solutions: ${{ needs.setup.outputs.solution_list }}
+
+            ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
