@@ -94,6 +94,15 @@ on:
         required: false
         default: ''
 
+      run_lint_config:
+        description: >
+          Validate solutions.json, deployment-settings paths, and project-vars.yml
+          before running the pipeline. Automatically true on push events.
+          Disable only when iterating quickly and lint is known-good.
+        required: false
+        default: true
+        type: boolean
+
       run_pr_validation:
         description: >
           Run a build + Solution Checker check before the full pipeline stages.
@@ -131,6 +140,8 @@ jobs:
       pp_secret_set:    ${{ steps.check-creds.outputs.pp_secret_set }}
       pp_tenant_set:    ${{ steps.check-creds.outputs.pp_tenant_set }}
       gha_core_pat_set: ${{ steps.check-creds.outputs.gha_core_pat_set }}
+      jfrog_url:        ${{ steps.core-vars.outputs.jfrog_url }}
+      jfrog_repo:       ${{ steps.core-vars.outputs.jfrog_repo }}
 
     steps:
       - name: Checkout repository
@@ -143,6 +154,20 @@ jobs:
           ref: main
           path: .ci
           token: ${{ secrets.GHA_CORE_PAT }}
+
+      - name: Read Core pipeline variables (JFROG)
+        id: core-vars
+        shell: pwsh
+        run: |
+          # JFROG_URL and JFROG_REPO are protected Core variables.
+          # Read them from global-vars.yml so the project layer cannot override them.
+          $content   = Get-Content '.ci/.github/variables/dynamics/global-vars.yml' -Raw
+          $jfrogUrl  = if ($content -match '(?m)^\s+JFROG_URL:\s*"?([^"\n]*?)"?\s*$')  { $Matches[1].Trim() } else { '' }
+          $jfrogRepo = if ($content -match '(?m)^\s+JFROG_REPO:\s*"?([^"\n]*?)"?\s*$') { $Matches[1].Trim() } else { 'powerplatform-solutions' }
+          "jfrog_url=$jfrogUrl"   | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "jfrog_repo=$jfrogRepo" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          Write-Host "  JFROG_URL  = $(if ($jfrogUrl) { $jfrogUrl } else { '(not set — JFrog archival disabled)' })"
+          Write-Host "  JFROG_REPO = $jfrogRepo"
 
       - name: Resolve solution matrix
         id: resolve
@@ -188,9 +213,9 @@ jobs:
     uses: ppudot2-cloud/GHA-Core/.github/workflows/_stage-build.yml@main
     with:
       matrix:                 ${{ needs.setup.outputs.matrix }}
-      mock_deploy:            false
+      mock_deploy:            ${{ inputs.mock_deploy == true }}
       jfrog_url:              ''
-      jfrog_repo:             ${{ vars.JFROG_REPO || 'powerplatform-solutions' }}
+      jfrog_repo:             ${{ needs.setup.outputs.jfrog_repo }}
       source_environment_url: ${{ vars.PP_SDBX_URL || '' }}
       checker_error_level:    ${{ inputs.checker_error_level || vars.PP_CHECKER_ERROR_LEVEL || 'HighIssue' }}
       azure_client_id:        ${{ vars.AZURE_CLIENT_ID }}
@@ -210,6 +235,10 @@ jobs:
     name: "🧪 Pipeline Integration Tests"
     needs: setup
     if: inputs.run_pipeline_tests == true
+    permissions:
+      id-token: write
+      contents: read
+      actions:  read
     uses: ppudot2-cloud/GHA-Core/.github/workflows/pipeline-test.yml@main
     with:
       solutions:   ${{ inputs.solutions || 'all' }}
@@ -226,6 +255,7 @@ jobs:
   lint-config:
     name: "🔍 Lint Pipeline Config"
     needs: setup
+    if: inputs.run_lint_config != false || github.event_name == 'push'
     permissions:
       contents: read
       pull-requests: write
@@ -239,8 +269,11 @@ jobs:
   # ============================================================================
   stage-export:
     name: "📤 Export / Commit"
-    needs: [setup, lint-config]
-    if: needs.lint-config.result == 'success'
+    needs: [setup, lint-config, pr-validation, pipeline-tests]
+    if: |
+      (needs.lint-config.result    == 'success' || needs.lint-config.result    == 'skipped') &&
+      (needs.pr-validation.result  == 'success' || needs.pr-validation.result  == 'skipped') &&
+      (needs.pipeline-tests.result == 'success' || needs.pipeline-tests.result == 'skipped')
     permissions:
       id-token: write
       contents: write
@@ -273,8 +306,8 @@ jobs:
       use_exported_source:    ${{ inputs.mock_deploy != true && inputs.skip_export != true && github.event_name != 'push' }}
       source_environment_url: ${{ vars.PP_SDBX_URL || '' }}
       mock_deploy:            ${{ inputs.mock_deploy == true }}
-      jfrog_url:              ${{ vars.JFROG_URL || '' }}
-      jfrog_repo:             ${{ vars.JFROG_REPO || 'powerplatform-solutions' }}
+      jfrog_url:              ${{ needs.setup.outputs.jfrog_url }}
+      jfrog_repo:             ${{ needs.setup.outputs.jfrog_repo }}
       checker_error_level:    ${{ inputs.checker_error_level || 'HighIssue' }}
       enable_backup:          ${{ vars.ENABLE_ROLLBACK == 'true' }}
       base_solutions:         ${{ inputs.base_solutions || '' }}
@@ -323,7 +356,7 @@ jobs:
         uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/reveille@main
         with:
           mock_deploy:           ${{ inputs.mock_deploy == true }}
-          jfrog_enabled:         ${{ vars.JFROG_URL != '' }}
+          jfrog_enabled:         ${{ needs.setup.outputs.jfrog_url != '' }}
           mulesoft_enabled:      ${{ vars.MULESOFT_ENABLED == 'true' }}
           servicenow_enabled:    ${{ vars.SERVICENOW_ENABLED == 'true' }}
           azure_client_id:       ${{ vars.AZURE_CLIENT_ID }}
@@ -356,8 +389,8 @@ jobs:
           activate_flows:           true
           mock_deploy:              ${{ inputs.mock_deploy == true }}
           base_solutions:           ${{ inputs.base_solutions || vars.PP_BASE_SOLUTIONS || '' }}
-          jfrog_url:                ${{ vars.JFROG_URL || '' }}
-          jfrog_repo:               ${{ vars.JFROG_REPO || 'powerplatform-solutions' }}
+          jfrog_url:                ${{ needs.setup.outputs.jfrog_url }}
+          jfrog_repo:               ${{ needs.setup.outputs.jfrog_repo }}
           run_number:               ${{ github.run_number }}
           run_attempt:              ${{ github.run_attempt }}
           enable_servicenow:        ${{ vars.SERVICENOW_ENABLED == 'true' }}
@@ -380,7 +413,7 @@ jobs:
         uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/reveille@main
         with:
           mock_deploy:           ${{ inputs.mock_deploy == true }}
-          jfrog_enabled:         ${{ vars.JFROG_URL != '' }}
+          jfrog_enabled:         ${{ needs.setup.outputs.jfrog_url != '' }}
           mulesoft_enabled:      ${{ vars.MULESOFT_ENABLED == 'true' }}
           servicenow_enabled:    ${{ vars.SERVICENOW_ENABLED == 'true' }}
           azure_client_id:       ${{ vars.AZURE_CLIENT_ID }}
@@ -413,8 +446,8 @@ jobs:
           activate_flows:           true
           mock_deploy:              ${{ inputs.mock_deploy == true }}
           base_solutions:           ${{ inputs.base_solutions || vars.PP_BASE_SOLUTIONS || '' }}
-          jfrog_url:                ${{ vars.JFROG_URL || '' }}
-          jfrog_repo:               ${{ vars.JFROG_REPO || 'powerplatform-solutions' }}
+          jfrog_url:                ${{ needs.setup.outputs.jfrog_url }}
+          jfrog_repo:               ${{ needs.setup.outputs.jfrog_repo }}
           run_number:               ${{ github.run_number }}
           run_attempt:              ${{ github.run_attempt }}
           enable_servicenow:        ${{ vars.SERVICENOW_ENABLED == 'true' }}
@@ -437,7 +470,7 @@ jobs:
         uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/reveille@main
         with:
           mock_deploy:           ${{ inputs.mock_deploy == true }}
-          jfrog_enabled:         ${{ vars.JFROG_URL != '' }}
+          jfrog_enabled:         ${{ needs.setup.outputs.jfrog_url != '' }}
           mulesoft_enabled:      ${{ vars.MULESOFT_ENABLED == 'true' }}
           servicenow_enabled:    ${{ vars.SERVICENOW_ENABLED == 'true' }}
           azure_client_id:       ${{ vars.AZURE_CLIENT_ID }}
@@ -470,8 +503,8 @@ jobs:
           activate_flows:           true
           mock_deploy:              ${{ inputs.mock_deploy == true }}
           base_solutions:           ${{ inputs.base_solutions || vars.PP_BASE_SOLUTIONS || '' }}
-          jfrog_url:                ${{ vars.JFROG_URL || '' }}
-          jfrog_repo:               ${{ vars.JFROG_REPO || 'powerplatform-solutions' }}
+          jfrog_url:                ${{ needs.setup.outputs.jfrog_url }}
+          jfrog_repo:               ${{ needs.setup.outputs.jfrog_repo }}
           run_number:               ${{ github.run_number }}
           run_attempt:              ${{ github.run_attempt }}
           enable_servicenow:        ${{ vars.SERVICENOW_ENABLED == 'true' }}
@@ -494,7 +527,7 @@ jobs:
         uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/reveille@main
         with:
           mock_deploy:           ${{ inputs.mock_deploy == true }}
-          jfrog_enabled:         ${{ vars.JFROG_URL != '' }}
+          jfrog_enabled:         ${{ needs.setup.outputs.jfrog_url != '' }}
           mulesoft_enabled:      ${{ vars.MULESOFT_ENABLED == 'true' }}
           servicenow_enabled:    ${{ vars.SERVICENOW_ENABLED == 'true' }}
           azure_client_id:       ${{ vars.AZURE_CLIENT_ID }}
@@ -527,8 +560,8 @@ jobs:
           activate_flows:           true
           mock_deploy:              ${{ inputs.mock_deploy == true }}
           base_solutions:           ${{ inputs.base_solutions || vars.PP_BASE_SOLUTIONS || '' }}
-          jfrog_url:                ${{ vars.JFROG_URL || '' }}
-          jfrog_repo:               ${{ vars.JFROG_REPO || 'powerplatform-solutions' }}
+          jfrog_url:                ${{ needs.setup.outputs.jfrog_url }}
+          jfrog_repo:               ${{ needs.setup.outputs.jfrog_repo }}
           run_number:               ${{ github.run_number }}
           run_attempt:              ${{ github.run_attempt }}
           enable_servicenow:        ${{ vars.SERVICENOW_ENABLED == 'true' }}
@@ -551,7 +584,7 @@ jobs:
         uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/reveille@main
         with:
           mock_deploy:           ${{ inputs.mock_deploy == true }}
-          jfrog_enabled:         ${{ vars.JFROG_URL != '' }}
+          jfrog_enabled:         ${{ needs.setup.outputs.jfrog_url != '' }}
           mulesoft_enabled:      ${{ vars.MULESOFT_ENABLED == 'true' }}
           servicenow_enabled:    ${{ vars.SERVICENOW_ENABLED == 'true' }}
           azure_client_id:       ${{ vars.AZURE_CLIENT_ID }}
@@ -584,8 +617,8 @@ jobs:
           activate_flows:           true
           mock_deploy:              ${{ inputs.mock_deploy == true }}
           base_solutions:           ${{ inputs.base_solutions || vars.PP_BASE_SOLUTIONS || '' }}
-          jfrog_url:                ${{ vars.JFROG_URL || '' }}
-          jfrog_repo:               ${{ vars.JFROG_REPO || 'powerplatform-solutions' }}
+          jfrog_url:                ${{ needs.setup.outputs.jfrog_url }}
+          jfrog_repo:               ${{ needs.setup.outputs.jfrog_repo }}
           run_number:               ${{ github.run_number }}
           run_attempt:              ${{ github.run_attempt }}
           enable_servicenow:        ${{ vars.SERVICENOW_ENABLED == 'true' }}
@@ -602,7 +635,7 @@ jobs:
     if: |
       needs.deploy-uat.result == 'success' &&
       needs.stage-export.result == 'success' &&
-      needs.lint-config.result == 'success'
+      (needs.lint-config.result == 'success' || needs.lint-config.result == 'skipped')
     runs-on: ubuntu-latest
     permissions:
       pull-requests: write

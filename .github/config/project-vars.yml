@@ -57,9 +57,6 @@ variables:
   # Leave empty to skip base-solution checks (only the current solution is checked).
   PP_BASE_SOLUTIONS:    ""
 
-  # ── JFrog — project-level override allowed (repo is protected, URL is not) ─
-  JFROG_URL: "https://YOUR-COMPANY.jfrog.io/artifactory"
-
   # ── Deployment behaviour overrides (non-protected globals) ─────────────────
   # Uncomment and adjust only if this project genuinely needs different defaults.
   # SOLUTION_IMPORT_MAX_WAIT_MINUTES: "90"   # longer timeout for large solutions
