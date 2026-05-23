@@ -49,8 +49,9 @@ on:
 
       mock_deploy:
         description: >
-          Dry run — simulate export, build, and deploy without touching Power Platform,
-          git, or JFrog. No branch is created, no PR is raised.
+          Simulation mode — skips ALL Azure/PP/JFrog connections. Safe to run without
+          a real App Registration, Key Vault, or Power Platform environment.
+          Git operations still run; no real import/export happens.
         required: false
         default: false
         type: boolean
@@ -90,7 +91,7 @@ jobs:
           repository: ppudot2-cloud/GHA-Core
           ref: main
           path: .ci
-          token: ${{ secrets.GHA_CORE_PAT }}
+          token: ${{ secrets.GHA_CORE_PAT || github.token }}
 
       - name: Read Core pipeline variables (JFROG)
         id: core-vars
