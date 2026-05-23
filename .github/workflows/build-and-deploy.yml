@@ -73,18 +73,6 @@ on:
         default: false
         type: boolean
 
-      checker_error_level:
-        description: 'Minimum severity that fails Solution Checker'
-        required: false
-        default: 'HighIssue'
-        type: choice
-        options:
-          - CriticalIssue
-          - HighIssue
-          - MediumIssue
-          - LowIssue
-          - InformationalIssue
-
 
 
 concurrency:
@@ -209,7 +197,6 @@ jobs:
       mock_deploy:            ${{ inputs.mock_deploy == true }}
       jfrog_url:              ${{ needs.setup.outputs.jfrog_url }}
       jfrog_repo:             ${{ needs.setup.outputs.jfrog_repo }}
-      checker_error_level:    ${{ inputs.checker_error_level || 'HighIssue' }}
       enable_backup:          ${{ vars.ENABLE_ROLLBACK == 'true' }}
       base_solutions:         ${{ needs.setup.outputs.base_solutions }}
       solution_count:         ${{ needs.setup.outputs.solution_count }}
