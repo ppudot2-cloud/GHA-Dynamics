@@ -66,6 +66,8 @@ jobs:
   setup:
     name: "🔍 Setup"
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     outputs:
       matrix:           ${{ steps.resolve.outputs.matrix }}
       solution_list:    ${{ steps.resolve.outputs.solution_list }}
