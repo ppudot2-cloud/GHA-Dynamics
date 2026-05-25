@@ -145,12 +145,12 @@ jobs:
       contents:      write
       actions:       read
       pull-requests: write
-    uses: ppudot2-cloud/GHA-Core/.github/workflows/_stage-export.yml@main
+    uses: ppudot2-cloud/GHA-Core/.github/workflows/_stage-export.yml@v1.0.0
     with:
       matrix:                 ${{ needs.setup.outputs.matrix }}
       solution_list:          ${{ needs.setup.outputs.solution_list }}
       source_environment_url: ${{ vars.PP_SDBX_URL || 'https://mock.crm.dynamics.com' }}
-      mock_deploy:            ${{ inputs.mock_deploy == true }}
+      mock_deploy:            ${{ inputs.mock_deploy && 'true' || 'false' }}
       skip_export:            ${{ inputs.skip_export == true || github.event_name == 'push' }}
       azure_client_id:        ${{ vars.AZURE_CLIENT_ID }}
       azure_tenant_id:        ${{ vars.AZURE_TENANT_ID }}
@@ -168,12 +168,12 @@ jobs:
     permissions:
       id-token: write
       contents: read
-    uses: ppudot2-cloud/GHA-Core/.github/workflows/_stage-build.yml@main
+    uses: ppudot2-cloud/GHA-Core/.github/workflows/_stage-build.yml@v1.0.0
     with:
       matrix:                 ${{ needs.setup.outputs.matrix }}
       use_exported_source:    ${{ inputs.mock_deploy != true && inputs.skip_export != true && github.event_name != 'push' }}
       source_environment_url: ${{ vars.PP_SDBX_URL || '' }}
-      mock_deploy:            ${{ inputs.mock_deploy == true }}
+      mock_deploy:            ${{ inputs.mock_deploy && 'true' || 'false' }}
       jfrog_url:              ${{ needs.setup.outputs.jfrog_url }}
       jfrog_repo:             ${{ needs.setup.outputs.jfrog_repo }}
       enable_backup:          ${{ vars.ENABLE_ROLLBACK == 'true' }}
@@ -217,9 +217,9 @@ jobs:
       GHA_CORE_PAT: ${{ secrets.GHA_CORE_PAT }}
     steps:
       - name: Reveille
-        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/reveille@main
+        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/reveille@v1.0.0
         with:
-          mock_deploy:           ${{ inputs.mock_deploy == true }}
+          mock_deploy:            ${{ inputs.mock_deploy && 'true' || 'false' }}
           jfrog_enabled:         ${{ needs.setup.outputs.jfrog_url != '' }}
           mulesoft_enabled:      ${{ vars.MULESOFT_ENABLED == 'true' }}
           servicenow_enabled:    ${{ vars.SERVICENOW_ENABLED == 'true' }}
@@ -228,7 +228,7 @@ jobs:
           azure_subscription_id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
           azure_key_vault_name:  ${{ vars.AZURE_KEY_VAULT_NAME }}
       - name: Install PAC CLI
-        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/pac-install@main
+        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/pac-install@v1.0.0
       - name: Download solution artifacts
         uses: actions/download-artifact@v4
         with:
@@ -238,7 +238,7 @@ jobs:
           run-id:       ${{ github.run_id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Deploy all solutions → Dev
-        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/deploy-all-solutions@main
+        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/deploy-all-solutions@v1.0.0
         with:
           solutions_json:           ${{ needs.setup.outputs.matrix }}
           environment_name:         Dev
@@ -251,7 +251,7 @@ jobs:
           previous_environment_url: ''
           tag_prod_deployed:        false
           activate_flows:           true
-          mock_deploy:              ${{ inputs.mock_deploy == true }}
+          mock_deploy:            ${{ inputs.mock_deploy && 'true' || 'false' }}
           base_solutions:           ${{ needs.setup.outputs.base_solutions }}
           jfrog_url:                ${{ needs.setup.outputs.jfrog_url }}
           jfrog_repo:               ${{ needs.setup.outputs.jfrog_repo }}
@@ -274,9 +274,9 @@ jobs:
       GHA_CORE_PAT: ${{ secrets.GHA_CORE_PAT }}
     steps:
       - name: Reveille
-        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/reveille@main
+        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/reveille@v1.0.0
         with:
-          mock_deploy:           ${{ inputs.mock_deploy == true }}
+          mock_deploy:            ${{ inputs.mock_deploy && 'true' || 'false' }}
           jfrog_enabled:         ${{ needs.setup.outputs.jfrog_url != '' }}
           mulesoft_enabled:      ${{ vars.MULESOFT_ENABLED == 'true' }}
           servicenow_enabled:    ${{ vars.SERVICENOW_ENABLED == 'true' }}
@@ -285,7 +285,7 @@ jobs:
           azure_subscription_id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
           azure_key_vault_name:  ${{ vars.AZURE_KEY_VAULT_NAME }}
       - name: Install PAC CLI
-        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/pac-install@main
+        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/pac-install@v1.0.0
       - name: Download solution artifacts
         uses: actions/download-artifact@v4
         with:
@@ -295,7 +295,7 @@ jobs:
           run-id:       ${{ github.run_id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Deploy all solutions → Intg
-        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/deploy-all-solutions@main
+        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/deploy-all-solutions@v1.0.0
         with:
           solutions_json:           ${{ needs.setup.outputs.matrix }}
           environment_name:         Intg
@@ -308,7 +308,7 @@ jobs:
           previous_environment_url: ${{ vars.PP_DEV_URL }}
           tag_prod_deployed:        false
           activate_flows:           true
-          mock_deploy:              ${{ inputs.mock_deploy == true }}
+          mock_deploy:            ${{ inputs.mock_deploy && 'true' || 'false' }}
           base_solutions:           ${{ needs.setup.outputs.base_solutions }}
           jfrog_url:                ${{ needs.setup.outputs.jfrog_url }}
           jfrog_repo:               ${{ needs.setup.outputs.jfrog_repo }}
@@ -331,9 +331,9 @@ jobs:
       GHA_CORE_PAT: ${{ secrets.GHA_CORE_PAT }}
     steps:
       - name: Reveille
-        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/reveille@main
+        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/reveille@v1.0.0
         with:
-          mock_deploy:           ${{ inputs.mock_deploy == true }}
+          mock_deploy:            ${{ inputs.mock_deploy && 'true' || 'false' }}
           jfrog_enabled:         ${{ needs.setup.outputs.jfrog_url != '' }}
           mulesoft_enabled:      ${{ vars.MULESOFT_ENABLED == 'true' }}
           servicenow_enabled:    ${{ vars.SERVICENOW_ENABLED == 'true' }}
@@ -342,7 +342,7 @@ jobs:
           azure_subscription_id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
           azure_key_vault_name:  ${{ vars.AZURE_KEY_VAULT_NAME }}
       - name: Install PAC CLI
-        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/pac-install@main
+        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/pac-install@v1.0.0
       - name: Download solution artifacts
         uses: actions/download-artifact@v4
         with:
@@ -352,7 +352,7 @@ jobs:
           run-id:       ${{ github.run_id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Deploy all solutions → UAT
-        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/deploy-all-solutions@main
+        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/deploy-all-solutions@v1.0.0
         with:
           solutions_json:           ${{ needs.setup.outputs.matrix }}
           environment_name:         UAT
@@ -365,7 +365,7 @@ jobs:
           previous_environment_url: ${{ vars.PP_INTG_URL }}
           tag_prod_deployed:        false
           activate_flows:           true
-          mock_deploy:              ${{ inputs.mock_deploy == true }}
+          mock_deploy:            ${{ inputs.mock_deploy && 'true' || 'false' }}
           base_solutions:           ${{ needs.setup.outputs.base_solutions }}
           jfrog_url:                ${{ needs.setup.outputs.jfrog_url }}
           jfrog_repo:               ${{ needs.setup.outputs.jfrog_repo }}
@@ -388,9 +388,9 @@ jobs:
       GHA_CORE_PAT: ${{ secrets.GHA_CORE_PAT }}
     steps:
       - name: Reveille
-        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/reveille@main
+        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/reveille@v1.0.0
         with:
-          mock_deploy:           ${{ inputs.mock_deploy == true }}
+          mock_deploy:            ${{ inputs.mock_deploy && 'true' || 'false' }}
           jfrog_enabled:         ${{ needs.setup.outputs.jfrog_url != '' }}
           mulesoft_enabled:      ${{ vars.MULESOFT_ENABLED == 'true' }}
           servicenow_enabled:    ${{ vars.SERVICENOW_ENABLED == 'true' }}
@@ -399,7 +399,7 @@ jobs:
           azure_subscription_id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
           azure_key_vault_name:  ${{ vars.AZURE_KEY_VAULT_NAME }}
       - name: Install PAC CLI
-        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/pac-install@main
+        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/pac-install@v1.0.0
       - name: Download solution artifacts
         uses: actions/download-artifact@v4
         with:
@@ -409,7 +409,7 @@ jobs:
           run-id:       ${{ github.run_id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Deploy all solutions → FRS
-        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/deploy-all-solutions@main
+        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/deploy-all-solutions@v1.0.0
         with:
           solutions_json:           ${{ needs.setup.outputs.matrix }}
           environment_name:         FRS
@@ -422,7 +422,7 @@ jobs:
           previous_environment_url: ${{ vars.PP_UAT_URL }}
           tag_prod_deployed:        false
           activate_flows:           true
-          mock_deploy:              ${{ inputs.mock_deploy == true }}
+          mock_deploy:            ${{ inputs.mock_deploy && 'true' || 'false' }}
           base_solutions:           ${{ needs.setup.outputs.base_solutions }}
           jfrog_url:                ${{ needs.setup.outputs.jfrog_url }}
           jfrog_repo:               ${{ needs.setup.outputs.jfrog_repo }}
@@ -445,9 +445,9 @@ jobs:
       GHA_CORE_PAT: ${{ secrets.GHA_CORE_PAT }}
     steps:
       - name: Reveille
-        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/reveille@main
+        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/reveille@v1.0.0
         with:
-          mock_deploy:           ${{ inputs.mock_deploy == true }}
+          mock_deploy:            ${{ inputs.mock_deploy && 'true' || 'false' }}
           jfrog_enabled:         ${{ needs.setup.outputs.jfrog_url != '' }}
           mulesoft_enabled:      ${{ vars.MULESOFT_ENABLED == 'true' }}
           servicenow_enabled:    ${{ vars.SERVICENOW_ENABLED == 'true' }}
@@ -456,7 +456,7 @@ jobs:
           azure_subscription_id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
           azure_key_vault_name:  ${{ vars.AZURE_KEY_VAULT_NAME }}
       - name: Install PAC CLI
-        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/pac-install@main
+        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/pac-install@v1.0.0
       - name: Download solution artifacts
         uses: actions/download-artifact@v4
         with:
@@ -466,7 +466,7 @@ jobs:
           run-id:       ${{ github.run_id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Deploy all solutions → Perf
-        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/deploy-all-solutions@main
+        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/deploy-all-solutions@v1.0.0
         with:
           solutions_json:           ${{ needs.setup.outputs.matrix }}
           environment_name:         Perf
@@ -479,7 +479,7 @@ jobs:
           previous_environment_url: ${{ vars.PP_FRS_URL }}
           tag_prod_deployed:        false
           activate_flows:           true
-          mock_deploy:              ${{ inputs.mock_deploy == true }}
+          mock_deploy:            ${{ inputs.mock_deploy && 'true' || 'false' }}
           base_solutions:           ${{ needs.setup.outputs.base_solutions }}
           jfrog_url:                ${{ needs.setup.outputs.jfrog_url }}
           jfrog_repo:               ${{ needs.setup.outputs.jfrog_repo }}

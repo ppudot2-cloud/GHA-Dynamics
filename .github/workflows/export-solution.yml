@@ -154,7 +154,7 @@ jobs:
       # can check out GHA-Core internally (composite actions cannot read secrets.*).
       - name: Azure login & AKV credential fetch (reveille)
         if: inputs.mock_deploy != true
-        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/reveille@main
+        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/reveille@v1.0.0
         with:
           azure_client_id:       ${{ vars.AZURE_CLIENT_ID }}
           azure_tenant_id:       ${{ vars.AZURE_TENANT_ID }}
