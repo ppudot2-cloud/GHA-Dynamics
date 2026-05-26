@@ -208,8 +208,9 @@ jobs:
   # with fromJson().  All 5 environments share: mock_deploy, enable_servicenow,
   # activate_flows, solution_list, and OIDC identity inputs.
   #
-  # prod_config is required by the chain schema but the 'Prod' environment is
-  # excluded via environments: filter — the deploy-prod job will not run here.
+  # prod_config is intentionally omitted — Prod is not part of Pipeline 1.
+  # Prod is deployed by deploy-prod.yml (Pipeline 2), which fires when this
+  # pipeline's PR is merged to main.
   # ============================================================================
   stage-deploy:
     name: "🚀 Deploy | Pre-Prod"
@@ -246,8 +247,6 @@ jobs:
         {"name":"FRS","url":"${{ vars.PP_FRS_URL }}","solution_type":"Managed","enable_backup":"${{ vars.ENABLE_ROLLBACK == 'true' }}","enable_blocking_check":"true","enable_version_compare":"true","import_config_data":"false","previous_url":"${{ vars.PP_UAT_URL }}"}
       perf_config: >-
         {"name":"Perf","url":"${{ vars.PP_PERF_URL }}","solution_type":"Managed","enable_backup":"${{ vars.ENABLE_ROLLBACK == 'true' }}","enable_blocking_check":"true","enable_version_compare":"true","import_config_data":"false","previous_url":"${{ vars.PP_FRS_URL }}"}
-      prod_config: >-
-        {"name":"Prod","url":"","solution_type":"Managed","enable_backup":"false","enable_blocking_check":"false","enable_version_compare":"false","import_config_data":"false","previous_url":""}
     secrets: inherit
 
   # ============================================================================
