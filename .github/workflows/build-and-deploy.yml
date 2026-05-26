@@ -341,9 +341,10 @@ jobs:
 
       - name: Send failure notification
         if: >
+          vars.MAIL_SERVER != '' && (
           needs.stage-export.result  == 'failure' ||
           needs.stage-build.result   == 'failure' ||
-          needs.stage-deploy.result  == 'failure'
+          needs.stage-deploy.result  == 'failure')
         continue-on-error: true
         uses: dawidd6/action-send-mail@v3
         with:

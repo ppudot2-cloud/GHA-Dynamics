@@ -368,7 +368,10 @@ jobs:
           EOF
 
       - name: Send failure notification
-        if: needs.deploy-uat.result == 'failure' || needs.deploy-prod.result == 'failure'
+        if: >
+          vars.MAIL_SERVER != '' && (
+          needs.deploy-uat.result  == 'failure' ||
+          needs.deploy-prod.result == 'failure')
         continue-on-error: true
         uses: dawidd6/action-send-mail@v3
         with:
