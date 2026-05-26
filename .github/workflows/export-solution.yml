@@ -92,7 +92,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: ppudot2-cloud/GHA-Core
-          ref: main
+          ref: v1.0.0
           path: .ci
           token: ${{ secrets.GHA_CORE_PAT }}
 

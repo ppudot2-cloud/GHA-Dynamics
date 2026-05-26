@@ -88,7 +88,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: ppudot2-cloud/GHA-Core
-          ref: main
+          ref: v1.0.0
           path: .ci
           token: ${{ secrets.GHA_CORE_PAT || github.token }}
 
@@ -198,295 +198,57 @@ jobs:
     secrets: inherit
 
   # ============================================================================
-  # Stage 4 — Deploy  (all environments in parallel, each with approval gate)
-  # Set ENABLE_ROLLBACK=true as a GitHub Environment variable per environment
-  # to enable automatic pre-import backup and restore on failure.
+  # Stage 4 — Deploy  (Dev, Intg, UAT, FRS, Perf in parallel — each with
+  # its own GitHub Environment approval gate)
+  #
+  # Prod is deployed by deploy-prod.yml, which fires when the feature branch
+  # PR (created by create-main-pr below) is merged to main.
+  #
+  # Per-env config is passed as compact JSON; the chain reads individual fields
+  # with fromJson().  All 5 environments share: mock_deploy, enable_servicenow,
+  # activate_flows, solution_list, and OIDC identity inputs.
+  #
+  # prod_config is required by the chain schema but the 'Prod' environment is
+  # excluded via environments: filter — the deploy-prod job will not run here.
   # ============================================================================
-
-  deploy-dev:
-    name: "🚀 Deploy | Dev"
+  stage-deploy:
+    name: "🚀 Deploy | Pre-Prod"
     needs: [setup, stage-build]
     if: needs.stage-build.result == 'success'
-    runs-on: ubuntu-latest
-    environment: Dev
     permissions:
       id-token: write
       contents: read
       actions:  read
-    env:
-      GHA_CORE_PAT: ${{ secrets.GHA_CORE_PAT }}
-    steps:
-      - name: Reveille
-        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/reveille@v1.0.0
-        with:
-          mock_deploy:            ${{ inputs.mock_deploy && 'true' || 'false' }}
-          jfrog_enabled:         ${{ needs.setup.outputs.jfrog_url != '' }}
-          mulesoft_enabled:      ${{ vars.MULESOFT_ENABLED == 'true' }}
-          servicenow_enabled:    ${{ vars.SERVICENOW_ENABLED == 'true' }}
-          azure_client_id:       ${{ vars.AZURE_CLIENT_ID }}
-          azure_tenant_id:       ${{ vars.AZURE_TENANT_ID }}
-          azure_subscription_id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
-          azure_key_vault_name:  ${{ vars.AZURE_KEY_VAULT_NAME }}
-      - name: Install PAC CLI
-        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/pac-install@v1.0.0
-      - name: Download solution artifacts
-        uses: actions/download-artifact@v4
-        with:
-          pattern:      solution-artifact-*
-          path:         .
-          merge-multiple: true
-          run-id:       ${{ github.run_id }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Deploy all solutions → Dev
-        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/deploy-all-solutions@v1.0.0
-        with:
-          solutions_json:           ${{ needs.setup.outputs.matrix }}
-          environment_name:         Dev
-          environment_url:          ${{ vars.PP_DEV_URL }}
-          solution_type:            Unmanaged
-          enable_backup:            ${{ vars.ENABLE_ROLLBACK == 'true' }}
-          enable_blocking_check:    false
-          enable_version_compare:   false
-          import_config_data:       false
-          previous_environment_url: ''
-          tag_prod_deployed:        false
-          activate_flows:           true
-          mock_deploy:            ${{ inputs.mock_deploy && 'true' || 'false' }}
-          base_solutions:           ${{ needs.setup.outputs.base_solutions }}
-          jfrog_url:                ${{ needs.setup.outputs.jfrog_url }}
-          jfrog_repo:               ${{ needs.setup.outputs.jfrog_repo }}
-          run_number:               ${{ github.run_number }}
-          run_attempt:              ${{ github.run_attempt }}
-          enable_servicenow:        ${{ vars.SERVICENOW_ENABLED == 'true' }}
-          solution_list:            ${{ needs.setup.outputs.solution_list }}
-
-  deploy-intg:
-    name: "🚀 Deploy | Intg"
-    needs: [setup, stage-build]
-    if: needs.stage-build.result == 'success'
-    runs-on: ubuntu-latest
-    environment: Intg
-    permissions:
-      id-token: write
-      contents: read
-      actions:  read
-    env:
-      GHA_CORE_PAT: ${{ secrets.GHA_CORE_PAT }}
-    steps:
-      - name: Reveille
-        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/reveille@v1.0.0
-        with:
-          mock_deploy:            ${{ inputs.mock_deploy && 'true' || 'false' }}
-          jfrog_enabled:         ${{ needs.setup.outputs.jfrog_url != '' }}
-          mulesoft_enabled:      ${{ vars.MULESOFT_ENABLED == 'true' }}
-          servicenow_enabled:    ${{ vars.SERVICENOW_ENABLED == 'true' }}
-          azure_client_id:       ${{ vars.AZURE_CLIENT_ID }}
-          azure_tenant_id:       ${{ vars.AZURE_TENANT_ID }}
-          azure_subscription_id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
-          azure_key_vault_name:  ${{ vars.AZURE_KEY_VAULT_NAME }}
-      - name: Install PAC CLI
-        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/pac-install@v1.0.0
-      - name: Download solution artifacts
-        uses: actions/download-artifact@v4
-        with:
-          pattern:      solution-artifact-*
-          path:         .
-          merge-multiple: true
-          run-id:       ${{ github.run_id }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Deploy all solutions → Intg
-        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/deploy-all-solutions@v1.0.0
-        with:
-          solutions_json:           ${{ needs.setup.outputs.matrix }}
-          environment_name:         Intg
-          environment_url:          ${{ vars.PP_INTG_URL }}
-          solution_type:            Managed
-          enable_backup:            ${{ vars.ENABLE_ROLLBACK == 'true' }}
-          enable_blocking_check:    true
-          enable_version_compare:   true
-          import_config_data:       false
-          previous_environment_url: ${{ vars.PP_DEV_URL }}
-          tag_prod_deployed:        false
-          activate_flows:           true
-          mock_deploy:            ${{ inputs.mock_deploy && 'true' || 'false' }}
-          base_solutions:           ${{ needs.setup.outputs.base_solutions }}
-          jfrog_url:                ${{ needs.setup.outputs.jfrog_url }}
-          jfrog_repo:               ${{ needs.setup.outputs.jfrog_repo }}
-          run_number:               ${{ github.run_number }}
-          run_attempt:              ${{ github.run_attempt }}
-          enable_servicenow:        ${{ vars.SERVICENOW_ENABLED == 'true' }}
-          solution_list:            ${{ needs.setup.outputs.solution_list }}
-
-  deploy-uat:
-    name: "🚀 Deploy | UAT"
-    needs: [setup, stage-build]
-    if: needs.stage-build.result == 'success'
-    runs-on: ubuntu-latest
-    environment: UAT
-    permissions:
-      id-token: write
-      contents: read
-      actions:  read
-    env:
-      GHA_CORE_PAT: ${{ secrets.GHA_CORE_PAT }}
-    steps:
-      - name: Reveille
-        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/reveille@v1.0.0
-        with:
-          mock_deploy:            ${{ inputs.mock_deploy && 'true' || 'false' }}
-          jfrog_enabled:         ${{ needs.setup.outputs.jfrog_url != '' }}
-          mulesoft_enabled:      ${{ vars.MULESOFT_ENABLED == 'true' }}
-          servicenow_enabled:    ${{ vars.SERVICENOW_ENABLED == 'true' }}
-          azure_client_id:       ${{ vars.AZURE_CLIENT_ID }}
-          azure_tenant_id:       ${{ vars.AZURE_TENANT_ID }}
-          azure_subscription_id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
-          azure_key_vault_name:  ${{ vars.AZURE_KEY_VAULT_NAME }}
-      - name: Install PAC CLI
-        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/pac-install@v1.0.0
-      - name: Download solution artifacts
-        uses: actions/download-artifact@v4
-        with:
-          pattern:      solution-artifact-*
-          path:         .
-          merge-multiple: true
-          run-id:       ${{ github.run_id }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Deploy all solutions → UAT
-        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/deploy-all-solutions@v1.0.0
-        with:
-          solutions_json:           ${{ needs.setup.outputs.matrix }}
-          environment_name:         UAT
-          environment_url:          ${{ vars.PP_UAT_URL }}
-          solution_type:            Managed
-          enable_backup:            ${{ vars.ENABLE_ROLLBACK == 'true' }}
-          enable_blocking_check:    true
-          enable_version_compare:   true
-          import_config_data:       false
-          previous_environment_url: ${{ vars.PP_INTG_URL }}
-          tag_prod_deployed:        false
-          activate_flows:           true
-          mock_deploy:            ${{ inputs.mock_deploy && 'true' || 'false' }}
-          base_solutions:           ${{ needs.setup.outputs.base_solutions }}
-          jfrog_url:                ${{ needs.setup.outputs.jfrog_url }}
-          jfrog_repo:               ${{ needs.setup.outputs.jfrog_repo }}
-          run_number:               ${{ github.run_number }}
-          run_attempt:              ${{ github.run_attempt }}
-          enable_servicenow:        ${{ vars.SERVICENOW_ENABLED == 'true' }}
-          solution_list:            ${{ needs.setup.outputs.solution_list }}
-
-  deploy-frs:
-    name: "🚀 Deploy | FRS"
-    needs: [setup, stage-build]
-    if: needs.stage-build.result == 'success'
-    runs-on: ubuntu-latest
-    environment: FRS
-    permissions:
-      id-token: write
-      contents: read
-      actions:  read
-    env:
-      GHA_CORE_PAT: ${{ secrets.GHA_CORE_PAT }}
-    steps:
-      - name: Reveille
-        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/reveille@v1.0.0
-        with:
-          mock_deploy:            ${{ inputs.mock_deploy && 'true' || 'false' }}
-          jfrog_enabled:         ${{ needs.setup.outputs.jfrog_url != '' }}
-          mulesoft_enabled:      ${{ vars.MULESOFT_ENABLED == 'true' }}
-          servicenow_enabled:    ${{ vars.SERVICENOW_ENABLED == 'true' }}
-          azure_client_id:       ${{ vars.AZURE_CLIENT_ID }}
-          azure_tenant_id:       ${{ vars.AZURE_TENANT_ID }}
-          azure_subscription_id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
-          azure_key_vault_name:  ${{ vars.AZURE_KEY_VAULT_NAME }}
-      - name: Install PAC CLI
-        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/pac-install@v1.0.0
-      - name: Download solution artifacts
-        uses: actions/download-artifact@v4
-        with:
-          pattern:      solution-artifact-*
-          path:         .
-          merge-multiple: true
-          run-id:       ${{ github.run_id }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Deploy all solutions → FRS
-        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/deploy-all-solutions@v1.0.0
-        with:
-          solutions_json:           ${{ needs.setup.outputs.matrix }}
-          environment_name:         FRS
-          environment_url:          ${{ vars.PP_FRS_URL }}
-          solution_type:            Managed
-          enable_backup:            ${{ vars.ENABLE_ROLLBACK == 'true' }}
-          enable_blocking_check:    true
-          enable_version_compare:   true
-          import_config_data:       false
-          previous_environment_url: ${{ vars.PP_UAT_URL }}
-          tag_prod_deployed:        false
-          activate_flows:           true
-          mock_deploy:            ${{ inputs.mock_deploy && 'true' || 'false' }}
-          base_solutions:           ${{ needs.setup.outputs.base_solutions }}
-          jfrog_url:                ${{ needs.setup.outputs.jfrog_url }}
-          jfrog_repo:               ${{ needs.setup.outputs.jfrog_repo }}
-          run_number:               ${{ github.run_number }}
-          run_attempt:              ${{ github.run_attempt }}
-          enable_servicenow:        ${{ vars.SERVICENOW_ENABLED == 'true' }}
-          solution_list:            ${{ needs.setup.outputs.solution_list }}
-
-  deploy-perf:
-    name: "🚀 Deploy | Perf"
-    needs: [setup, stage-build]
-    if: needs.stage-build.result == 'success'
-    runs-on: ubuntu-latest
-    environment: Perf
-    permissions:
-      id-token: write
-      contents: read
-      actions:  read
-    env:
-      GHA_CORE_PAT: ${{ secrets.GHA_CORE_PAT }}
-    steps:
-      - name: Reveille
-        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/reveille@v1.0.0
-        with:
-          mock_deploy:            ${{ inputs.mock_deploy && 'true' || 'false' }}
-          jfrog_enabled:         ${{ needs.setup.outputs.jfrog_url != '' }}
-          mulesoft_enabled:      ${{ vars.MULESOFT_ENABLED == 'true' }}
-          servicenow_enabled:    ${{ vars.SERVICENOW_ENABLED == 'true' }}
-          azure_client_id:       ${{ vars.AZURE_CLIENT_ID }}
-          azure_tenant_id:       ${{ vars.AZURE_TENANT_ID }}
-          azure_subscription_id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
-          azure_key_vault_name:  ${{ vars.AZURE_KEY_VAULT_NAME }}
-      - name: Install PAC CLI
-        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/pac-install@v1.0.0
-      - name: Download solution artifacts
-        uses: actions/download-artifact@v4
-        with:
-          pattern:      solution-artifact-*
-          path:         .
-          merge-multiple: true
-          run-id:       ${{ github.run_id }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Deploy all solutions → Perf
-        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/deploy-all-solutions@v1.0.0
-        with:
-          solutions_json:           ${{ needs.setup.outputs.matrix }}
-          environment_name:         Perf
-          environment_url:          ${{ vars.PP_PERF_URL }}
-          solution_type:            Managed
-          enable_backup:            ${{ vars.ENABLE_ROLLBACK == 'true' }}
-          enable_blocking_check:    true
-          enable_version_compare:   true
-          import_config_data:       false
-          previous_environment_url: ${{ vars.PP_FRS_URL }}
-          tag_prod_deployed:        false
-          activate_flows:           true
-          mock_deploy:            ${{ inputs.mock_deploy && 'true' || 'false' }}
-          base_solutions:           ${{ needs.setup.outputs.base_solutions }}
-          jfrog_url:                ${{ needs.setup.outputs.jfrog_url }}
-          jfrog_repo:               ${{ needs.setup.outputs.jfrog_repo }}
-          run_number:               ${{ github.run_number }}
-          run_attempt:              ${{ github.run_attempt }}
-          enable_servicenow:        ${{ vars.SERVICENOW_ENABLED == 'true' }}
-          solution_list:            ${{ needs.setup.outputs.solution_list }}
+    uses: ppudot2-cloud/GHA-Core/.github/workflows/_stage-deploy-chain.yml@v1.0.0
+    with:
+      environments:          'Dev,Intg,UAT,FRS,Perf'
+      matrix:                ${{ needs.setup.outputs.matrix }}
+      mock_deploy:           ${{ inputs.mock_deploy == true }}
+      solution_list:         ${{ needs.setup.outputs.solution_list }}
+      enable_servicenow:     ${{ vars.SERVICENOW_ENABLED == 'true' }}
+      activate_flows:        true
+      base_solutions:        ${{ needs.setup.outputs.base_solutions }}
+      jfrog_url:             ${{ needs.setup.outputs.jfrog_url }}
+      jfrog_repo:            ${{ needs.setup.outputs.jfrog_repo }}
+      run_number:            ${{ github.run_number }}
+      run_attempt:           ${{ github.run_attempt }}
+      azure_client_id:       ${{ vars.AZURE_CLIENT_ID }}
+      azure_tenant_id:       ${{ vars.AZURE_TENANT_ID }}
+      azure_subscription_id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      azure_key_vault_name:  ${{ vars.AZURE_KEY_VAULT_NAME }}
+      dev_config: >-
+        {"name":"Dev","url":"${{ vars.PP_DEV_URL }}","solution_type":"Unmanaged","enable_backup":"${{ vars.ENABLE_ROLLBACK == 'true' }}","enable_blocking_check":"false","enable_version_compare":"false","import_config_data":"false","previous_url":""}
+      intg_config: >-
+        {"name":"Intg","url":"${{ vars.PP_INTG_URL }}","solution_type":"Managed","enable_backup":"${{ vars.ENABLE_ROLLBACK == 'true' }}","enable_blocking_check":"true","enable_version_compare":"true","import_config_data":"false","previous_url":"${{ vars.PP_DEV_URL }}"}
+      uat_config: >-
+        {"name":"UAT","url":"${{ vars.PP_UAT_URL }}","solution_type":"Managed","enable_backup":"${{ vars.ENABLE_ROLLBACK == 'true' }}","enable_blocking_check":"true","enable_version_compare":"true","import_config_data":"false","previous_url":"${{ vars.PP_INTG_URL }}"}
+      frs_config: >-
+        {"name":"FRS","url":"${{ vars.PP_FRS_URL }}","solution_type":"Managed","enable_backup":"${{ vars.ENABLE_ROLLBACK == 'true' }}","enable_blocking_check":"true","enable_version_compare":"true","import_config_data":"false","previous_url":"${{ vars.PP_UAT_URL }}"}
+      perf_config: >-
+        {"name":"Perf","url":"${{ vars.PP_PERF_URL }}","solution_type":"Managed","enable_backup":"${{ vars.ENABLE_ROLLBACK == 'true' }}","enable_blocking_check":"true","enable_version_compare":"true","import_config_data":"false","previous_url":"${{ vars.PP_FRS_URL }}"}
+      prod_config: >-
+        {"name":"Prod","url":"","solution_type":"Managed","enable_backup":"false","enable_blocking_check":"false","enable_version_compare":"false","import_config_data":"false","previous_url":""}
+    secrets: inherit
 
   # ============================================================================
   # Create PR: feature/pipeline-{run_number} → main
@@ -495,9 +257,9 @@ jobs:
   # ============================================================================
   create-main-pr:
     name: "🔀 Open PR → main"
-    needs: [setup, stage-export, deploy-uat]
+    needs: [setup, stage-export, stage-deploy]
     if: |
-      needs.deploy-uat.result == 'success' &&
+      needs.stage-deploy.outputs.uat_result == 'success' &&
       needs.stage-export.result == 'success'
     runs-on: ubuntu-latest
     permissions:
@@ -541,7 +303,7 @@ jobs:
   # ============================================================================
   pipeline-summary:
     name: "📋 Pipeline Summary"
-    needs: [setup, stage-export, stage-build, deploy-dev, deploy-intg, deploy-uat, deploy-frs, deploy-perf, create-main-pr]
+    needs: [setup, stage-export, stage-build, stage-deploy, create-main-pr]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -552,7 +314,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: ppudot2-cloud/GHA-Core
-          ref: main
+          ref: v1.0.0
           path: .ci
           token: ${{ secrets.GHA_CORE_PAT || github.token }}
 
@@ -575,18 +337,14 @@ jobs:
             -CommitSha       '${{ github.sha }}' `
             -ExportResult    '${{ needs.stage-export.result }}' `
             -BuildResult     '${{ needs.stage-build.result }}' `
-            -DeployResult    '${{ needs.deploy-uat.result }}' `
+            -DeployResult    '${{ needs.stage-deploy.outputs.uat_result }}' `
             -JobSummariesDir 'job-summaries'
 
       - name: Send failure notification
         if: >
           needs.stage-export.result  == 'failure' ||
           needs.stage-build.result   == 'failure' ||
-          needs.deploy-dev.result    == 'failure' ||
-          needs.deploy-intg.result   == 'failure' ||
-          needs.deploy-uat.result    == 'failure' ||
-          needs.deploy-frs.result    == 'failure' ||
-          needs.deploy-perf.result   == 'failure'
+          needs.stage-deploy.result  == 'failure'
         continue-on-error: true
         uses: dawidd6/action-send-mail@v3
         with:
@@ -607,11 +365,8 @@ jobs:
             Stage results:
               Export : ${{ needs.stage-export.result }}
               Build  : ${{ needs.stage-build.result }}
-              Dev    : ${{ needs.deploy-dev.result }}
-              Intg   : ${{ needs.deploy-intg.result }}
-              UAT    : ${{ needs.deploy-uat.result }}
-              FRS    : ${{ needs.deploy-frs.result }}
-              Perf   : ${{ needs.deploy-perf.result }}
+              Deploy : ${{ needs.stage-deploy.result }}
+              UAT    : ${{ needs.stage-deploy.outputs.uat_result }}
 
             Solutions: ${{ needs.setup.outputs.solution_list }}
 
