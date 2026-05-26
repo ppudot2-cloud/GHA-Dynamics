@@ -55,6 +55,9 @@ on:
         default: false
         type: boolean
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 concurrency:
   group: "build-and-deploy-${{ github.ref_name }}"
   cancel-in-progress: false
