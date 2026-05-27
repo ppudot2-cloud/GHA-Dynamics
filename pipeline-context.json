@@ -1,17 +1,13 @@
 {
-  "runId": "26343412734",
-  "runNumber": "54",
+  "runId": "26507297942",
+  "runNumber": "61",
   "runAttempt": "1",
-  "solutions": [
-    "CoreSolution",
-    "ExtensionA",
-    "ExtensionB"
-  ],
-  "solutionList": "CoreSolution, ExtensionA, ExtensionB",
-  "matrix": "{\"solution\":[{\"name\":\"CoreSolution\",\"source_folder\":\"src/solutions/CoreSolution\",\"data_schema_file\":\"src/solutions/CoreSolution/config-data-schema.xml\",\"deployment_settings_prefix\":\"deployment-settings\"},{\"name\":\"ExtensionA\",\"source_folder\":\"src/solutions/ExtensionA\",\"data_schema_file\":\"\",\"deployment_settings_prefix\":\"deployment-settings\"},{\"name\":\"ExtensionB\",\"source_folder\":\"src/solutions/ExtensionB\",\"data_schema_file\":\"\",\"deployment_settings_prefix\":\"deployment-settings\"}]}",
-  "featureBranch": "feature/pipeline-54",
+  "solutions": null,
+  "solutionList": ", , ",
+  "matrix": "{\"solution\":[{\"name\":null,\"source_folder\":\"src/solutions/\",\"data_schema_file\":\"\",\"deployment_settings_prefix\":\"deployment-settings\"},{\"name\":null,\"source_folder\":\"src/solutions/\",\"data_schema_file\":\"\",\"deployment_settings_prefix\":\"deployment-settings\"},{\"name\":null,\"source_folder\":\"src/solutions/\",\"data_schema_file\":\"\",\"deployment_settings_prefix\":\"deployment-settings\"}]}",
+  "featureBranch": "feature/pipeline-61",
   "triggeredBy": "ppudot2-cloud",
-  "triggeredAt": "2026-05-23T21:00:39Z",
+  "triggeredAt": "2026-05-27T11:04:38Z",
   "exportMode": "mock (simulated sandbox export)",
   "mockDeploy": true
 }
