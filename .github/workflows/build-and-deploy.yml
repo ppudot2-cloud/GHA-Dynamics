@@ -194,14 +194,17 @@ jobs:
     secrets: inherit
 
   # ============================================================================
-  # Stage 4a — Deploy  (Dev, Intg, UAT in parallel — each with its own
-  # GitHub Environment approval gate)
+  # Stage 4 — Deploy  (Dev, Intg, UAT, FRS, Perf all in parallel)
   #
-  # UAT passing is the gate for PR creation. FRS and Perf run independently
-  # in stage-deploy-post (Stage 4b) and do NOT block the PR.
+  # Each environment is a separate top-level job so they appear as sibling
+  # nodes in the Actions UI with individual approval gates.
+  #
+  # PR gate: create-main-pr depends only on deploy-uat.
+  #          FRS and Perf run independently and do NOT block the PR.
   # ============================================================================
-  stage-deploy:
-    name: "🚀 Deploy | Dev · Intg · UAT"
+
+  deploy-dev:
+    name: "🚀 Deploy | Dev"
     needs: [setup, stage-build]
     if: needs.stage-build.result == 'success'
     permissions:
@@ -210,7 +213,7 @@ jobs:
       actions:  read
     uses: ppudot2-cloud/GHA-Core/.github/workflows/_stage-deploy-chain.yml@main
     with:
-      environments:          'Dev,Intg,UAT'
+      environments:          'Dev'
       matrix:                ${{ needs.setup.outputs.matrix }}
       mock_deploy:           ${{ inputs.mock_deploy == true }}
       solution_list:         ${{ needs.setup.outputs.solution_list }}
@@ -227,24 +230,10 @@ jobs:
       azure_key_vault_name:  ${{ vars.AZURE_KEY_VAULT_NAME }}
       dev_config: >-
         {"name":"Dev","url":"${{ vars.PP_DEV_URL }}","solution_type":"Unmanaged","enable_backup":"${{ vars.ENABLE_ROLLBACK == 'true' }}","enable_blocking_check":"false","enable_version_compare":"false","import_config_data":"false","previous_url":""}
-      intg_config: >-
-        {"name":"Intg","url":"${{ vars.PP_INTG_URL }}","solution_type":"Managed","enable_backup":"${{ vars.ENABLE_ROLLBACK == 'true' }}","enable_blocking_check":"true","enable_version_compare":"true","import_config_data":"false","previous_url":"${{ vars.PP_DEV_URL }}"}
-      uat_config: >-
-        {"name":"UAT","url":"${{ vars.PP_UAT_URL }}","solution_type":"Managed","enable_backup":"${{ vars.ENABLE_ROLLBACK == 'true' }}","enable_blocking_check":"true","enable_version_compare":"true","import_config_data":"false","previous_url":"${{ vars.PP_INTG_URL }}"}
-      frs_config: >-
-        {"name":"FRS","url":"${{ vars.PP_FRS_URL }}","solution_type":"Managed","enable_backup":"${{ vars.ENABLE_ROLLBACK == 'true' }}","enable_blocking_check":"true","enable_version_compare":"true","import_config_data":"false","previous_url":"${{ vars.PP_UAT_URL }}"}
-      perf_config: >-
-        {"name":"Perf","url":"${{ vars.PP_PERF_URL }}","solution_type":"Managed","enable_backup":"${{ vars.ENABLE_ROLLBACK == 'true' }}","enable_blocking_check":"true","enable_version_compare":"true","import_config_data":"false","previous_url":"${{ vars.PP_FRS_URL }}"}
     secrets: inherit
 
-  # ============================================================================
-  # Stage 4b — Deploy  (FRS, Perf in parallel — independent of Stage 4a)
-  #
-  # Starts as soon as build succeeds — does NOT wait for Dev/Intg/UAT.
-  # Does NOT gate PR creation. Runs to completion alongside or after the PR.
-  # ============================================================================
-  stage-deploy-post:
-    name: "🚀 Deploy | FRS · Perf"
+  deploy-intg:
+    name: "🚀 Deploy | Intg"
     needs: [setup, stage-build]
     if: needs.stage-build.result == 'success'
     permissions:
@@ -253,7 +242,7 @@ jobs:
       actions:  read
     uses: ppudot2-cloud/GHA-Core/.github/workflows/_stage-deploy-chain.yml@main
     with:
-      environments:          'FRS,Perf'
+      environments:          'Intg'
       matrix:                ${{ needs.setup.outputs.matrix }}
       mock_deploy:           ${{ inputs.mock_deploy == true }}
       solution_list:         ${{ needs.setup.outputs.solution_list }}
@@ -268,14 +257,93 @@ jobs:
       azure_tenant_id:       ${{ vars.AZURE_TENANT_ID }}
       azure_subscription_id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
       azure_key_vault_name:  ${{ vars.AZURE_KEY_VAULT_NAME }}
-      dev_config: >-
-        {"name":"Dev","url":"${{ vars.PP_DEV_URL }}","solution_type":"Unmanaged","enable_backup":"${{ vars.ENABLE_ROLLBACK == 'true' }}","enable_blocking_check":"false","enable_version_compare":"false","import_config_data":"false","previous_url":""}
       intg_config: >-
         {"name":"Intg","url":"${{ vars.PP_INTG_URL }}","solution_type":"Managed","enable_backup":"${{ vars.ENABLE_ROLLBACK == 'true' }}","enable_blocking_check":"true","enable_version_compare":"true","import_config_data":"false","previous_url":"${{ vars.PP_DEV_URL }}"}
+    secrets: inherit
+
+  deploy-uat:
+    name: "🚀 Deploy | UAT"
+    needs: [setup, stage-build]
+    if: needs.stage-build.result == 'success'
+    permissions:
+      id-token: write
+      contents: read
+      actions:  read
+    uses: ppudot2-cloud/GHA-Core/.github/workflows/_stage-deploy-chain.yml@main
+    with:
+      environments:          'UAT'
+      matrix:                ${{ needs.setup.outputs.matrix }}
+      mock_deploy:           ${{ inputs.mock_deploy == true }}
+      solution_list:         ${{ needs.setup.outputs.solution_list }}
+      enable_servicenow:     ${{ vars.SERVICENOW_ENABLED == 'true' }}
+      activate_flows:        true
+      base_solutions:        ${{ needs.setup.outputs.base_solutions }}
+      jfrog_url:             ${{ needs.setup.outputs.jfrog_url }}
+      jfrog_repo:            ${{ needs.setup.outputs.jfrog_repo }}
+      run_number:            ${{ github.run_number }}
+      run_attempt:           ${{ github.run_attempt }}
+      azure_client_id:       ${{ vars.AZURE_CLIENT_ID }}
+      azure_tenant_id:       ${{ vars.AZURE_TENANT_ID }}
+      azure_subscription_id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      azure_key_vault_name:  ${{ vars.AZURE_KEY_VAULT_NAME }}
       uat_config: >-
         {"name":"UAT","url":"${{ vars.PP_UAT_URL }}","solution_type":"Managed","enable_backup":"${{ vars.ENABLE_ROLLBACK == 'true' }}","enable_blocking_check":"true","enable_version_compare":"true","import_config_data":"false","previous_url":"${{ vars.PP_INTG_URL }}"}
+    secrets: inherit
+
+  deploy-frs:
+    name: "🚀 Deploy | FRS"
+    needs: [setup, stage-build]
+    if: needs.stage-build.result == 'success'
+    permissions:
+      id-token: write
+      contents: read
+      actions:  read
+    uses: ppudot2-cloud/GHA-Core/.github/workflows/_stage-deploy-chain.yml@main
+    with:
+      environments:          'FRS'
+      matrix:                ${{ needs.setup.outputs.matrix }}
+      mock_deploy:           ${{ inputs.mock_deploy == true }}
+      solution_list:         ${{ needs.setup.outputs.solution_list }}
+      enable_servicenow:     ${{ vars.SERVICENOW_ENABLED == 'true' }}
+      activate_flows:        true
+      base_solutions:        ${{ needs.setup.outputs.base_solutions }}
+      jfrog_url:             ${{ needs.setup.outputs.jfrog_url }}
+      jfrog_repo:            ${{ needs.setup.outputs.jfrog_repo }}
+      run_number:            ${{ github.run_number }}
+      run_attempt:           ${{ github.run_attempt }}
+      azure_client_id:       ${{ vars.AZURE_CLIENT_ID }}
+      azure_tenant_id:       ${{ vars.AZURE_TENANT_ID }}
+      azure_subscription_id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      azure_key_vault_name:  ${{ vars.AZURE_KEY_VAULT_NAME }}
       frs_config: >-
         {"name":"FRS","url":"${{ vars.PP_FRS_URL }}","solution_type":"Managed","enable_backup":"${{ vars.ENABLE_ROLLBACK == 'true' }}","enable_blocking_check":"true","enable_version_compare":"true","import_config_data":"false","previous_url":"${{ vars.PP_UAT_URL }}"}
+    secrets: inherit
+
+  deploy-perf:
+    name: "🚀 Deploy | Perf"
+    needs: [setup, stage-build]
+    if: needs.stage-build.result == 'success'
+    permissions:
+      id-token: write
+      contents: read
+      actions:  read
+    uses: ppudot2-cloud/GHA-Core/.github/workflows/_stage-deploy-chain.yml@main
+    with:
+      environments:          'Perf'
+      matrix:                ${{ needs.setup.outputs.matrix }}
+      mock_deploy:           ${{ inputs.mock_deploy == true }}
+      solution_list:         ${{ needs.setup.outputs.solution_list }}
+      enable_servicenow:     ${{ vars.SERVICENOW_ENABLED == 'true' }}
+      activate_flows:        true
+      base_solutions:        ${{ needs.setup.outputs.base_solutions }}
+      jfrog_url:             ${{ needs.setup.outputs.jfrog_url }}
+      jfrog_repo:            ${{ needs.setup.outputs.jfrog_repo }}
+      run_number:            ${{ github.run_number }}
+      run_attempt:           ${{ github.run_attempt }}
+      azure_client_id:       ${{ vars.AZURE_CLIENT_ID }}
+      azure_tenant_id:       ${{ vars.AZURE_TENANT_ID }}
+      azure_subscription_id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      azure_key_vault_name:  ${{ vars.AZURE_KEY_VAULT_NAME }}
       perf_config: >-
         {"name":"Perf","url":"${{ vars.PP_PERF_URL }}","solution_type":"Managed","enable_backup":"${{ vars.ENABLE_ROLLBACK == 'true' }}","enable_blocking_check":"true","enable_version_compare":"true","import_config_data":"false","previous_url":"${{ vars.PP_FRS_URL }}"}
     secrets: inherit
@@ -287,9 +355,9 @@ jobs:
   # ============================================================================
   create-main-pr:
     name: "🔀 Open PR → main"
-    needs: [setup, stage-export, stage-deploy]
+    needs: [setup, stage-export, deploy-uat]
     if: |
-      needs.stage-deploy.outputs.uat_result == 'success' &&
+      needs.deploy-uat.outputs.uat_result == 'success' &&
       needs.stage-export.result == 'success'
     runs-on: ubuntu-latest
     permissions:
@@ -333,7 +401,7 @@ jobs:
   # ============================================================================
   pipeline-summary:
     name: "📋 Pipeline Summary"
-    needs: [setup, stage-export, stage-build, stage-deploy, stage-deploy-post, create-main-pr]
+    needs: [setup, stage-export, stage-build, deploy-dev, deploy-intg, deploy-uat, deploy-frs, deploy-perf, create-main-pr]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -367,15 +435,19 @@ jobs:
             -CommitSha       '${{ github.sha }}' `
             -ExportResult    '${{ needs.stage-export.result }}' `
             -BuildResult     '${{ needs.stage-build.result }}' `
-            -DeployResult    '${{ needs.stage-deploy.outputs.uat_result }}' `
+            -DeployResult    '${{ needs.deploy-uat.outputs.uat_result }}' `
             -JobSummariesDir 'job-summaries'
 
       - name: Send failure notification
         if: >
           vars.MAIL_SERVER != '' && (
-          needs.stage-export.result  == 'failure' ||
-          needs.stage-build.result   == 'failure' ||
-          needs.stage-deploy.result  == 'failure')
+          needs.stage-export.result == 'failure' ||
+          needs.stage-build.result  == 'failure' ||
+          needs.deploy-dev.result   == 'failure' ||
+          needs.deploy-intg.result  == 'failure' ||
+          needs.deploy-uat.result   == 'failure' ||
+          needs.deploy-frs.result   == 'failure' ||
+          needs.deploy-perf.result  == 'failure')
         continue-on-error: true
         uses: dawidd6/action-send-mail@v3
         with:
@@ -396,8 +468,11 @@ jobs:
             Stage results:
               Export : ${{ needs.stage-export.result }}
               Build  : ${{ needs.stage-build.result }}
-              Deploy : ${{ needs.stage-deploy.result }}
-              UAT    : ${{ needs.stage-deploy.outputs.uat_result }}
+              Dev    : ${{ needs.deploy-dev.result }}
+              Intg   : ${{ needs.deploy-intg.result }}
+              UAT    : ${{ needs.deploy-uat.result }}
+              FRS    : ${{ needs.deploy-frs.result }}
+              Perf   : ${{ needs.deploy-perf.result }}
 
             Solutions: ${{ needs.setup.outputs.solution_list }}
 
