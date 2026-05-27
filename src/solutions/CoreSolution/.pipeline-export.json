@@ -1,9 +1,9 @@
 {
-  "pipelineRunId": "26343412734",
-  "pipelineRunNumber": 54,
+  "pipelineRunId": "26515209440",
+  "pipelineRunNumber": 67,
   "pipelineRunAttempt": 1,
   "exportMode": "mock (source unchanged, simulated export)",
-  "exportedAt": "2026-05-23T21:00:39Z",
+  "exportedAt": "2026-05-27T13:48:42Z",
   "exportedBy": "ppudot2-cloud",
   "sandboxUrl": "https://mock-sdbx.crm.dynamics.com"
 }
