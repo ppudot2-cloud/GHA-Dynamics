@@ -194,240 +194,66 @@ jobs:
     secrets: inherit
 
   # ============================================================================
-  # Stage 4 — Deploy  (Dev, Intg, UAT, FRS, Perf all in parallel)
+  # Stage 4 — Deploy  (Dev, Intg, UAT, FRS, Perf — all in parallel)
   #
-  # Each environment calls _job-deploy.yml — a single-job reusable workflow —
-  # so exactly one node appears per environment in the Actions UI with its
-  # own approval gate. No skipped sibling jobs.
+  # Single call to _stage-deploy-chain.yml which renders each environment
+  # as a separate named job with its own approval gate in the Actions UI.
   #
-  # PR gate: create-main-pr depends only on deploy-uat.
-  #          FRS and Perf run independently and do NOT block the PR.
+  # PR creation is handled INSIDE the chain after deploy-uat succeeds.
+  # FRS and Perf run in parallel and do NOT block the PR.
   # ============================================================================
-
-  deploy-dev:
-    name: "🚀 Deploy | Dev"
-    needs: [setup, stage-build]
+  stage-deploy:
+    name: "🚀 Deploy | Pre-Prod"
+    needs: [setup, stage-export, stage-build]
     if: needs.stage-build.result == 'success'
     permissions:
       id-token: write
       contents: read
       actions:  read
-    uses: ppudot2-cloud/GHA-Core/.github/workflows/_job-deploy.yml@main
-    with:
-      environment_name:          'Dev'
-      environment_url:           ${{ vars.PP_DEV_URL }}
-      solution_type:             'Unmanaged'
-      enable_backup:             ${{ vars.ENABLE_ROLLBACK == 'true' }}
-      enable_blocking_check:     false
-      enable_version_compare:    false
-      import_config_data:        false
-      previous_environment_url:  ''
-      matrix:                    ${{ needs.setup.outputs.matrix }}
-      mock_deploy:               ${{ inputs.mock_deploy == true }}
-      solution_list:             ${{ needs.setup.outputs.solution_list }}
-      enable_servicenow:         ${{ vars.SERVICENOW_ENABLED == 'true' }}
-      activate_flows:            true
-      base_solutions:            ${{ needs.setup.outputs.base_solutions }}
-      jfrog_url:                 ${{ needs.setup.outputs.jfrog_url }}
-      jfrog_repo:                ${{ needs.setup.outputs.jfrog_repo }}
-      run_number:                ${{ github.run_number }}
-      run_attempt:               ${{ github.run_attempt }}
-      azure_client_id:           ${{ vars.AZURE_CLIENT_ID }}
-      azure_tenant_id:           ${{ vars.AZURE_TENANT_ID }}
-      azure_subscription_id:     ${{ vars.AZURE_SUBSCRIPTION_ID }}
-      azure_key_vault_name:      ${{ vars.AZURE_KEY_VAULT_NAME }}
-    secrets: inherit
-
-  deploy-intg:
-    name: "🚀 Deploy | Intg"
-    needs: [setup, stage-build]
-    if: needs.stage-build.result == 'success'
-    permissions:
-      id-token: write
-      contents: read
-      actions:  read
-    uses: ppudot2-cloud/GHA-Core/.github/workflows/_job-deploy.yml@main
-    with:
-      environment_name:          'Intg'
-      environment_url:           ${{ vars.PP_INTG_URL }}
-      solution_type:             'Managed'
-      enable_backup:             ${{ vars.ENABLE_ROLLBACK == 'true' }}
-      enable_blocking_check:     true
-      enable_version_compare:    true
-      import_config_data:        false
-      previous_environment_url:  ${{ vars.PP_DEV_URL }}
-      matrix:                    ${{ needs.setup.outputs.matrix }}
-      mock_deploy:               ${{ inputs.mock_deploy == true }}
-      solution_list:             ${{ needs.setup.outputs.solution_list }}
-      enable_servicenow:         ${{ vars.SERVICENOW_ENABLED == 'true' }}
-      activate_flows:            true
-      base_solutions:            ${{ needs.setup.outputs.base_solutions }}
-      jfrog_url:                 ${{ needs.setup.outputs.jfrog_url }}
-      jfrog_repo:                ${{ needs.setup.outputs.jfrog_repo }}
-      run_number:                ${{ github.run_number }}
-      run_attempt:               ${{ github.run_attempt }}
-      azure_client_id:           ${{ vars.AZURE_CLIENT_ID }}
-      azure_tenant_id:           ${{ vars.AZURE_TENANT_ID }}
-      azure_subscription_id:     ${{ vars.AZURE_SUBSCRIPTION_ID }}
-      azure_key_vault_name:      ${{ vars.AZURE_KEY_VAULT_NAME }}
-    secrets: inherit
-
-  deploy-uat:
-    name: "🚀 Deploy | UAT"
-    needs: [setup, stage-build]
-    if: needs.stage-build.result == 'success'
-    permissions:
-      id-token: write
-      contents: read
-      actions:  read
-    uses: ppudot2-cloud/GHA-Core/.github/workflows/_job-deploy.yml@main
-    with:
-      environment_name:          'UAT'
-      environment_url:           ${{ vars.PP_UAT_URL }}
-      solution_type:             'Managed'
-      enable_backup:             ${{ vars.ENABLE_ROLLBACK == 'true' }}
-      enable_blocking_check:     true
-      enable_version_compare:    true
-      import_config_data:        false
-      previous_environment_url:  ${{ vars.PP_INTG_URL }}
-      matrix:                    ${{ needs.setup.outputs.matrix }}
-      mock_deploy:               ${{ inputs.mock_deploy == true }}
-      solution_list:             ${{ needs.setup.outputs.solution_list }}
-      enable_servicenow:         ${{ vars.SERVICENOW_ENABLED == 'true' }}
-      activate_flows:            true
-      base_solutions:            ${{ needs.setup.outputs.base_solutions }}
-      jfrog_url:                 ${{ needs.setup.outputs.jfrog_url }}
-      jfrog_repo:                ${{ needs.setup.outputs.jfrog_repo }}
-      run_number:                ${{ github.run_number }}
-      run_attempt:               ${{ github.run_attempt }}
-      azure_client_id:           ${{ vars.AZURE_CLIENT_ID }}
-      azure_tenant_id:           ${{ vars.AZURE_TENANT_ID }}
-      azure_subscription_id:     ${{ vars.AZURE_SUBSCRIPTION_ID }}
-      azure_key_vault_name:      ${{ vars.AZURE_KEY_VAULT_NAME }}
-    secrets: inherit
-
-  deploy-frs:
-    name: "🚀 Deploy | FRS"
-    needs: [setup, stage-build]
-    if: needs.stage-build.result == 'success'
-    permissions:
-      id-token: write
-      contents: read
-      actions:  read
-    uses: ppudot2-cloud/GHA-Core/.github/workflows/_job-deploy.yml@main
-    with:
-      environment_name:          'FRS'
-      environment_url:           ${{ vars.PP_FRS_URL }}
-      solution_type:             'Managed'
-      enable_backup:             ${{ vars.ENABLE_ROLLBACK == 'true' }}
-      enable_blocking_check:     true
-      enable_version_compare:    true
-      import_config_data:        false
-      previous_environment_url:  ${{ vars.PP_UAT_URL }}
-      matrix:                    ${{ needs.setup.outputs.matrix }}
-      mock_deploy:               ${{ inputs.mock_deploy == true }}
-      solution_list:             ${{ needs.setup.outputs.solution_list }}
-      enable_servicenow:         ${{ vars.SERVICENOW_ENABLED == 'true' }}
-      activate_flows:            true
-      base_solutions:            ${{ needs.setup.outputs.base_solutions }}
-      jfrog_url:                 ${{ needs.setup.outputs.jfrog_url }}
-      jfrog_repo:                ${{ needs.setup.outputs.jfrog_repo }}
-      run_number:                ${{ github.run_number }}
-      run_attempt:               ${{ github.run_attempt }}
-      azure_client_id:           ${{ vars.AZURE_CLIENT_ID }}
-      azure_tenant_id:           ${{ vars.AZURE_TENANT_ID }}
-      azure_subscription_id:     ${{ vars.AZURE_SUBSCRIPTION_ID }}
-      azure_key_vault_name:      ${{ vars.AZURE_KEY_VAULT_NAME }}
-    secrets: inherit
-
-  deploy-perf:
-    name: "🚀 Deploy | Perf"
-    needs: [setup, stage-build]
-    if: needs.stage-build.result == 'success'
-    permissions:
-      id-token: write
-      contents: read
-      actions:  read
-    uses: ppudot2-cloud/GHA-Core/.github/workflows/_job-deploy.yml@main
-    with:
-      environment_name:          'Perf'
-      environment_url:           ${{ vars.PP_PERF_URL }}
-      solution_type:             'Managed'
-      enable_backup:             ${{ vars.ENABLE_ROLLBACK == 'true' }}
-      enable_blocking_check:     true
-      enable_version_compare:    true
-      import_config_data:        false
-      previous_environment_url:  ${{ vars.PP_FRS_URL }}
-      matrix:                    ${{ needs.setup.outputs.matrix }}
-      mock_deploy:               ${{ inputs.mock_deploy == true }}
-      solution_list:             ${{ needs.setup.outputs.solution_list }}
-      enable_servicenow:         ${{ vars.SERVICENOW_ENABLED == 'true' }}
-      activate_flows:            true
-      base_solutions:            ${{ needs.setup.outputs.base_solutions }}
-      jfrog_url:                 ${{ needs.setup.outputs.jfrog_url }}
-      jfrog_repo:                ${{ needs.setup.outputs.jfrog_repo }}
-      run_number:                ${{ github.run_number }}
-      run_attempt:               ${{ github.run_attempt }}
-      azure_client_id:           ${{ vars.AZURE_CLIENT_ID }}
-      azure_tenant_id:           ${{ vars.AZURE_TENANT_ID }}
-      azure_subscription_id:     ${{ vars.AZURE_SUBSCRIPTION_ID }}
-      azure_key_vault_name:      ${{ vars.AZURE_KEY_VAULT_NAME }}
-    secrets: inherit
-
-  # ============================================================================
-  # Create PR: feature/pipeline-{run_number} → main
-  # Opens as soon as UAT passes. FRS and Perf continue independently.
-  # Merging this PR triggers deploy-prod.yml (UAT re-validation → Prod).
-  # ============================================================================
-  create-main-pr:
-    name: "🔀 Open PR → main"
-    needs: [setup, stage-export, deploy-uat]
-    if: |
-      needs.deploy-uat.outputs.uat_result == 'success' &&
-      needs.stage-export.result == 'success'
-    runs-on: ubuntu-latest
-    permissions:
       pull-requests: write
-      contents: read
-    steps:
-      - name: Create PR feature → main
-        env:
-          GH_TOKEN: ${{ secrets.GHA_CORE_PAT }}
-        shell: bash
-        run: |
-          FEATURE="${{ needs.stage-export.outputs.feature_branch }}"
-          MOCK_LABEL="${{ inputs.mock_deploy == true && '[MOCK] ' || '' }}"
-          PR_URL=$(gh pr create \
-            --repo "${{ github.repository }}" \
-            --head "$FEATURE" \
-            --base "main" \
-            --title "${MOCK_LABEL}Release: pipeline run #${{ github.run_number }}" \
-            --body "## ✅ UAT passed — ready for Prod
-
-          **Pipeline run:** [#${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
-          **Branch:** \`$FEATURE\`
-          **Solutions:** ${{ needs.setup.outputs.solution_list }}
-          **Triggered by:** @${{ github.actor }}
-          **Mock deploy:** ${{ inputs.mock_deploy }}
-
-          ### Gate status at PR creation
-          - [x] Solution Checker: passed
-          - [x] Dev: success
-          - [x] Intg: success
-          - [x] UAT: success
-          - [ ] FRS: running in parallel (not required for this PR)
-          - [ ] Perf: running in parallel (not required for this PR)
-
-          Merging this PR triggers **deploy-prod.yml** (UAT re-validation → Prod, both gated)." \
-          )
-          echo "✅ PR created: $PR_URL"
+    uses: ppudot2-cloud/GHA-Core/.github/workflows/_stage-deploy-chain.yml@main
+    with:
+      environments:          'Dev,Intg,UAT,FRS,Perf'
+      matrix:                ${{ needs.setup.outputs.matrix }}
+      mock_deploy:           ${{ inputs.mock_deploy == true }}
+      solution_list:         ${{ needs.setup.outputs.solution_list }}
+      enable_servicenow:     ${{ vars.SERVICENOW_ENABLED == 'true' }}
+      activate_flows:        true
+      base_solutions:        ${{ needs.setup.outputs.base_solutions }}
+      jfrog_url:             ${{ needs.setup.outputs.jfrog_url }}
+      jfrog_repo:            ${{ needs.setup.outputs.jfrog_repo }}
+      run_number:            ${{ github.run_number }}
+      run_attempt:           ${{ github.run_attempt }}
+      azure_client_id:       ${{ vars.AZURE_CLIENT_ID }}
+      azure_tenant_id:       ${{ vars.AZURE_TENANT_ID }}
+      azure_subscription_id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      azure_key_vault_name:  ${{ vars.AZURE_KEY_VAULT_NAME }}
+      dev_config: >-
+        {"name":"Dev","url":"${{ vars.PP_DEV_URL }}","solution_type":"Unmanaged","enable_backup":"${{ vars.ENABLE_ROLLBACK == 'true' }}","enable_blocking_check":"false","enable_version_compare":"false","import_config_data":"false","previous_url":""}
+      intg_config: >-
+        {"name":"Intg","url":"${{ vars.PP_INTG_URL }}","solution_type":"Managed","enable_backup":"${{ vars.ENABLE_ROLLBACK == 'true' }}","enable_blocking_check":"true","enable_version_compare":"true","import_config_data":"false","previous_url":"${{ vars.PP_DEV_URL }}"}
+      uat_config: >-
+        {"name":"UAT","url":"${{ vars.PP_UAT_URL }}","solution_type":"Managed","enable_backup":"${{ vars.ENABLE_ROLLBACK == 'true' }}","enable_blocking_check":"true","enable_version_compare":"true","import_config_data":"false","previous_url":"${{ vars.PP_INTG_URL }}"}
+      frs_config: >-
+        {"name":"FRS","url":"${{ vars.PP_FRS_URL }}","solution_type":"Managed","enable_backup":"${{ vars.ENABLE_ROLLBACK == 'true' }}","enable_blocking_check":"true","enable_version_compare":"true","import_config_data":"false","previous_url":"${{ vars.PP_UAT_URL }}"}
+      perf_config: >-
+        {"name":"Perf","url":"${{ vars.PP_PERF_URL }}","solution_type":"Managed","enable_backup":"${{ vars.ENABLE_ROLLBACK == 'true' }}","enable_blocking_check":"true","enable_version_compare":"true","import_config_data":"false","previous_url":"${{ vars.PP_FRS_URL }}"}
+      feature_branch:    ${{ needs.stage-export.outputs.feature_branch }}
+      pr_base_branch:    'main'
+      pr_repository:     ${{ github.repository }}
+      pr_run_id:         ${{ github.run_id }}
+      pr_run_number:     ${{ github.run_number }}
+      pr_actor:          ${{ github.actor }}
+      pr_mock_deploy:    ${{ inputs.mock_deploy == true }}
+      pr_server_url:     ${{ github.server_url }}
+    secrets: inherit
 
   # ============================================================================
   # Pipeline Summary (always runs)
   # ============================================================================
   pipeline-summary:
     name: "📋 Pipeline Summary"
-    needs: [setup, stage-export, stage-build, deploy-dev, deploy-intg, deploy-uat, deploy-frs, deploy-perf, create-main-pr]
+    needs: [setup, stage-export, stage-build, stage-deploy]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -461,7 +287,7 @@ jobs:
             -CommitSha       '${{ github.sha }}' `
             -ExportResult    '${{ needs.stage-export.result }}' `
             -BuildResult     '${{ needs.stage-build.result }}' `
-            -DeployResult    '${{ needs.deploy-uat.outputs.uat_result }}' `
+            -DeployResult    '${{ needs.stage-deploy.outputs.uat_result }}' `
             -JobSummariesDir 'job-summaries'
 
       - name: Send failure notification
@@ -469,11 +295,7 @@ jobs:
           vars.MAIL_SERVER != '' && (
           needs.stage-export.result == 'failure' ||
           needs.stage-build.result  == 'failure' ||
-          needs.deploy-dev.result   == 'failure' ||
-          needs.deploy-intg.result  == 'failure' ||
-          needs.deploy-uat.result   == 'failure' ||
-          needs.deploy-frs.result   == 'failure' ||
-          needs.deploy-perf.result  == 'failure')
+          needs.stage-deploy.result == 'failure')
         continue-on-error: true
         uses: dawidd6/action-send-mail@v3
         with:
@@ -494,11 +316,8 @@ jobs:
             Stage results:
               Export : ${{ needs.stage-export.result }}
               Build  : ${{ needs.stage-build.result }}
-              Dev    : ${{ needs.deploy-dev.result }}
-              Intg   : ${{ needs.deploy-intg.result }}
-              UAT    : ${{ needs.deploy-uat.result }}
-              FRS    : ${{ needs.deploy-frs.result }}
-              Perf   : ${{ needs.deploy-perf.result }}
+              Deploy : ${{ needs.stage-deploy.result }}
+              UAT    : ${{ needs.stage-deploy.outputs.uat_result }}
 
             Solutions: ${{ needs.setup.outputs.solution_list }}
 
