@@ -90,7 +90,7 @@ jobs:
           repository: ppudot2-cloud/GHA-Core
           ref: main
           path: .ci
-          token: ${{ secrets.GHA_CORE_PAT || github.token }}
+          token: ${{ secrets.GHATOKEN || github.token }}
 
       - name: Read Core pipeline variables (JFROG)
         id: core-vars
@@ -123,7 +123,7 @@ jobs:
         shell: pwsh
         run: |
           $r = @{
-            gha_core_pat_set = ('${{ secrets.GHA_CORE_PAT }}' -ne '')
+            gha_core_pat_set = ('${{ secrets.GHATOKEN }}' -ne '')
           }
           foreach ($k in $r.Keys) {
             "$k=$($r[$k].ToString().ToLower())" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
@@ -266,7 +266,7 @@ jobs:
           repository: ppudot2-cloud/GHA-Core
           ref: main
           path: .ci
-          token: ${{ secrets.GHA_CORE_PAT || github.token }}
+          token: ${{ secrets.GHATOKEN || github.token }}
 
       - name: Download job summary records
         uses: actions/download-artifact@v4

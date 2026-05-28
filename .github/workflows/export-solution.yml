@@ -97,7 +97,7 @@ jobs:
           repository: ppudot2-cloud/GHA-Core
           ref: main
           path: .ci
-          token: ${{ secrets.GHA_CORE_PAT }}
+          token: ${{ secrets.GHATOKEN }}
 
       - name: Resolve solution list
         id: resolve
@@ -139,7 +139,7 @@ jobs:
       SOLUTION:        ${{ matrix.solution }}
       BRANCH_NAME:     ${{ needs.setup.outputs.branch_name }}
       SOLUTION_FOLDER: src/solutions/${{ matrix.solution }}
-      GHA_CORE_PAT:    ${{ secrets.GHA_CORE_PAT }}
+      GHA_CORE_PAT:    ${{ secrets.GHATOKEN }}
 
     steps:
       # ── 1. Checkout ──────────────────────────────────────────────────────────

@@ -101,6 +101,6 @@ If UAT is broken and blocking Prod:
 
 ## Required secrets
 
-- `GHA_CORE_PAT` — PAT for cross-repo checkout and PR creation
+- `GHATOKEN` — PAT for cross-repo checkout and PR creation
 - `MAIL_PASSWORD` — (optional) SMTP password for failure notifications
 - PP credentials stored in Azure Key Vault (never as GitHub Secrets)
