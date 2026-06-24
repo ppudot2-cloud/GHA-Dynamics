@@ -14,8 +14,9 @@
     "                      but does NOT affect deploy order (use deployOrder for that)",
     "  dataSchemaFile    — Config Migration schema XML; lives at src/solutions/{Name}/config-data-schema.xml",
     "                      Leave empty string '' if this solution has no config migration data.",
-    "  deploymentSettings — per-environment deployment-settings JSON paths.",
-    "                      Convention: src/solutions/{Name}/deployment-settings-{env}.json",
+    "  deploymentSettings — per-environment deployment settings JSON paths.",
+    "                      Convention: src/solutions/{Name}/DeploymentSettings-{Env}.json",
+    "                      Env uses strict title case: Dev, Intg, Uat, Frs, Perf, Prod",
     "",
     "Tip: For a single-solution repo, set deployOrder to 1 and set",
     "     PP_SOLUTION_NAME repo variable to match the name here."
@@ -29,12 +30,12 @@
 
       "dataSchemaFile": "src/solutions/CoreSolution/config-data-schema.xml",
       "deploymentSettings": {
-        "dev":  "src/solutions/CoreSolution/deployment-settings-dev.json",
-        "intg": "src/solutions/CoreSolution/deployment-settings-intg.json",
-        "uat":  "src/solutions/CoreSolution/deployment-settings-uat.json",
-        "frs":  "src/solutions/CoreSolution/deployment-settings-frs.json",
-        "perf": "src/solutions/CoreSolution/deployment-settings-perf.json",
-        "prod": "src/solutions/CoreSolution/deployment-settings-prod.json"
+        "dev":  "src/solutions/CoreSolution/DeploymentSettings-Dev.json",
+        "intg": "src/solutions/CoreSolution/DeploymentSettings-Intg.json",
+        "uat":  "src/solutions/CoreSolution/DeploymentSettings-Uat.json",
+        "frs":  "src/solutions/CoreSolution/DeploymentSettings-Frs.json",
+        "perf": "src/solutions/CoreSolution/DeploymentSettings-Perf.json",
+        "prod": "src/solutions/CoreSolution/DeploymentSettings-Prod.json"
       }
     },
     {
@@ -45,12 +46,12 @@
 
       "dataSchemaFile": "",
       "deploymentSettings": {
-        "dev":  "src/solutions/ExtensionA/deployment-settings-dev.json",
-        "intg": "src/solutions/ExtensionA/deployment-settings-intg.json",
-        "uat":  "src/solutions/ExtensionA/deployment-settings-uat.json",
-        "frs":  "src/solutions/ExtensionA/deployment-settings-frs.json",
-        "perf": "src/solutions/ExtensionA/deployment-settings-perf.json",
-        "prod": "src/solutions/ExtensionA/deployment-settings-prod.json"
+        "dev":  "src/solutions/ExtensionA/DeploymentSettings-Dev.json",
+        "intg": "src/solutions/ExtensionA/DeploymentSettings-Intg.json",
+        "uat":  "src/solutions/ExtensionA/DeploymentSettings-Uat.json",
+        "frs":  "src/solutions/ExtensionA/DeploymentSettings-Frs.json",
+        "perf": "src/solutions/ExtensionA/DeploymentSettings-Perf.json",
+        "prod": "src/solutions/ExtensionA/DeploymentSettings-Prod.json"
       }
     },
     {
@@ -61,12 +62,12 @@
 
       "dataSchemaFile": "",
       "deploymentSettings": {
-        "dev":  "src/solutions/ExtensionB/deployment-settings-dev.json",
-        "intg": "src/solutions/ExtensionB/deployment-settings-intg.json",
-        "uat":  "src/solutions/ExtensionB/deployment-settings-uat.json",
-        "frs":  "src/solutions/ExtensionB/deployment-settings-frs.json",
-        "perf": "src/solutions/ExtensionB/deployment-settings-perf.json",
-        "prod": "src/solutions/ExtensionB/deployment-settings-prod.json"
+        "dev":  "src/solutions/ExtensionB/DeploymentSettings-Dev.json",
+        "intg": "src/solutions/ExtensionB/DeploymentSettings-Intg.json",
+        "uat":  "src/solutions/ExtensionB/DeploymentSettings-Uat.json",
+        "frs":  "src/solutions/ExtensionB/DeploymentSettings-Frs.json",
+        "perf": "src/solutions/ExtensionB/DeploymentSettings-Perf.json",
+        "prod": "src/solutions/ExtensionB/DeploymentSettings-Prod.json"
       }
     }
   ]

@@ -4,14 +4,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this repo is
 
-Thin **caller** workflows for the GHA-Core reusable workflow library. GHA-Dynamics exposes `workflow_dispatch` inputs, reads `vars.*` repository variables (which cannot cross repo boundaries), and forwards everything to GHA-Core. **All build, deploy, test, lint, and rollback logic lives in GHA-Core — edit there, not here.**
+Thin **caller** workflows for the GHA-CICD-Core reusable workflow library. GHA-Dynamics exposes `workflow_dispatch` inputs, reads `vars.*` repository variables (which cannot cross repo boundaries), and forwards everything to GHA-CICD-Core. **All build, deploy, test, lint, and rollback logic lives in GHA-CICD-Core — edit there, not here.**
 
 ## Repository structure (3 folders only)
 
 ```
 .github/
   config/
-    project-vars.yml          # Project-specific variable overrides (merged on top of GHA-Core global-vars.yml)
+    project-vars.yml          # Project-specific variable overrides (merged on top of GHA-CICD-Core global-vars.yml)
   workflows/
     build-and-deploy.yml      # Pipeline 1: Export → Build → Dev/Intg/UAT/FRS/Perf → create PR
     deploy-prod.yml           # Pipeline 2: UAT re-validation → Prod (auto-triggered on PR merge)
@@ -47,7 +47,7 @@ src/solutions/CoreSolution/
 
 ## Local simulation
 
-All tooling lives in GHA-Core. After checking out GHA-Core to `.ci/`:
+All tooling lives in GHA-CICD-Core. After checking out GHA-CICD-Core to `.ci/`:
 
 ```bash
 python3 .ci/.github/scripts/dynamics/simulate-pipeline.py --solutions all --run-number 42
@@ -55,7 +55,7 @@ python3 .ci/.github/scripts/dynamics/simulate-pipeline.py --solutions all --run-
 
 ## Workflows and what they delegate
 
-| Workflow | Trigger | GHA-Core reusables called |
+| Workflow | Trigger | GHA-CICD-Core reusables called |
 |---|---|---|
 | `build-and-deploy.yml` | `workflow_dispatch` or push to `feature/**` | `_reusable-lint`, `_stage-export`, `_stage-build`, `pipeline-test` (optional) |
 | `deploy-prod.yml` | push to `main` (pipeline-context.json changes) or `workflow_dispatch` | deploy-all-solutions composite |
@@ -67,9 +67,9 @@ python3 .ci/.github/scripts/dynamics/simulate-pipeline.py --solutions all --run-
 setup
   → [optional] pr-validation    (run_pr_validation=true or push event)
   → [optional] pipeline-tests   (run_pipeline_tests=true)
-  → lint-config                 (calls GHA-Core _reusable-lint.yml — blocks on failure)
-  → stage-export                (calls GHA-Core _stage-export.yml)
-  → stage-build                 (calls GHA-Core _stage-build.yml)
+  → lint-config                 (calls GHA-CICD-Core _reusable-lint.yml — blocks on failure)
+  → stage-export                (calls GHA-CICD-Core _stage-export.yml)
+  → stage-build                 (calls GHA-CICD-Core _stage-build.yml)
   → deploy-dev / deploy-intg / deploy-uat / deploy-frs / deploy-perf  (parallel, each gated)
   → create-main-pr              (after UAT passes)
 ```
@@ -91,7 +91,7 @@ Merging the PR triggers `deploy-prod.yml`: UAT re-validation → Prod.
 ## Rollback
 
 - **Auto-rollback**: `ENABLE_ROLLBACK=true` on any GitHub Environment → pipeline backs up and auto-restores on failure
-- **Manual rollback**: trigger `GHA-Core/.github/workflows/rollback.yml` from GHA-Core's Actions tab
+- **Manual rollback**: trigger `GHA-CICD-Core/.github/workflows/rollback.yml` from GHA-CICD-Core's Actions tab
 
 ## UAT bypass (break-glass)
 

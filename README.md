@@ -1,6 +1,6 @@
 # GHA-Dynamics — Power Platform CI/CD Pipeline
 
-Enterprise-grade GitHub Actions pipeline for Microsoft Power Platform. Thin caller repo that delegates all build and deploy logic to [GHA-Core](https://github.com/ppudot2-cloud/GHA-Core).
+Enterprise-grade GitHub Actions pipeline for Microsoft Power Platform. Thin caller repo that delegates all build and deploy logic to [GHA-CICD-Core](https://github.com/ppudot2-cloud/GHA-CICD-Core).
 
 ---
 
@@ -51,8 +51,8 @@ GHA-Dynamics/
 
 ## Quick Start
 
-1. Set up Azure OIDC + Key Vault → see [ENTERPRISE_DEVSECOPS_GUIDE.md](https://github.com/ppudot2-cloud/GHA-Core/blob/main/docs/ENTERPRISE_DEVSECOPS_GUIDE.md)
-2. Configure GitHub environments, secret, and variables → see [QUICK_START.md](https://github.com/ppudot2-cloud/GHA-Core/blob/main/docs/QUICK_START.md)
+1. Set up Azure OIDC + Key Vault → see [ENTERPRISE_DEVSECOPS_GUIDE.md](https://github.com/ppudot2-cloud/GHA-CICD-Core/blob/main/docs/ENTERPRISE_DEVSECOPS_GUIDE.md)
+2. Configure GitHub environments, secret, and variables → see [QUICK_START.md](https://github.com/ppudot2-cloud/GHA-CICD-Core/blob/main/docs/QUICK_START.md)
 3. Edit `solutions.json` with your solution names
 4. Run `build-and-deploy.yml` with `mock_deploy: true` to validate the wiring
 5. Merge the created PR → Pipeline 2 fires automatically
@@ -61,16 +61,16 @@ GHA-Dynamics/
 
 ## Documentation
 
-All documentation lives in [GHA-Core/docs/](https://github.com/ppudot2-cloud/GHA-Core/tree/main/docs):
+All documentation lives in [GHA-CICD-Core/docs/](https://github.com/ppudot2-cloud/GHA-CICD-Core/tree/main/docs):
 
 | Document | Description |
 |---|---|
-| [gha_cicd_e2e_flow.html](https://github.com/ppudot2-cloud/GHA-Core/blob/main/docs/gha_cicd_e2e_flow.html) | Interactive diagram of the complete pipeline flow |
-| [PIPELINE_REFERENCE.md](https://github.com/ppudot2-cloud/GHA-Core/blob/main/docs/PIPELINE_REFERENCE.md) | Every workflow, action, script, and config file explained |
-| [ENTERPRISE_DEVSECOPS_GUIDE.md](https://github.com/ppudot2-cloud/GHA-Core/blob/main/docs/ENTERPRISE_DEVSECOPS_GUIDE.md) | Azure setup, OIDC, Key Vault, federated credentials |
-| [QUICK_START.md](https://github.com/ppudot2-cloud/GHA-Core/blob/main/docs/QUICK_START.md) | Step-by-step first pipeline run |
-| [SECRETS_SETUP_GUIDE.md](https://github.com/ppudot2-cloud/GHA-Core/blob/main/docs/SECRETS_SETUP_GUIDE.md) | GitHub secrets and variables reference |
-| [ENTERPRISE_IMPLEMENTATION_GUIDE.md](https://github.com/ppudot2-cloud/GHA-Core/blob/main/docs/ENTERPRISE_IMPLEMENTATION_GUIDE.md) | Step-by-step production rollout — what to configure, what simulations to retire |
+| [gha_cicd_e2e_flow.html](https://github.com/ppudot2-cloud/GHA-CICD-Core/blob/main/docs/gha_cicd_e2e_flow.html) | Interactive diagram of the complete pipeline flow |
+| [PIPELINE_REFERENCE.md](https://github.com/ppudot2-cloud/GHA-CICD-Core/blob/main/docs/PIPELINE_REFERENCE.md) | Every workflow, action, script, and config file explained |
+| [ENTERPRISE_DEVSECOPS_GUIDE.md](https://github.com/ppudot2-cloud/GHA-CICD-Core/blob/main/docs/ENTERPRISE_DEVSECOPS_GUIDE.md) | Azure setup, OIDC, Key Vault, federated credentials |
+| [QUICK_START.md](https://github.com/ppudot2-cloud/GHA-CICD-Core/blob/main/docs/QUICK_START.md) | Step-by-step first pipeline run |
+| [SECRETS_SETUP_GUIDE.md](https://github.com/ppudot2-cloud/GHA-CICD-Core/blob/main/docs/SECRETS_SETUP_GUIDE.md) | GitHub secrets and variables reference |
+| [ENTERPRISE_IMPLEMENTATION_GUIDE.md](https://github.com/ppudot2-cloud/GHA-CICD-Core/blob/main/docs/ENTERPRISE_IMPLEMENTATION_GUIDE.md) | Step-by-step production rollout — what to configure, what simulations to retire |
 
 ---
 

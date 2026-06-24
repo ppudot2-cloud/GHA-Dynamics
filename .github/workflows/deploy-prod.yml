@@ -29,7 +29,7 @@
 # ROLLBACK:
 #   Set ENABLE_ROLLBACK=true as a GitHub Environment variable (per environment)
 #   to take a pre-import backup automatically and restore it if the import fails.
-#   For manual rollback after a failed deploy, trigger GHA-Core/.github/workflows/rollback.yml.
+#   For manual rollback after a failed deploy, trigger GHA-CICD-Core/.github/workflows/rollback.yml.
 # =============================================================================
 
 name: Deploy UAT + Prod
@@ -167,7 +167,7 @@ jobs:
       GHA_CORE_PAT: ${{ secrets.GHATOKEN }}
     steps:
       - name: Reveille
-        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/reveille@main
+        uses: ppudot2-cloud/GHA-CICD-Core/.github/actions/dynamics/reveille@main
         with:
           mock_deploy:           ${{ (inputs.mock_deploy == true || needs.read-context.outputs.mock_deploy == 'true') && 'true' || 'false' }}
           jfrog_enabled:         ${{ vars.JFROG_URL != '' }}
@@ -178,7 +178,7 @@ jobs:
           azure_subscription_id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
           azure_key_vault_name:  ${{ vars.AZURE_KEY_VAULT_NAME }}
       - name: Install PAC CLI
-        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/pac-install@main
+        uses: ppudot2-cloud/GHA-CICD-Core/.github/actions/dynamics/pac-install@main
       - name: Download solution artifacts
         uses: actions/download-artifact@v4
         with:
@@ -227,7 +227,7 @@ jobs:
           "sarif_path=$first" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
       - name: Deploy all solutions → UAT
-        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/deploy-all-solutions@main
+        uses: ppudot2-cloud/GHA-CICD-Core/.github/actions/dynamics/deploy-all-solutions@main
         with:
           solutions_json:           ${{ needs.read-context.outputs.matrix }}
           environment_name:         UAT
@@ -269,7 +269,7 @@ jobs:
       GHA_CORE_PAT: ${{ secrets.GHATOKEN }}
     steps:
       - name: Reveille
-        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/reveille@main
+        uses: ppudot2-cloud/GHA-CICD-Core/.github/actions/dynamics/reveille@main
         with:
           mock_deploy:           ${{ (inputs.mock_deploy == true || needs.read-context.outputs.mock_deploy == 'true') && 'true' || 'false' }}
           jfrog_enabled:         ${{ vars.JFROG_URL != '' }}
@@ -280,7 +280,7 @@ jobs:
           azure_subscription_id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
           azure_key_vault_name:  ${{ vars.AZURE_KEY_VAULT_NAME }}
       - name: Install PAC CLI
-        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/pac-install@main
+        uses: ppudot2-cloud/GHA-CICD-Core/.github/actions/dynamics/pac-install@main
       - name: Download solution artifacts
         uses: actions/download-artifact@v4
         with:
@@ -313,7 +313,7 @@ jobs:
           else         { Write-Host "::warning::No Solution Checker SARIF found in downloaded artifacts" }
 
       - name: Deploy all solutions → Prod
-        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/deploy-all-solutions@main
+        uses: ppudot2-cloud/GHA-CICD-Core/.github/actions/dynamics/deploy-all-solutions@main
         with:
           solutions_json:           ${{ needs.read-context.outputs.matrix }}
           environment_name:         Prod

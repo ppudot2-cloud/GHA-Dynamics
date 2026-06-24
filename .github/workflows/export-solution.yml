@@ -91,10 +91,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Checkout GHA-Core CI scripts
+      - name: Checkout GHA-CICD-Core CI scripts
         uses: actions/checkout@v4
         with:
-          repository: ppudot2-cloud/GHA-Core
+          repository: ppudot2-cloud/GHA-CICD-Core
           ref: main
           path: .ci
           token: ${{ secrets.GHATOKEN }}
@@ -154,10 +154,10 @@ jobs:
       # Populates PP_APP_ID, PP_CLIENT_SECRET, PP_TENANT_ID (and others) into
       # GITHUB_ENV with ::add-mask:: applied. Skipped in mock_deploy mode.
       # GHA_CORE_PAT is provided via the job-level env: block above so reveille
-      # can check out GHA-Core internally (composite actions cannot read secrets.*).
+      # can check out GHA-CICD-Core internally (composite actions cannot read secrets.*).
       - name: Azure login & AKV credential fetch (reveille)
         if: inputs.mock_deploy != true
-        uses: ppudot2-cloud/GHA-Core/.github/actions/dynamics/reveille@main
+        uses: ppudot2-cloud/GHA-CICD-Core/.github/actions/dynamics/reveille@main
         with:
           azure_client_id:       ${{ vars.AZURE_CLIENT_ID }}
           azure_tenant_id:       ${{ vars.AZURE_TENANT_ID }}

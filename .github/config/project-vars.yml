@@ -2,7 +2,7 @@
 # PROJECT VARIABLES — GHA-Dynamics (project-specific)
 # =============================================================================
 # These variables are specific to this project and supplement the global
-# variables defined in GHA-Core/.github/config/global-vars.yml.
+# variables defined in GHA-CICD-Core/.github/config/global-vars.yml.
 #
 # GOVERNANCE RULES:
 #   • Variables listed in global-vars.yml → protected_keys CANNOT appear here.
@@ -30,7 +30,7 @@
 #   These URLs are passed as inputs to the reusable workflows. The thin wrapper
 #   (release-pipeline.yml, deploy-dev.yml, etc.) reads these values either from
 #   this file (via the variable merge step) or from GitHub repository variables
-#   (vars.*) and forwards them as explicit `with:` inputs to GHA-Core.
+#   (vars.*) and forwards them as explicit `with:` inputs to GHA-CICD-Core.
 # =============================================================================
 
 variables:
@@ -39,8 +39,9 @@ variables:
   PP_DEV_URL:  "https://cicd-dev.crm.dynamics.com"
   PP_INTG_URL: "https://cicd-intg.crm.dynamics.com"
   PP_UAT_URL:  "https://cicd-uat.crm.dynamics.com"
-  PP_PERF_URL: "https://cicd-uat.crm.dynamics.com"
-  PP_PROD_URL: "https://cicd-uat.crm.dynamics.com"
+  PP_FRS_URL:  "https://cicd-frs.crm.dynamics.com"
+  PP_PERF_URL: "https://cicd-perf.crm.dynamics.com"
+  PP_PROD_URL: "https://cicd-prod.crm.dynamics.com"
   PP_SDBX_URL: "https://cicddev.crm.dynamics.com"
 
   # ── Project solution ────────────────────────────────────────────────────────

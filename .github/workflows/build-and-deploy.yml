@@ -13,7 +13,7 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # Set ENABLE_ROLLBACK=true as a GitHub Environment variable (per environment) to
 # take a pre-import backup and restore automatically on import failure.
-# For manual rollback trigger GHA-Core/.github/workflows/rollback.yml.
+# For manual rollback trigger GHA-CICD-Core/.github/workflows/rollback.yml.
 #
 # PROD DEPLOYMENT
 # ─────────────────────────────────────────────────────────────────────────────
@@ -84,10 +84,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Checkout GHA-Core CI scripts
+      - name: Checkout GHA-CICD-Core CI scripts
         uses: actions/checkout@v4
         with:
-          repository: ppudot2-cloud/GHA-Core
+          repository: ppudot2-cloud/GHA-CICD-Core
           ref: main
           path: .ci
           token: ${{ secrets.GHATOKEN || github.token }}
@@ -144,7 +144,7 @@ jobs:
       contents:      write
       actions:       read
       pull-requests: write
-    uses: ppudot2-cloud/GHA-Core/.github/workflows/_stage-export.yml@main
+    uses: ppudot2-cloud/GHA-CICD-Core/.github/workflows/_stage-export.yml@main
     with:
       matrix:                 ${{ needs.setup.outputs.matrix }}
       solution_list:          ${{ needs.setup.outputs.solution_list }}
@@ -167,7 +167,7 @@ jobs:
     permissions:
       id-token: write
       contents: read
-    uses: ppudot2-cloud/GHA-Core/.github/workflows/_stage-build.yml@main
+    uses: ppudot2-cloud/GHA-CICD-Core/.github/workflows/_stage-build.yml@main
     with:
       matrix:                 ${{ needs.setup.outputs.matrix }}
       use_exported_source:    ${{ inputs.mock_deploy != true && inputs.skip_export != true && github.event_name != 'push' }}
@@ -211,7 +211,7 @@ jobs:
       contents: read
       actions:  read
       pull-requests: write
-    uses: ppudot2-cloud/GHA-Core/.github/workflows/_stage-deploy-chain.yml@main
+    uses: ppudot2-cloud/GHA-CICD-Core/.github/workflows/_stage-deploy-chain.yml@main
     with:
       environments:          'Dev,Intg,UAT,FRS,Perf'
       matrix:                ${{ needs.setup.outputs.matrix }}
@@ -260,10 +260,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Checkout GHA-Core CI scripts
+      - name: Checkout GHA-CICD-Core CI scripts
         uses: actions/checkout@v4
         with:
-          repository: ppudot2-cloud/GHA-Core
+          repository: ppudot2-cloud/GHA-CICD-Core
           ref: main
           path: .ci
           token: ${{ secrets.GHATOKEN || github.token }}
