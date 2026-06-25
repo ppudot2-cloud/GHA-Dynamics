@@ -103,13 +103,36 @@ jobs:
           path: .ci
           token: ${{ secrets.GHA_CORE_PAT }}
 
+      - name: Install PyYAML
+        run: pip install pyyaml --quiet
+
+      - name: Read project-vars.yml
+        id: azure-config
+        shell: python
+        run: |
+          import yaml, os
+
+          config_path = '.github/config/project-vars.yml'
+          variables = {}
+          if os.path.isfile(config_path):
+              with open(config_path) as f:
+                  pv = yaml.safe_load(f) or {}
+              variables = pv.get('variables', {}) or {}
+
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as out:
+              out.write(f'pp_solution_name={variables.get("PP_SOLUTION_NAME", "")}\n')
+              out.write(f'azure_client_id={variables.get("AZURE_CLIENT_ID", "")}\n')
+              out.write(f'azure_tenant_id={variables.get("AZURE_TENANT_ID", "")}\n')
+              out.write(f'azure_subscription_id={variables.get("AZURE_SUBSCRIPTION_ID", "")}\n')
+              out.write(f'azure_key_vault_name={variables.get("AZURE_KEY_VAULT_NAME", "")}\n')
+
       - name: Resolve solution list
         id: resolve
         shell: pwsh
         run: |
           & .ci/.github/scripts/dynamics/Resolve-SolutionMatrix.ps1 `
             -InputSolutions '${{ inputs.solutions || 'all' }}' `
-            -PpSolutionName '${{ vars.PP_SOLUTION_NAME }}'
+            -PpSolutionName '${{ steps.azure-config.outputs.pp_solution_name }}'
 
       - name: Set branch name
         id: set-branch
@@ -124,28 +147,6 @@ jobs:
           }
           "branch_name=$branch" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           Write-Host "Branch: $branch"
-
-      - name: Install PyYAML
-        run: pip install pyyaml --quiet
-
-      - name: Read Azure identity from project-vars.yml
-        id: azure-config
-        shell: python
-        run: |
-          import yaml, os
-
-          config_path = '.github/config/project-vars.yml'
-          variables = {}
-          if os.path.isfile(config_path):
-              with open(config_path) as f:
-                  pv = yaml.safe_load(f) or {}
-              variables = pv.get('variables', {}) or {}
-
-          with open(os.environ['GITHUB_OUTPUT'], 'a') as out:
-              out.write(f'azure_client_id={variables.get("AZURE_CLIENT_ID", "")}\n')
-              out.write(f'azure_tenant_id={variables.get("AZURE_TENANT_ID", "")}\n')
-              out.write(f'azure_subscription_id={variables.get("AZURE_SUBSCRIPTION_ID", "")}\n')
-              out.write(f'azure_key_vault_name={variables.get("AZURE_KEY_VAULT_NAME", "")}\n')
 
   # ============================================================================
   # JOB 1 ─ Export (SEQUENTIAL per solution — max-parallel: 1)

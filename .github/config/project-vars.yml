@@ -1,13 +1,22 @@
 # =============================================================================
-# PROJECT VARIABLES — GHA-Dynamics (project-specific)
+# PROJECT VARIABLES — GHA-Dynamics (project layer)
 # =============================================================================
-# These variables are specific to this project and supplement the global
-# variables defined in GHA-CICD-Core/.github/config/global-vars.yml.
+# This file is the PROJECT LAYER of a two-file variable system:
+#
+#   LAYER 1 — GHA-CICD-Core/.github/variables/dynamics/global-vars.yml
+#               Org-wide defaults maintained by the platform team.
+#               Defines protected_keys that this file CANNOT override.
+#
+#   LAYER 2 — THIS FILE (.github/config/project-vars.yml)
+#               Project-specific values. The setup job merges both files at
+#               runtime: globals first, then project overrides (except protected
+#               keys). Any attempt to set a protected key exits the pipeline
+#               with a clear error.
 #
 # GOVERNANCE RULES:
 #   • Variables listed in global-vars.yml → protected_keys CANNOT appear here.
-#   • Merge-Variables.ps1 will exit 1 with a clear error if a violation is found.
-#   • All other global defaults can be overridden here.
+#   • The pipeline merge step exits 1 with a clear error if a violation is found.
+#   • All non-protected global defaults can be overridden here.
 #
 # SENSITIVE VALUES:
 #   Do NOT store secrets (tokens, passwords, connection strings) here.
@@ -71,7 +80,6 @@ variables:
 
   # ── Deployment behaviour overrides (non-protected globals) ─────────────────
   # SOLUTION_IMPORT_MAX_WAIT_MINUTES: "90"
-  # MOCK_DEPLOY: "false"
 
 # =============================================================================
 # ENVIRONMENT REGISTRY

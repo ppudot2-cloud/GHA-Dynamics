@@ -108,17 +108,21 @@ jobs:
       matrix:        ${{ steps.ctx.outputs.matrix }}
       solution_list: ${{ steps.ctx.outputs.solution_list }}
       mock_deploy:   ${{ steps.ctx.outputs.mock_deploy }}
-      # Environment URLs from project-vars.yml environments block
-      pp_uat_url:    ${{ steps.env-config.outputs.pp_uat_url }}
-      pp_intg_url:   ${{ steps.env-config.outputs.pp_intg_url }}
-      pp_perf_url:   ${{ steps.env-config.outputs.pp_perf_url }}
-      pp_prod_url:   ${{ steps.env-config.outputs.pp_prod_url }}
-      uat_config:    ${{ steps.env-config.outputs.uat_config }}
-      prod_config:   ${{ steps.env-config.outputs.prod_config }}
+      # Environment URLs + per-env configs (from merged global + project vars)
+      pp_uat_url:    ${{ steps.config.outputs.pp_uat_url }}
+      pp_intg_url:   ${{ steps.config.outputs.pp_intg_url }}
+      pp_perf_url:   ${{ steps.config.outputs.pp_perf_url }}
+      pp_prod_url:   ${{ steps.config.outputs.pp_prod_url }}
+      uat_config:    ${{ steps.config.outputs.uat_config }}
+      prod_config:   ${{ steps.config.outputs.prod_config }}
+      # JFrog + base solutions (from global-vars, protected)
+      jfrog_url:             ${{ steps.config.outputs.jfrog_url }}
+      jfrog_repo_solutions:  ${{ steps.config.outputs.jfrog_repo_solutions }}
+      base_solutions:        ${{ steps.config.outputs.base_solutions }}
       # Azure identity from project-vars.yml variables block
-      azure_client_id:       ${{ steps.env-config.outputs.azure_client_id }}
-      azure_tenant_id:       ${{ steps.env-config.outputs.azure_tenant_id }}
-      azure_subscription_id: ${{ steps.env-config.outputs.azure_subscription_id }}
+      azure_client_id:       ${{ steps.config.outputs.azure_client_id }}
+      azure_tenant_id:       ${{ steps.config.outputs.azure_tenant_id }}
+      azure_subscription_id: ${{ steps.config.outputs.azure_subscription_id }}
 
     steps:
       - name: Checkout main (merge commit)
@@ -157,30 +161,57 @@ jobs:
           "solution_list=$($ctx.solutionList)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           "mock_deploy=$mockDeploy"            | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
+      - name: Checkout GHA-CICD-Core (global vars)
+        uses: actions/checkout@v4
+        with:
+          repository: ppudot2-cloud/GHA-CICD-Core
+          ref: main
+          path: .ci
+          token: ${{ secrets.GHA_CORE_PAT || github.token }}
+
       - name: Install PyYAML
         run: pip install pyyaml --quiet
 
-      - name: Read environment URLs from project-vars.yml
-        id: env-config
+      - name: Load pipeline config
+        id: config
         env:
           ENABLE_ROLLBACK: ${{ vars.ENABLE_ROLLBACK }}
         shell: python
         run: |
-          import yaml, json, os
+          import yaml, json, os, sys
 
-          config_path = '.github/config/project-vars.yml'
+          GLOBAL_VARS_FILE = '.ci/.github/variables/dynamics/global-vars.yml'
+          PROJ_VARS_FILE   = '.github/config/project-vars.yml'
+
+          gv = {}
+          if os.path.isfile(GLOBAL_VARS_FILE):
+              with open(GLOBAL_VARS_FILE) as f:
+                  gv = yaml.safe_load(f) or {}
+          global_vars    = gv.get('variables', {}) or {}
+          protected_keys = set(gv.get('protected_keys', []) or [])
+
           pv = {}
-          if os.path.isfile(config_path):
-              with open(config_path) as f:
+          if os.path.isfile(PROJ_VARS_FILE):
+              with open(PROJ_VARS_FILE) as f:
                   pv = yaml.safe_load(f) or {}
+          project_vars = pv.get('variables', {}) or {}
 
-          rollback_enabled  = os.environ.get('ENABLE_ROLLBACK', '').lower() == 'true'
-          variables         = pv.get('variables', {}) or {}
-          azure_client_id   = variables.get('AZURE_CLIENT_ID', '')
-          azure_tenant_id   = variables.get('AZURE_TENANT_ID', '')
-          azure_sub_id      = variables.get('AZURE_SUBSCRIPTION_ID', '')
-          azure_kv_default  = variables.get('AZURE_KEY_VAULT_NAME', '')
-          prev_url          = ''
+          violations = [k for k in project_vars if k in protected_keys]
+          if violations:
+              for k in violations:
+                  print(f'::error::project-vars.yml sets protected key "{k}" — remove it (owned by Core layer)')
+              sys.exit(1)
+          merged = {**global_vars, **project_vars}
+
+          jfrog_url            = merged.get('JFROG_URL', '')
+          jfrog_repo_solutions = merged.get('JFROG_REPO_SOLUTIONS', 'powerplatform-solutions')
+          base_solutions       = merged.get('BASE_SOLUTIONS', '')
+          azure_client_id      = merged.get('AZURE_CLIENT_ID', '')
+          azure_tenant_id      = merged.get('AZURE_TENANT_ID', '')
+          azure_sub_id         = merged.get('AZURE_SUBSCRIPTION_ID', '')
+          azure_kv_default     = merged.get('AZURE_KEY_VAULT_NAME', '')
+          rollback_enabled     = os.environ.get('ENABLE_ROLLBACK', '').lower() == 'true'
+          prev_url             = ''
 
           with open(os.environ['GITHUB_OUTPUT'], 'a') as out:
               for env in pv.get('environments', []):
@@ -205,6 +236,9 @@ jobs:
                   print(f'  {"[prod] " if is_prod else ""}{name}: {url}')
                   prev_url = url
 
+              out.write(f'jfrog_url={jfrog_url}\n')
+              out.write(f'jfrog_repo_solutions={jfrog_repo_solutions}\n')
+              out.write(f'base_solutions={base_solutions}\n')
               out.write(f'azure_client_id={azure_client_id}\n')
               out.write(f'azure_tenant_id={azure_tenant_id}\n')
               out.write(f'azure_subscription_id={azure_sub_id}\n')
@@ -233,7 +267,7 @@ jobs:
         uses: ppudot2-cloud/GHA-CICD-Core/.github/actions/dynamics/reveille@main
         with:
           mock_deploy:           ${{ (inputs.mock_deploy == true || needs.read-context.outputs.mock_deploy == 'true') && 'true' || 'false' }}
-          jfrog_enabled:         ${{ vars.JFROG_URL != '' }}
+          jfrog_enabled:         ${{ needs.read-context.outputs.jfrog_url != '' }}
           mulesoft_enabled:      ${{ vars.MULESOFT_ENABLED == 'true' }}
           servicenow_enabled:    ${{ vars.SERVICENOW_ENABLED == 'true' }}
           azure_client_id:       ${{ needs.read-context.outputs.azure_client_id }}
@@ -304,9 +338,9 @@ jobs:
           tag_prod_deployed:        false
           activate_flows:           true
           mock_deploy:              ${{ (inputs.mock_deploy == true || needs.read-context.outputs.mock_deploy == 'true') && 'true' || 'false' }}
-          base_solutions:           ${{ vars.PP_BASE_SOLUTIONS || '' }}
-          jfrog_url:                ${{ vars.JFROG_URL || '' }}
-          jfrog_repo:               ${{ vars.JFROG_REPO || 'powerplatform-solutions' }}
+          base_solutions:           ${{ needs.read-context.outputs.base_solutions }}
+          jfrog_url:                ${{ needs.read-context.outputs.jfrog_url }}
+          jfrog_repo:               ${{ needs.read-context.outputs.jfrog_repo_solutions }}
           run_number:               ${{ needs.read-context.outputs.run_number }}
           run_attempt:              ${{ needs.read-context.outputs.run_attempt }}
           enable_servicenow:        ${{ vars.SERVICENOW_ENABLED == 'true' }}
@@ -335,7 +369,7 @@ jobs:
         uses: ppudot2-cloud/GHA-CICD-Core/.github/actions/dynamics/reveille@main
         with:
           mock_deploy:           ${{ (inputs.mock_deploy == true || needs.read-context.outputs.mock_deploy == 'true') && 'true' || 'false' }}
-          jfrog_enabled:         ${{ vars.JFROG_URL != '' }}
+          jfrog_enabled:         ${{ needs.read-context.outputs.jfrog_url != '' }}
           mulesoft_enabled:      ${{ vars.MULESOFT_ENABLED == 'true' }}
           servicenow_enabled:    ${{ vars.SERVICENOW_ENABLED == 'true' }}
           azure_client_id:       ${{ needs.read-context.outputs.azure_client_id }}
@@ -390,9 +424,9 @@ jobs:
           tag_prod_deployed:        true
           activate_flows:           true
           mock_deploy:              ${{ (inputs.mock_deploy == true || needs.read-context.outputs.mock_deploy == 'true') && 'true' || 'false' }}
-          base_solutions:           ${{ vars.PP_BASE_SOLUTIONS || '' }}
-          jfrog_url:                ${{ vars.JFROG_URL || '' }}
-          jfrog_repo:               ${{ vars.JFROG_REPO || 'powerplatform-solutions' }}
+          base_solutions:           ${{ needs.read-context.outputs.base_solutions }}
+          jfrog_url:                ${{ needs.read-context.outputs.jfrog_url }}
+          jfrog_repo:               ${{ needs.read-context.outputs.jfrog_repo_solutions }}
           run_number:               ${{ needs.read-context.outputs.run_number }}
           run_attempt:              ${{ needs.read-context.outputs.run_attempt }}
           enable_servicenow:        ${{ vars.SERVICENOW_ENABLED == 'true' }}

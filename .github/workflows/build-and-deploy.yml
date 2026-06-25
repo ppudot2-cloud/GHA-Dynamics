@@ -72,34 +72,36 @@ jobs:
     permissions:
       contents: read
     outputs:
-      matrix:           ${{ steps.resolve.outputs.matrix }}
-      solution_list:    ${{ steps.resolve.outputs.solution_list }}
-      solution_count:   ${{ steps.resolve.outputs.solution_count }}
-      gha_core_pat_set: ${{ steps.check-creds.outputs.gha_core_pat_set }}
-      jfrog_url:        ${{ steps.core-vars.outputs.jfrog_url }}
-      jfrog_repo:       ${{ steps.core-vars.outputs.jfrog_repo }}
-      base_solutions:   ${{ steps.core-vars.outputs.base_solutions }}
+      matrix:                ${{ steps.resolve.outputs.matrix }}
+      solution_list:         ${{ steps.resolve.outputs.solution_list }}
+      solution_count:        ${{ steps.resolve.outputs.solution_count }}
+      gha_core_pat_set:      ${{ steps.check-creds.outputs.gha_core_pat_set }}
+      # JFrog + base solutions (from merged global-vars + project-vars)
+      jfrog_url:             ${{ steps.config.outputs.jfrog_url }}
+      jfrog_repo_solutions:  ${{ steps.config.outputs.jfrog_repo_solutions }}
+      jfrog_repo_sarif:      ${{ steps.config.outputs.jfrog_repo_sarif }}
+      base_solutions:        ${{ steps.config.outputs.base_solutions }}
       # Per-env configs (from environments block in project-vars.yml)
-      dev_config:       ${{ steps.env-config.outputs.dev_config }}
-      intg_config:      ${{ steps.env-config.outputs.intg_config }}
-      uat_config:       ${{ steps.env-config.outputs.uat_config }}
-      frs_config:       ${{ steps.env-config.outputs.frs_config }}
-      perf_config:      ${{ steps.env-config.outputs.perf_config }}
-      prod_config:      ${{ steps.env-config.outputs.prod_config }}
-      pre_prod_envs:    ${{ steps.env-config.outputs.pre_prod_envs }}
+      dev_config:            ${{ steps.config.outputs.dev_config }}
+      intg_config:           ${{ steps.config.outputs.intg_config }}
+      uat_config:            ${{ steps.config.outputs.uat_config }}
+      frs_config:            ${{ steps.config.outputs.frs_config }}
+      perf_config:           ${{ steps.config.outputs.perf_config }}
+      prod_config:           ${{ steps.config.outputs.prod_config }}
+      pre_prod_envs:         ${{ steps.config.outputs.pre_prod_envs }}
       # Azure identity (from project-vars.yml variables block)
-      azure_client_id:       ${{ steps.env-config.outputs.azure_client_id }}
-      azure_tenant_id:       ${{ steps.env-config.outputs.azure_tenant_id }}
-      azure_subscription_id: ${{ steps.env-config.outputs.azure_subscription_id }}
-      azure_key_vault_name:  ${{ steps.env-config.outputs.azure_key_vault_name }}
+      azure_client_id:       ${{ steps.config.outputs.azure_client_id }}
+      azure_tenant_id:       ${{ steps.config.outputs.azure_tenant_id }}
+      azure_subscription_id: ${{ steps.config.outputs.azure_subscription_id }}
+      azure_key_vault_name:  ${{ steps.config.outputs.azure_key_vault_name }}
       # Individual URLs (for build-stage validation display)
-      pp_sdbx_url:      ${{ steps.env-config.outputs.pp_sdbx_url }}
-      pp_dev_url:       ${{ steps.env-config.outputs.pp_dev_url }}
-      pp_intg_url:      ${{ steps.env-config.outputs.pp_intg_url }}
-      pp_uat_url:       ${{ steps.env-config.outputs.pp_uat_url }}
-      pp_frs_url:       ${{ steps.env-config.outputs.pp_frs_url }}
-      pp_perf_url:      ${{ steps.env-config.outputs.pp_perf_url }}
-      pp_prod_url:      ${{ steps.env-config.outputs.pp_prod_url }}
+      pp_sdbx_url:           ${{ steps.config.outputs.pp_sdbx_url }}
+      pp_dev_url:            ${{ steps.config.outputs.pp_dev_url }}
+      pp_intg_url:           ${{ steps.config.outputs.pp_intg_url }}
+      pp_uat_url:            ${{ steps.config.outputs.pp_uat_url }}
+      pp_frs_url:            ${{ steps.config.outputs.pp_frs_url }}
+      pp_perf_url:           ${{ steps.config.outputs.pp_perf_url }}
+      pp_prod_url:           ${{ steps.config.outputs.pp_prod_url }}
 
     steps:
       - name: Checkout repository
@@ -113,78 +115,63 @@ jobs:
           path: .ci
           token: ${{ secrets.GHA_CORE_PAT || github.token }}
 
-      - name: Read Core pipeline variables (JFROG)
-        id: core-vars
-        shell: pwsh
-        run: |
-          # JFROG_URL and JFROG_REPO are protected Core variables.
-          # Read them from global-vars.yml so the project layer cannot override them.
-          $content   = Get-Content '.ci/.github/variables/dynamics/global-vars.yml' -Raw
-          $jfrogUrl      = if ($content -match '(?m)^\s+JFROG_URL:\s*"?([^"\n]*?)"?\s*$')      { $Matches[1].Trim() } else { '' }
-          $jfrogRepo     = if ($content -match '(?m)^\s+JFROG_REPO:\s*"?([^"\n]*?)"?\s*$')     { $Matches[1].Trim() } else { 'powerplatform-solutions' }
-          $baseSolutions = if ($content -match '(?m)^\s+BASE_SOLUTIONS:\s*"?([^"\n]*?)"?\s*$') { $Matches[1].Trim() } else { '' }
-          "jfrog_url=$jfrogUrl"           | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-          "jfrog_repo=$jfrogRepo"         | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-          "base_solutions=$baseSolutions" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-          Write-Host "  JFROG_URL       = $(if ($jfrogUrl) { $jfrogUrl } else { '(not set — JFrog archival disabled)' })"
-          Write-Host "  JFROG_REPO      = $jfrogRepo"
-          Write-Host "  BASE_SOLUTIONS  = $(if ($baseSolutions) { $baseSolutions } else { '(not set — base-solution checks skipped)' })"
-
-      - name: Resolve solution matrix
-        id: resolve
-        shell: pwsh
-        run: |
-          & .ci/.github/scripts/dynamics/Resolve-SolutionMatrix.ps1 `
-            -InputSolutions    '${{ inputs.solutions || 'all' }}' `
-            -PpSolutionName    '${{ vars.PP_SOLUTION_NAME }}' `
-            -SolutionsJsonPath 'solutions.json'
-
-      - name: Check credential presence
-        id: check-creds
-        shell: pwsh
-        run: |
-          $r = @{
-            gha_core_pat_set = ('${{ secrets.GHA_CORE_PAT }}' -ne '')
-          }
-          foreach ($k in $r.Keys) {
-            "$k=$($r[$k].ToString().ToLower())" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-            Write-Host "  $k = $($r[$k])"
-          }
-          # Azure OIDC credentials are repo variables (vars.*), not secrets.
-          # They are validated in the stage-build validate step, not here.
-
       - name: Install PyYAML
         run: pip install pyyaml --quiet
 
-      - name: Read environment config
-        id: env-config
+      - name: Load pipeline config
+        id: config
         env:
           ENABLE_ROLLBACK: ${{ vars.ENABLE_ROLLBACK }}
         shell: python
         run: |
           import yaml, json, os, sys
 
-          config_path = '.github/config/project-vars.yml'
-          if not os.path.isfile(config_path):
-              print(f'::error::{config_path} not found — cannot resolve environment config')
+          GLOBAL_VARS_FILE = '.ci/.github/variables/dynamics/global-vars.yml'
+          PROJ_VARS_FILE   = '.github/config/project-vars.yml'
+
+          # ── Read global vars (Core layer) ────────────────────────────────────
+          gv = {}
+          if os.path.isfile(GLOBAL_VARS_FILE):
+              with open(GLOBAL_VARS_FILE) as f:
+                  gv = yaml.safe_load(f) or {}
+          global_vars    = gv.get('variables', {}) or {}
+          protected_keys = set(gv.get('protected_keys', []) or [])
+
+          # ── Read project vars (project layer) ────────────────────────────────
+          if not os.path.isfile(PROJ_VARS_FILE):
+              print(f'::error::{PROJ_VARS_FILE} not found — cannot resolve pipeline config')
               sys.exit(1)
-
-          with open(config_path) as f:
+          with open(PROJ_VARS_FILE) as f:
               pv = yaml.safe_load(f) or {}
+          project_vars = pv.get('variables', {}) or {}
 
+          # ── Merge: project overrides global (protected keys enforced) ────────
+          violations = [k for k in project_vars if k in protected_keys]
+          if violations:
+              for k in violations:
+                  print(f'::error::project-vars.yml sets protected key "{k}" — remove it (owned by Core layer)')
+              sys.exit(1)
+          merged = {**global_vars, **project_vars}
+
+          # ── Extract well-known values ────────────────────────────────────────
+          jfrog_url             = merged.get('JFROG_URL', '')
+          jfrog_repo_solutions  = merged.get('JFROG_REPO_SOLUTIONS', 'powerplatform-solutions')
+          jfrog_repo_sarif      = merged.get('JFROG_REPO_SARIF', 'powerplatform-checker-reports')
+          base_solutions        = merged.get('BASE_SOLUTIONS', '')
+          pp_solution_name      = merged.get('PP_SOLUTION_NAME', '')
+          pp_sdbx_url           = merged.get('PP_SDBX_URL', '')
+          azure_client_id       = merged.get('AZURE_CLIENT_ID', '')
+          azure_tenant_id       = merged.get('AZURE_TENANT_ID', '')
+          azure_sub_id          = merged.get('AZURE_SUBSCRIPTION_ID', '')
+          azure_kv_default      = merged.get('AZURE_KEY_VAULT_NAME', '')
+          rollback_enabled      = os.environ.get('ENABLE_ROLLBACK', '').lower() == 'true'
+
+          # ── Build per-environment config JSON ────────────────────────────────
           envs = pv.get('environments', [])
           if not envs:
-              print(f'::error::No "environments:" block found in {config_path}')
+              print(f'::error::No "environments:" block found in {PROJ_VARS_FILE}')
               print('::error::Add an environments block — see project-vars.yml comments for syntax')
               sys.exit(1)
-
-          rollback_enabled  = os.environ.get('ENABLE_ROLLBACK', '').lower() == 'true'
-          variables         = pv.get('variables', {}) or {}
-          pp_sdbx_url       = variables.get('PP_SDBX_URL', '')
-          azure_client_id   = variables.get('AZURE_CLIENT_ID', '')
-          azure_tenant_id   = variables.get('AZURE_TENANT_ID', '')
-          azure_sub_id      = variables.get('AZURE_SUBSCRIPTION_ID', '')
-          azure_kv_default  = variables.get('AZURE_KEY_VAULT_NAME', '')
 
           pre_prod_names = []
           prev_url       = ''
@@ -212,21 +199,51 @@ jobs:
 
                   if not is_prod:
                       pre_prod_names.append(name)
-
                   prev_url = url
 
               out.write(f'pre_prod_envs={",".join(pre_prod_names)}\n')
               out.write(f'pp_sdbx_url={pp_sdbx_url}\n')
+              out.write(f'jfrog_url={jfrog_url}\n')
+              out.write(f'jfrog_repo_solutions={jfrog_repo_solutions}\n')
+              out.write(f'jfrog_repo_sarif={jfrog_repo_sarif}\n')
+              out.write(f'base_solutions={base_solutions}\n')
+              out.write(f'pp_solution_name={pp_solution_name}\n')
               out.write(f'azure_client_id={azure_client_id}\n')
               out.write(f'azure_tenant_id={azure_tenant_id}\n')
               out.write(f'azure_subscription_id={azure_sub_id}\n')
               out.write(f'azure_key_vault_name={azure_kv_default}\n')
 
-          print(f'✅ Environment config — {len(envs)} environment(s), Pipeline 1: {",".join(pre_prod_names)}')
+          print(f'✅ Pipeline config merged — {len(envs)} environment(s), Pipeline 1: {",".join(pre_prod_names)}')
+          print(f'   JFrog URL      : {jfrog_url or "(not set — archival disabled)"}')
+          print(f'   Solutions repo : {jfrog_repo_solutions}')
+          print(f'   SARIF repo     : {jfrog_repo_sarif}')
+          print(f'   Base solutions : {base_solutions or "(not set)"}')
           for env in envs:
               tag = ' [prod — Pipeline 2]' if env.get('is_prod') else ''
               kv  = env.get('key_vault_name') or azure_kv_default or '(not set)'
               print(f'   {env["name"]}{tag}: {env.get("url", "(no url)")} [kv: {kv}]')
+
+      - name: Resolve solution matrix
+        id: resolve
+        shell: pwsh
+        run: |
+          & .ci/.github/scripts/dynamics/Resolve-SolutionMatrix.ps1 `
+            -InputSolutions    '${{ inputs.solutions || 'all' }}' `
+            -PpSolutionName    '${{ steps.config.outputs.pp_solution_name }}' `
+            -SolutionsJsonPath 'solutions.json'
+
+      - name: Check credential presence
+        id: check-creds
+        shell: pwsh
+        run: |
+          $r = @{
+            gha_core_pat_set = ('${{ secrets.GHA_CORE_PAT }}' -ne '')
+          }
+          foreach ($k in $r.Keys) {
+            "$k=$($r[$k].ToString().ToLower())" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+            Write-Host "  $k = $($r[$k])"
+          }
+          # Azure OIDC identity is read from project-vars.yml by the config step above.
 
   # ============================================================================
   # Stage 2 — Export
@@ -270,7 +287,8 @@ jobs:
       source_environment_url: ${{ needs.setup.outputs.pp_sdbx_url }}
       mock_deploy:            ${{ inputs.mock_deploy == true }}
       jfrog_url:              ${{ needs.setup.outputs.jfrog_url }}
-      jfrog_repo:             ${{ needs.setup.outputs.jfrog_repo }}
+      jfrog_repo_solutions:   ${{ needs.setup.outputs.jfrog_repo_solutions }}
+      jfrog_repo_sarif:       ${{ needs.setup.outputs.jfrog_repo_sarif }}
       enable_backup:          ${{ vars.ENABLE_ROLLBACK == 'true' }}
       base_solutions:         ${{ needs.setup.outputs.base_solutions }}
       solution_count:         ${{ needs.setup.outputs.solution_count }}
@@ -317,7 +335,7 @@ jobs:
       activate_flows:        true
       base_solutions:        ${{ needs.setup.outputs.base_solutions }}
       jfrog_url:             ${{ needs.setup.outputs.jfrog_url }}
-      jfrog_repo:            ${{ needs.setup.outputs.jfrog_repo }}
+      jfrog_repo_solutions:  ${{ needs.setup.outputs.jfrog_repo_solutions }}
       run_number:            ${{ github.run_number }}
       run_attempt:           ${{ github.run_attempt }}
       azure_client_id:       ${{ needs.setup.outputs.azure_client_id }}
