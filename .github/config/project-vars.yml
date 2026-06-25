@@ -78,8 +78,6 @@ variables:
   # Prod typically uses a separate KV — override it per-environment below.
   AZURE_KEY_VAULT_NAME:  ""
 
-  # ── Deployment behaviour overrides (non-protected globals) ─────────────────
-  # SOLUTION_IMPORT_MAX_WAIT_MINUTES: "90"
 
 # =============================================================================
 # ENVIRONMENT REGISTRY
