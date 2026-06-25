@@ -26,39 +26,102 @@
 #   Each project has its own Key Vault and App Registration. This lets you rotate
 #   credentials and scope access independently per project.
 #
-# HOW ENVIRONMENT URLS ARE USED:
-#   These URLs are passed as inputs to the reusable workflows. The thin wrapper
-#   (release-pipeline.yml, deploy-dev.yml, etc.) reads these values either from
-#   this file (via the variable merge step) or from GitHub repository variables
-#   (vars.*) and forwards them as explicit `with:` inputs to GHA-CICD-Core.
+# ENVIRONMENT URLS:
+#   All environment URLs are now configured in the `environments:` block below.
+#   The pipeline reads URLs from this file — you no longer need PP_*_URL as
+#   GitHub Repository Variables. PP_SDBX_URL is the only exception (still
+#   required as a GitHub Variable for the export-solution.yml ad-hoc workflow).
+#
+# ENABLE_ROLLBACK:
+#   Set as a GitHub Environment variable (Settings → Environments → <name>)
+#   to take a pre-import backup and auto-restore on failure. This is an
+#   operational toggle — can be changed without a commit.
 # =============================================================================
 
 variables:
-  # ── Power Platform environment URLs ────────────────────────────────────────
-  # Replace with your actual Dataverse environment URLs.
-  PP_DEV_URL:  "https://cicd-dev.crm.dynamics.com"
-  PP_INTG_URL: "https://cicd-intg.crm.dynamics.com"
-  PP_UAT_URL:  "https://cicd-uat.crm.dynamics.com"
-  PP_FRS_URL:  "https://cicd-frs.crm.dynamics.com"
-  PP_PERF_URL: "https://cicd-perf.crm.dynamics.com"
-  PP_PROD_URL: "https://cicd-prod.crm.dynamics.com"
+  # ── Sandbox (export source) — still required as a GitHub Variable for export-solution.yml ──
   PP_SDBX_URL: "https://cicddev.crm.dynamics.com"
 
   # ── Project solution ────────────────────────────────────────────────────────
   PP_SOLUTION_NAME:     "YourSolutionName"
   PP_DATA_SCHEMA_FILE:  "config/data-schema.xml"   # leave blank to skip data export
 
-  # ── Base solutions for version-compare (used when enable_version_compare=true) ─
-  # Comma-separated list of solution unique names that are prerequisites / base
-  # layers deployed before the project solution. The version-compare step checks
-  # that each base solution is at least as advanced in the previous environment
-  # as it is in the target environment (prevents deploying on top of an outdated
-  # foundation).
+  # ── Base solutions for version-compare ─────────────────────────────────────
+  # Comma-separated list of prerequisite solution unique names.
   # Example: "nfBase,nfCustomizations,nfShared"
-  # Leave empty to skip base-solution checks (only the current solution is checked).
+  # Leave empty to skip base-solution checks.
   PP_BASE_SOLUTIONS:    ""
 
   # ── Deployment behaviour overrides (non-protected globals) ─────────────────
-  # Uncomment and adjust only if this project genuinely needs different defaults.
-  # SOLUTION_IMPORT_MAX_WAIT_MINUTES: "90"   # longer timeout for large solutions
-  # MOCK_DEPLOY: "false"                     # override for testing
+  # SOLUTION_IMPORT_MAX_WAIT_MINUTES: "90"
+  # MOCK_DEPLOY: "false"
+
+# =============================================================================
+# ENVIRONMENT REGISTRY
+# =============================================================================
+# Single source of truth for all deployment environments.
+# Each entry drives one deploy job in the pipeline. The setup job reads this
+# block at runtime — no GitHub Repository Variables are needed for URLs.
+#
+# Fields:
+#   name                 — must match the GitHub Environment name exactly
+#                          (Settings → Environments → <name>)
+#   url                  — Power Platform Dataverse environment URL
+#   enable_blocking_check— block on active flows/ownership locks before import
+#   enable_version_compare—skip import if installed version >= artifact version
+#   import_config_data   — run config data migration after solution import
+#   is_prod              — true = production environment, deployed by Pipeline 2
+#                          (deploy-prod.yml). Pipeline 1 skips is_prod environments.
+#
+# NOTE: solution_type is NOT configurable here. It is enforced by the pipeline:
+#   Dev  → Unmanaged  (always)
+#   All others → Managed  (always)
+#
+# ADDING A NEW ENVIRONMENT:
+#   1. Add an entry below in the desired position (order = deploy sequence)
+#   2. Add a deploy-<name> job to GHA-CICD-Core/_stage-deploy-chain.yml
+#   3. Create the GitHub Environment: Settings → Environments → New environment
+#   4. Add a Federated Credential on the Azure App Registration:
+#      subject: repo:{org}/{repo}:environment:{EnvName}
+#
+# ENABLE_ROLLBACK (not configured here — it's an operational toggle):
+#   Set ENABLE_ROLLBACK=true as a GitHub Environment variable per environment.
+# =============================================================================
+
+environments:
+  - name:                   Dev
+    url:                    "https://cicd-dev.crm.dynamics.com"
+    enable_blocking_check:  true
+    enable_version_compare: true
+    import_config_data:     false
+
+  - name:                   Intg
+    url:                    "https://cicd-intg.crm.dynamics.com"
+    enable_blocking_check:  true
+    enable_version_compare: true
+    import_config_data:     false
+
+  - name:                   UAT
+    url:                    "https://cicd-uat.crm.dynamics.com"
+    enable_blocking_check:  true
+    enable_version_compare: true
+    import_config_data:     false
+
+  - name:                   FRS
+    url:                    "https://cicd-frs.crm.dynamics.com"
+    enable_blocking_check:  true
+    enable_version_compare: true
+    import_config_data:     false
+
+  - name:                   Perf
+    url:                    "https://cicd-perf.crm.dynamics.com"
+    enable_blocking_check:  true
+    enable_version_compare: true
+    import_config_data:     false
+
+  - name:                   Prod
+    url:                    "https://cicd-prod.crm.dynamics.com"
+    enable_blocking_check:  true
+    enable_version_compare: true
+    import_config_data:     true
+    is_prod:                true
