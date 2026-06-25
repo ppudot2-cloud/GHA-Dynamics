@@ -14,23 +14,27 @@
 #   Secrets live exclusively in Azure Key Vault. This file is source-controlled
 #   and visible to anyone with repo access.
 #
-# PROJECT-LEVEL AZURE IDENTITY (set as GitHub Variables, NOT in this file):
-#   These are non-sensitive resource identifiers — store them in GitHub repository
-#   Variables (Settings → Secrets and variables → Actions → Variables):
+# PROJECT-LEVEL AZURE IDENTITY (configured in the variables: block below):
+#   Non-sensitive resource identifiers — safe to commit to source control.
 #
 #   AZURE_CLIENT_ID       — App Registration Client ID for this project's SPN
 #   AZURE_TENANT_ID       — Azure AD Tenant ID for this project
 #   AZURE_SUBSCRIPTION_ID — Azure Subscription ID
-#   AZURE_KEY_VAULT_NAME  — Name of this project's Azure Key Vault
+#   AZURE_KEY_VAULT_NAME  — Default Key Vault (override per-environment in environments: block)
 #
 #   Each project has its own Key Vault and App Registration. This lets you rotate
 #   credentials and scope access independently per project.
 #
-# ENVIRONMENT URLS:
-#   All environment URLs are now configured in the `environments:` block below.
-#   The pipeline reads URLs from this file — you no longer need PP_*_URL as
-#   GitHub Repository Variables. PP_SDBX_URL is the only exception (still
-#   required as a GitHub Variable for the export-solution.yml ad-hoc workflow).
+# ENVIRONMENT URLS + AZURE IDENTITY:
+#   All environment URLs and the per-environment Key Vault name are configured
+#   in the `environments:` block below. The pipeline reads them at runtime —
+#   no PP_*_URL or AZURE_KEY_VAULT_NAME GitHub Repository Variables are needed.
+#
+# AZURE_KEY_VAULT_NAME per environment:
+#   Set key_vault_name on any environment that uses a different Key Vault from
+#   the project default (AZURE_KEY_VAULT_NAME in the variables block above).
+#   Typical pattern: non-prod environments share one KV; Prod has its own KV.
+#   Environments that omit key_vault_name inherit the project default.
 #
 # ENABLE_ROLLBACK:
 #   Set as a GitHub Environment variable (Settings → Environments → <name>)
@@ -39,7 +43,7 @@
 # =============================================================================
 
 variables:
-  # ── Sandbox (export source) — still required as a GitHub Variable for export-solution.yml ──
+  # ── Sandbox (export source) ─────────────────────────────────────────────────
   PP_SDBX_URL: "https://cicddev.crm.dynamics.com"
 
   # ── Project solution ────────────────────────────────────────────────────────
@@ -51,6 +55,19 @@ variables:
   # Example: "nfBase,nfCustomizations,nfShared"
   # Leave empty to skip base-solution checks.
   PP_BASE_SOLUTIONS:    ""
+
+  # ── Azure OIDC identity (project-level — same across all environments) ──────
+  # Set these values for this project's App Registration.
+  # Non-sensitive identifiers — safe to commit. Secrets stay in Key Vault.
+  AZURE_CLIENT_ID:       ""
+  AZURE_TENANT_ID:       ""
+  AZURE_SUBSCRIPTION_ID: ""
+
+  # ── Default Azure Key Vault name ─────────────────────────────────────────────
+  # Used by export and build stages, and as the fallback for any environment
+  # that does not set its own key_vault_name in the environments block below.
+  # Prod typically uses a separate KV — override it per-environment below.
+  AZURE_KEY_VAULT_NAME:  ""
 
   # ── Deployment behaviour overrides (non-protected globals) ─────────────────
   # SOLUTION_IMPORT_MAX_WAIT_MINUTES: "90"
@@ -67,6 +84,8 @@ variables:
 #   name                 — must match the GitHub Environment name exactly
 #                          (Settings → Environments → <name>)
 #   url                  — Power Platform Dataverse environment URL
+#   key_vault_name       — Azure Key Vault name for this environment (optional;
+#                          omit to inherit AZURE_KEY_VAULT_NAME from variables block)
 #   enable_blocking_check— block on active flows/ownership locks before import
 #   enable_version_compare—skip import if installed version >= artifact version
 #   import_config_data   — run config data migration after solution import
@@ -91,36 +110,42 @@ variables:
 environments:
   - name:                   Dev
     url:                    "https://cicd-dev.crm.dynamics.com"
+    key_vault_name:         ""   # inherits AZURE_KEY_VAULT_NAME from variables block
     enable_blocking_check:  true
     enable_version_compare: true
     import_config_data:     false
 
   - name:                   Intg
     url:                    "https://cicd-intg.crm.dynamics.com"
+    key_vault_name:         ""   # inherits AZURE_KEY_VAULT_NAME from variables block
     enable_blocking_check:  true
     enable_version_compare: true
     import_config_data:     false
 
   - name:                   UAT
     url:                    "https://cicd-uat.crm.dynamics.com"
+    key_vault_name:         ""   # inherits AZURE_KEY_VAULT_NAME from variables block
     enable_blocking_check:  true
     enable_version_compare: true
     import_config_data:     false
 
   - name:                   FRS
     url:                    "https://cicd-frs.crm.dynamics.com"
+    key_vault_name:         ""   # inherits AZURE_KEY_VAULT_NAME from variables block
     enable_blocking_check:  true
     enable_version_compare: true
     import_config_data:     false
 
   - name:                   Perf
     url:                    "https://cicd-perf.crm.dynamics.com"
+    key_vault_name:         ""   # inherits AZURE_KEY_VAULT_NAME from variables block
     enable_blocking_check:  true
     enable_version_compare: true
     import_config_data:     false
 
   - name:                   Prod
     url:                    "https://cicd-prod.crm.dynamics.com"
+    key_vault_name:         ""   # set to prod-specific KV if it differs from the default
     enable_blocking_check:  true
     enable_version_compare: true
     import_config_data:     true
