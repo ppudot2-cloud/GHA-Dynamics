@@ -253,8 +253,7 @@ jobs:
     # skip_uat break-glass: skip when dispatch input is true OR repo variable SKIP_UAT=true.
     # The repo variable fallback lets auto-triggered runs (push event) also bypass UAT
     # without requiring a manual redispatch.
-    # mock_deploy: real UAT (with environment gate) is skipped — mock-uat job runs instead.
-    if: inputs.skip_uat != true && vars.SKIP_UAT != 'true' && inputs.mock_deploy != true && needs.read-context.outputs.mock_deploy != 'true'
+    if: inputs.skip_uat != true && vars.SKIP_UAT != 'true'
     runs-on: ubuntu-latest
     environment: UAT
     permissions:
@@ -349,96 +348,14 @@ jobs:
           sarif_path:               ${{ steps.find-sarif.outputs.sarif_path }}
 
   # ============================================================================
-  # Mock Deploy UAT — no environment approval gate, runs only in mock_deploy mode.
-  # Mirrors deploy-uat steps but without "environment: UAT" so the run completes
-  # without human intervention.
-  # ============================================================================
-  mock-uat:
-    name: "🧪 Mock Deploy | UAT"
-    needs: [read-context]
-    if: >
-      (inputs.mock_deploy == true || needs.read-context.outputs.mock_deploy == 'true') &&
-      inputs.skip_uat != true && vars.SKIP_UAT != 'true'
-    runs-on: ubuntu-latest
-    permissions:
-      id-token: write
-      contents: read
-      actions:  read
-    env:
-      GHA_CORE_PAT: ${{ secrets.GHA_CORE_PAT }}
-    steps:
-      - name: Reveille (mock)
-        uses: ppudot2-cloud/GHA-CICD-Core/.github/actions/dynamics/reveille@main
-        with:
-          mock_deploy:           'true'
-          jfrog_enabled:         ${{ needs.read-context.outputs.jfrog_url != '' }}
-          mulesoft_enabled:      ${{ vars.MULESOFT_ENABLED == 'true' }}
-          servicenow_enabled:    ${{ vars.SERVICENOW_ENABLED == 'true' }}
-          azure_client_id:       ${{ needs.read-context.outputs.azure_client_id }}
-          azure_tenant_id:       ${{ needs.read-context.outputs.azure_tenant_id }}
-          azure_subscription_id: ${{ needs.read-context.outputs.azure_subscription_id }}
-          azure_key_vault_name:  ${{ fromJson(needs.read-context.outputs.uat_config).key_vault_name }}
-      - name: Install PAC CLI
-        uses: ppudot2-cloud/GHA-CICD-Core/.github/actions/dynamics/pac-install@main
-      - name: Download solution artifacts
-        uses: actions/download-artifact@v4
-        with:
-          pattern: solution-artifact-*
-          path: .
-          merge-multiple: true
-          run-id: ${{ needs.read-context.outputs.run_id }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Locate Solution Checker SARIF reports
-        id: find-sarif
-        shell: pwsh
-        run: |
-          $sarifPaths = @()
-          $pathFiles = Get-ChildItem -Path "." -Recurse -Filter "sarif.path" -ErrorAction SilentlyContinue
-          foreach ($pf in $pathFiles) {
-            $p = (Get-Content $pf.FullName -Raw).Trim()
-            if ($p -and $p -ne 'not-found' -and (Test-Path $p)) { $sarifPaths += $p }
-          }
-          if ($sarifPaths.Count -eq 0) {
-            $found = Get-ChildItem -Path "." -Recurse -Include "*.sarif","*.sarif.json" -ErrorAction SilentlyContinue
-            foreach ($f in $found) { $sarifPaths += $f.FullName }
-          }
-          $first = if ($sarifPaths.Count -gt 0) { $sarifPaths[0] } else { '' }
-          "sarif_path=$first" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-      - name: Deploy all solutions → UAT (mock)
-        uses: ppudot2-cloud/GHA-CICD-Core/.github/actions/dynamics/deploy-all-solutions@main
-        with:
-          solutions_json:           ${{ needs.read-context.outputs.matrix }}
-          environment_name:         ${{ fromJson(needs.read-context.outputs.uat_config).name }}
-          environment_url:          ${{ needs.read-context.outputs.pp_uat_url }}
-          solution_type:            ${{ fromJson(needs.read-context.outputs.uat_config).solution_type }}
-          enable_backup:            ${{ fromJson(needs.read-context.outputs.uat_config).enable_backup }}
-          enable_blocking_check:    ${{ fromJson(needs.read-context.outputs.uat_config).enable_blocking_check }}
-          enable_version_compare:   ${{ fromJson(needs.read-context.outputs.uat_config).enable_version_compare }}
-          import_config_data:       ${{ fromJson(needs.read-context.outputs.uat_config).import_config_data }}
-          previous_environment_url: ${{ needs.read-context.outputs.pp_intg_url }}
-          tag_prod_deployed:        false
-          activate_flows:           true
-          mock_deploy:              'true'
-          base_solutions:           ${{ needs.read-context.outputs.base_solutions }}
-          jfrog_url:                ${{ needs.read-context.outputs.jfrog_url }}
-          jfrog_repo:               ${{ needs.read-context.outputs.jfrog_repo_solutions }}
-          run_number:               ${{ needs.read-context.outputs.run_number }}
-          run_attempt:              ${{ needs.read-context.outputs.run_attempt }}
-          enable_servicenow:        ${{ vars.SERVICENOW_ENABLED == 'true' }}
-          solution_list:            ${{ needs.read-context.outputs.solution_list }}
-          sarif_path:               ${{ steps.find-sarif.outputs.sarif_path }}
-
-  # ============================================================================
   # Deploy Prod — gated by Prod GitHub Environment approval
-  # Only starts after UAT succeeds. Skipped in mock mode — mock-prod runs instead.
+  # Only starts after UAT succeeds
   # ============================================================================
   deploy-prod:
     name: "🚀 Deploy | Prod"
     needs: [read-context, deploy-uat]
-    if: >
-      inputs.mock_deploy != true &&
-      needs.read-context.outputs.mock_deploy != 'true' &&
-      (needs.deploy-uat.result == 'success' || needs.deploy-uat.result == 'skipped')
+    # Proceed when UAT succeeded normally OR when it was skipped via skip_uat bypass.
+    if: needs.deploy-uat.result == 'success' || needs.deploy-uat.result == 'skipped'
     runs-on: ubuntu-latest
     environment: Prod
     permissions:
@@ -517,101 +434,19 @@ jobs:
           sarif_path:               ${{ steps.find-sarif.outputs.sarif_path }}
 
   # ============================================================================
-  # Mock Deploy Prod — no environment approval gate, runs only in mock_deploy mode.
-  # Mirrors deploy-prod steps but without "environment: Prod" so the run completes
-  # without human intervention. Does NOT tag artifacts as prod-deployed.
-  # ============================================================================
-  mock-prod:
-    name: "🧪 Mock Deploy | Prod"
-    needs: [read-context, mock-uat]
-    if: >
-      (inputs.mock_deploy == true || needs.read-context.outputs.mock_deploy == 'true') &&
-      (needs.mock-uat.result == 'success' || needs.mock-uat.result == 'skipped')
-    runs-on: ubuntu-latest
-    permissions:
-      id-token: write
-      contents: read
-      actions:  read
-    env:
-      GHA_CORE_PAT: ${{ secrets.GHA_CORE_PAT }}
-    steps:
-      - name: Reveille (mock)
-        uses: ppudot2-cloud/GHA-CICD-Core/.github/actions/dynamics/reveille@main
-        with:
-          mock_deploy:           'true'
-          jfrog_enabled:         ${{ needs.read-context.outputs.jfrog_url != '' }}
-          mulesoft_enabled:      ${{ vars.MULESOFT_ENABLED == 'true' }}
-          servicenow_enabled:    ${{ vars.SERVICENOW_ENABLED == 'true' }}
-          azure_client_id:       ${{ needs.read-context.outputs.azure_client_id }}
-          azure_tenant_id:       ${{ needs.read-context.outputs.azure_tenant_id }}
-          azure_subscription_id: ${{ needs.read-context.outputs.azure_subscription_id }}
-          azure_key_vault_name:  ${{ fromJson(needs.read-context.outputs.prod_config).key_vault_name }}
-      - name: Install PAC CLI
-        uses: ppudot2-cloud/GHA-CICD-Core/.github/actions/dynamics/pac-install@main
-      - name: Download solution artifacts
-        uses: actions/download-artifact@v4
-        with:
-          pattern: solution-artifact-*
-          path: .
-          merge-multiple: true
-          run-id: ${{ needs.read-context.outputs.run_id }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Locate Solution Checker SARIF reports
-        id: find-sarif
-        shell: pwsh
-        run: |
-          $sarifPaths = @()
-          $pathFiles = Get-ChildItem -Path "." -Recurse -Filter "sarif.path" -ErrorAction SilentlyContinue
-          foreach ($pf in $pathFiles) {
-            $p = (Get-Content $pf.FullName -Raw).Trim()
-            if ($p -and $p -ne 'not-found' -and (Test-Path $p)) { $sarifPaths += $p }
-          }
-          if ($sarifPaths.Count -eq 0) {
-            $found = Get-ChildItem -Path "." -Recurse -Include "*.sarif","*.sarif.json" -ErrorAction SilentlyContinue
-            foreach ($f in $found) { $sarifPaths += $f.FullName }
-          }
-          $first = if ($sarifPaths.Count -gt 0) { $sarifPaths[0] } else { '' }
-          "sarif_path=$first" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-          if ($first) { Write-Host "  ServiceNow SARIF attachment: $first" }
-          else         { Write-Host "::warning::No Solution Checker SARIF found in downloaded artifacts" }
-      - name: Deploy all solutions → Prod (mock)
-        uses: ppudot2-cloud/GHA-CICD-Core/.github/actions/dynamics/deploy-all-solutions@main
-        with:
-          solutions_json:           ${{ needs.read-context.outputs.matrix }}
-          environment_name:         ${{ fromJson(needs.read-context.outputs.prod_config).name }}
-          environment_url:          ${{ needs.read-context.outputs.pp_prod_url }}
-          solution_type:            ${{ fromJson(needs.read-context.outputs.prod_config).solution_type }}
-          enable_backup:            ${{ fromJson(needs.read-context.outputs.prod_config).enable_backup }}
-          enable_blocking_check:    ${{ fromJson(needs.read-context.outputs.prod_config).enable_blocking_check }}
-          enable_version_compare:   ${{ fromJson(needs.read-context.outputs.prod_config).enable_version_compare }}
-          import_config_data:       ${{ fromJson(needs.read-context.outputs.prod_config).import_config_data }}
-          previous_environment_url: ${{ needs.read-context.outputs.pp_perf_url }}
-          tag_prod_deployed:        false
-          activate_flows:           true
-          mock_deploy:              'true'
-          base_solutions:           ${{ needs.read-context.outputs.base_solutions }}
-          jfrog_url:                ${{ needs.read-context.outputs.jfrog_url }}
-          jfrog_repo:               ${{ needs.read-context.outputs.jfrog_repo_solutions }}
-          run_number:               ${{ needs.read-context.outputs.run_number }}
-          run_attempt:              ${{ needs.read-context.outputs.run_attempt }}
-          enable_servicenow:        ${{ vars.SERVICENOW_ENABLED == 'true' }}
-          solution_list:            ${{ needs.read-context.outputs.solution_list }}
-          sarif_path:               ${{ steps.find-sarif.outputs.sarif_path }}
-
-  # ============================================================================
   # Pipeline Summary (always runs)
   # ============================================================================
   pipeline-summary:
     name: "📋 Pipeline 2 Summary"
-    needs: [read-context, deploy-uat, mock-uat, deploy-prod, mock-prod]
+    needs: [read-context, deploy-uat, deploy-prod]
     if: always() && needs.read-context.result != 'skipped'
     runs-on: ubuntu-latest
     steps:
       - name: Write summary
         shell: bash
         run: |
-          UAT_RESULT="${{ needs.deploy-uat.result != 'skipped' && needs.deploy-uat.result || needs.mock-uat.result }}"
-          PROD_RESULT="${{ needs.deploy-prod.result != 'skipped' && needs.deploy-prod.result || needs.mock-prod.result }}"
+          UAT_RESULT="${{ needs.deploy-uat.result }}"
+          PROD_RESULT="${{ needs.deploy-prod.result }}"
           SKIP_UAT="${{ inputs.skip_uat }}"
           ICON="✅"
           if [ "$PROD_RESULT" != "success" ]; then ICON="❌"; fi
@@ -636,9 +471,7 @@ jobs:
         if: >
           vars.MAIL_SERVER != '' && (
           needs.deploy-uat.result  == 'failure' ||
-          needs.deploy-prod.result == 'failure' ||
-          needs.mock-uat.result    == 'failure' ||
-          needs.mock-prod.result   == 'failure')
+          needs.deploy-prod.result == 'failure')
         continue-on-error: true
         uses: dawidd6/action-send-mail@v3
         with:
